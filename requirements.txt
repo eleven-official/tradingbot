@@ -60,7 +60,7 @@ prometheus-client>=0.20.0     # Production metrics collection
 # Database & Storage
 # ============================================
 sqlalchemy>=2.0.0             # SQL toolkit
-sqlite3                       # Built-in, no install needed
+# sqlite3 (Python built-in standard library)
 
 # ============================================
 # Testing & Quality
