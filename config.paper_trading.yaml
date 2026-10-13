@@ -1,0 +1,153 @@
+# Paper Trading Configuration for Testing
+# This configuration is optimized for safe paper trading testing
+
+# Zerodha Configuration (use placeholder values for testing)
+zerodha:
+  api_key: "YOUR_API_KEY"
+  api_secret: "YOUR_API_SECRET"
+  access_token: ""
+
+# Google API Configuration (placeholder)
+google_api:
+  api_key: "YOUR_GOOGLE_API_KEY"
+
+# News API Configuration (placeholder)
+news_api:
+  api_key: "YOUR_NEWS_API_KEY"
+
+# OpenAI API Configuration (placeholder)
+openai_api:
+  api_key: "YOUR_OPENAI_API_KEY"
+
+# YouTube API Configuration (placeholder)
+youtube_api:
+  api_key: "YOUR_YOUTUBE_API_KEY"
+
+# YouTube Sentiment Configuration
+youtube_sentiment:
+  enable: false  # Disabled for paper trading testing
+  max_video_age_hours: 18
+  transcript_max_chars: 8000
+  strip_categories:
+    - sponsor
+    - selfpromo
+    - interaction
+  llm_strip_fallback: true
+  overall_weight_vs_news: 2.0
+  gemini_model: gemini-2.0-flash
+  rate_limit_backoff_secs: [5, 10]
+  channels:
+    - handle: "@AkshatZayn"
+      display_name: "Akshat Zayn"
+      weight: 10
+
+# Risk Management Configuration (Conservative for paper trading)
+risk_management:
+  atr_multiplier: 2.0
+  enable_daily_loss_limit: true
+  enable_volatility_adjustment: true
+  high_vix_risk_reduction_factor: 0.5
+  high_vix_threshold: 22.0
+  max_daily_loss_percent: 5.0  # Increased to accommodate risk tiers
+  enable_consecutive_loss_limit: true
+  max_consecutive_losses: 2  # Stop after 2 consecutive losses
+  enable_weekly_loss_limit: false
+  max_weekly_loss_percent: 3.0
+
+# Risk Tiers (Simplified for paper trading)
+# Coherence rule: each tier's risk_pct <= max_daily_loss_percent / 2
+# With max_daily_loss_percent = 5%, max risk_pct = 2.5%
+risk_tiers:
+  - { max_capital: 100000, risk_pct: 2 }    # Under ₹1L → 2%
+  - { max_capital: 300000, risk_pct: 1.5 }  # ₹1L-₹3L → 1.5%
+  - { max_capital: null,   risk_pct: 1 }    # Above ₹3L → 1%
+
+# Trading Flags (Paper Trading Mode)
+trading_flags:
+  underlying_instrument: "NIFTY 50"
+  chart_timeframe: "5minute"
+  product_type: "MIS"
+  order_variety: "REGULAR"
+  risk_per_trade_percent: 1.0  # Conservative 1% risk
+  stop_loss_percent: 10.0      # Tighter stop loss for paper trading
+  max_trades_per_day: 3        # Limited trades for paper trading
+  paper_trading: true          # PAPER TRADING MODE ENABLED
+  enable_gemini_loss_analysis: false  # Disabled for paper trading
+  enable_natural_language_prompt: false  # Disabled for paper trading
+  strategy_reassessment_period_minutes: 60
+  use_rag: false               # Disabled for paper trading
+  rag_min_trading_days: 5
+
+# Server Configuration (Optional for dashboard)
+server:
+  headless: false
+  login_wait_minutes: 90
+  dashboard_token: "test_token"
+  control_pin: "1234"
+
+# Email Configuration (Optional)
+email_settings:
+  send_daily_report: false  # Disabled for paper trading
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  sender_email: "your_email@gmail.com"
+  sender_password: "your_app_password"
+  receiver_email: "receiver_email@gmail.com"
+
+# Reporting Configuration
+reporting:
+  weekly_report: false  # Disabled for paper trading
+  weekly_report_day: "Friday"
+
+# Setup Score Configuration (Simplified for paper trading)
+setup_score:
+  enable: true
+  entry_threshold: 70  # Higher threshold for paper trading
+  size_full_above: 85
+  size_min_factor: 0.75
+  counter_direction_value: 0.4
+  structure_target_room_points: 25.0
+  structure_room_atr_mult: 2.0
+  pcr_slope_min: 0.01
+  daily_trend_ma_period: 20
+  daily_trend_slope_bars: 5
+  daily_trend_hard_block: true
+  candle_level_proximity_points: 10.0
+  late_window_start: "14:00"
+  late_window_threshold: 80
+  weights:
+    direction: 20
+    htf_15m: 25
+    pcr: 15
+    structure: 15
+    momentum: 15
+    day_quality: 10
+    exhaustion: 18
+    pcr_slope: 10
+    flow_bias: 6
+    daily_trend: 20
+    candle: 12
+
+# Structure Exit Configuration
+structure_exit:
+  enable: true
+  scale_out_pct: 50
+  tight_trail_pct_at_target: 8.0
+
+# Regime Configuration (Conservative for paper trading)
+regime:
+  max_trading_days_per_week: 3  # Limited trading days
+  vix_no_trade_below: 12         # Don't trade if VIX too low
+  require_clean_regime: true     # Require clear regime
+  allow_trending_in_high_vix: false  # Conservative in high VIX
+
+# Metrics Configuration
+metrics:
+  enabled: true
+  prometheus_port: null
+  log_metrics: true
+
+# Performance Configuration
+performance:
+  enabled: true
+  async_operations: true

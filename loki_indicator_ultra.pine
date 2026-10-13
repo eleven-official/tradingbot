@@ -1,0 +1,296 @@
+//@version=6
+indicator("Loki - ULTRA Advanced Buy/Sell Signals", overlay=true, shorttitle="Loki ULTRA")
+
+// ================= INPUT PARAMETERS =================
+// Timeframe Settings
+string tf1 = input.timeframe("15", "Primary Timeframe", group="Timeframe")
+string tf2 = input.timeframe("60", "Secondary Timeframe", group="Timeframe")
+string tf3 = input.timeframe("240", "Tertiary Timeframe", group="Timeframe")
+
+// Indicator Settings
+int rsiPeriod   = input.int(14, "RSI Period", minval=1, group="Indicators")
+int macdFast    = input.int(12, "MACD Fast", minval=1, group="Indicators")
+int macdSlow    = input.int(26, "MACD Slow", minval=1, group="Indicators")
+int macdSignal  = input.int(9, "MACD Signal", minval=1, group="Indicators")
+int bbLength    = input.int(20, "Bollinger Bands Length", minval=1, group="Indicators")
+float bbMult    = input.float(2.0, "Bollinger Bands Multiplier", minval=0.1, group="Indicators")
+
+// New Indicators
+int stochPeriod = input.int(14, "Stochastic Period", minval=1, group="New Indicators")
+int stochSmooth = input.int(3, "Stochastic Smooth", minval=1, group="New Indicators")
+int adxPeriod   = input.int(14, "ADX Period", minval=1, group="New Indicators")
+int williamsR   = input.int(14, "Williams %R Period", minval=1, group="New Indicators")
+
+// Signal Settings
+int buyThreshold  = input.int(7, "Buy Signal Strength (1-12)", minval=1, maxval=12, group="Signal Settings")
+int sellThreshold = input.int(7, "Sell Signal Strength (1-12)", minval=1, maxval=12, group="Signal Settings")
+bool confirmTrend = input.bool(true, "Require Trend Confirmation", group="Signal Settings")
+bool useDivergence = input.bool(true, "Use Divergence Detection", group="Signal Settings")
+bool useSupportResistance = input.bool(true, "Use Support/Resistance", group="Signal Settings")
+
+// Risk Management
+float riskPercent = input.float(1.0, "Risk Percent", minval=0.1, maxval=10.0, group="Risk Management")
+float accountValue = input.float(10000, "Account Value ($)", minval=100, group="Risk Management")
+bool useTrailingStop = input.bool(true, "Use Trailing Stop Loss", group="Risk Management")
+float trailATR = input.float(2.0, "Trailing Stop ATR Multiplier", minval=1.0, maxval=5.0, group="Risk Management")
+
+// ================= CORE INDICATORS =================
+// RSI
+float rsi = ta.rsi(close, rsiPeriod)
+bool rsiOversold = rsi < 30
+bool rsiOverbought = rsi > 70
+
+// MACD
+[float macdLine, float signalLine, float histLine] = ta.macd(close, macdFast, macdSlow, macdSignal)
+bool macdCrossUp   = ta.crossover(macdLine, signalLine)
+bool macdCrossDown = ta.crossunder(macdLine, signalLine)
+bool macdBullish = macdLine > signalLine
+bool macdBearish = macdLine < signalLine
+
+// Bollinger Bands
+[float bbMiddle, float bbUpper, float bbLower] = ta.bb(close, bbLength, bbMult)
+bool bbSqueeze = (bbUpper - bbLower) / bbMiddle < 0.1
+bool bbBullish = close > bbMiddle
+bool bbBearish = close < bbMiddle
+
+// Moving Averages
+float ema20  = ta.ema(close, 20)
+float ema50  = ta.ema(close, 50)
+float ema200 = ta.ema(close, 200)
+bool trendUp   = ema20 > ema50 and ema50 > ema200
+bool trendDown = ema20 < ema50 and ema50 < ema200
+
+// Volume Analysis
+float volSMA = ta.sma(volume, 20)
+bool volBullish = volume > volSMA and close > close[1]
+bool volBearish = volume > volSMA and close < close[1]
+bool volSpike = volume > volSMA * 2
+
+// ATR
+float atr = ta.atr(14)
+float volatility = atr / close * 100
+bool highVol = volatility > 2
+bool lowVol  = volatility < 0.5
+
+// ================= NEW INDICATORS =================
+// Stochastic
+float stochK = ta.sma(ta.stoch(close, high, low, stochPeriod), stochSmooth)
+float stochD = ta.sma(stochK, stochSmooth)
+bool stochOversold = stochK < 20
+bool stochOverbought = stochK > 80
+bool stochCrossUp = ta.crossover(stochK, stochD)
+bool stochCrossDown = ta.crossunder(stochK, stochD)
+
+// ADX (Trend Strength)
+float adx = ta.adx(14)
+float diPlus = ta.diplus(14)
+float diMinus = ta.diminus(14)
+bool strongTrend = adx > 25
+bool weakTrend = adx < 20
+bool adxBullish = diPlus > diMinus
+bool adxBearish = diMinus > diPlus
+
+// Williams %R
+float willR = ta.willr(high, low, close, williamsR)
+bool willROversold = willR < -80
+bool willROverbought = willR > -20
+
+// Divergence Detection
+bool rsiBullishDivergence = rsi < 30 and close > close[5] and rsi < rsi[5]
+bool rsiBearishDivergence = rsi > 70 and close < close[5] and rsi > rsi[5]
+bool macdBullishDivergence = macdLine < 0 and close > close[5] and macdLine < macdLine[5]
+bool macdBearishDivergence = macdLine > 0 and close < close[5] and macdLine > macdLine[5]
+
+// Support/Resistance Levels
+float pivotHigh = ta.pivothigh(high, 10, 10)
+float pivotLow = ta.pivotlow(low, 10, 10)
+bool nearSupport = close - pivotLow < atr * 0.5
+bool nearResistance = pivotHigh - close < atr * 0.5
+
+// ================= MULTI-TIMEFRAME ANALYSIS =================
+float rsi1      = request.security(syminfo.tickerid, tf1, ta.rsi(close, rsiPeriod))
+float ema201    = request.security(syminfo.tickerid, tf1, ta.ema(close, 20))
+float ema501    = request.security(syminfo.tickerid, tf1, ta.ema(close, 50))
+float stochK1   = request.security(syminfo.tickerid, tf1, ta.sma(ta.stoch(close, high, low, stochPeriod), stochSmooth))
+float adx1      = request.security(syminfo.tickerid, tf1, ta.adx(14))
+
+float rsi2      = request.security(syminfo.tickerid, tf2, ta.rsi(close, rsiPeriod))
+float ema202    = request.security(syminfo.tickerid, tf2, ta.ema(close, 20))
+float ema502    = request.security(syminfo.tickerid, tf2, ta.ema(close, 50))
+float stochK2   = request.security(syminfo.tickerid, tf2, ta.sma(ta.stoch(close, high, low, stochPeriod), stochSmooth))
+float adx2      = request.security(syminfo.tickerid, tf2, ta.adx(14))
+
+float rsi3      = request.security(syminfo.tickerid, tf3, ta.rsi(close, rsiPeriod))
+float ema203    = request.security(syminfo.tickerid, tf3, ta.ema(close, 20))
+float ema503    = request.security(syminfo.tickerid, tf3, ta.ema(close, 50))
+float adx3      = request.security(syminfo.tickerid, tf3, ta.adx(14))
+
+// ================= ENHANCED SIGNAL GENERATION =================
+// Buy Conditions (Expanded)
+bool buyCondition1  = rsi < 30                      // RSI oversold
+bool buyCondition2  = macdCrossUp                   // MACD bullish crossover
+bool buyCondition3  = close < bbLower               // Price below lower BB
+bool buyCondition4  = ema20 > ema50                // Short-term bullish
+bool buyCondition5  = volBullish                    // Volume supporting
+bool buyCondition6  = stochOversold                 // Stochastic oversold
+bool buyCondition7  = stochCrossUp                  // Stochastic crossover up
+bool buyCondition8  = willROversold                 // Williams %R oversold
+bool buyCondition9  = adxBullish and strongTrend    // ADX bullish with strong trend
+bool buyCondition10 = nearSupport                   // Near support level
+
+// Sell Conditions (Expanded)
+bool sellCondition1 = rsi > 70                      // RSI overbought
+bool sellCondition2 = macdCrossDown                 // MACD bearish crossover
+bool sellCondition3 = close > bbUpper              // Price above upper BB
+bool sellCondition4 = ema20 < ema50                // Short-term bearish
+bool sellCondition5 = volBearish                    // Volume supporting
+bool sellCondition6 = stochOverbought              // Stochastic overbought
+bool sellCondition7 = stochCrossDown               // Stochastic crossover down
+bool sellCondition8 = willROverbought               // Williams %R overbought
+bool sellCondition9 = adxBearish and strongTrend    // ADX bearish with strong trend
+bool sellCondition10 = nearResistance               // Near resistance level
+
+// Divergence Conditions
+bool divBuyCondition  = useDivergence ? (rsiBullishDivergence or macdBullishDivergence) : false
+bool divSellCondition = useDivergence ? (rsiBearishDivergence or macdBearishDivergence) : false
+
+// Multi-timeframe Confirmation (Enhanced)
+bool mtfBuy   = rsi1 < 40 and rsi2 < 45 and rsi3 < 50 and stochK1 < 30 and stochK2 < 35
+bool mtfSell  = rsi1 > 60 and rsi2 > 55 and rsi3 > 50 and stochK1 > 70 and stochK2 > 65
+
+// Trend Confirmation (Enhanced)
+bool trendConfirmBuy  = ema201 > ema501 and ema202 > ema502 and adx1 > 20 and adx2 > 20
+bool trendConfirmSell = ema201 < ema501 and ema202 < ema502 and adx1 > 20 and adx2 > 20
+
+// Enhanced Scoring (0-12 scale)
+int buyScore  = (buyCondition1 ? 1 : 0) + (buyCondition2 ? 1 : 0) + (buyCondition3 ? 1 : 0) + 
+                (buyCondition4 ? 1 : 0) + (buyCondition5 ? 1 : 0) + (buyCondition6 ? 1 : 0) + 
+                (buyCondition7 ? 1 : 0) + (buyCondition8 ? 1 : 0) + (buyCondition9 ? 1 : 0) + 
+                (buyCondition10 ? 1 : 0) + (mtfBuy ? 2 : 0) + (trendConfirmBuy ? 2 : 0) + 
+                (divBuyCondition ? 2 : 0)
+
+int sellScore = (sellCondition1 ? 1 : 0) + (sellCondition2 ? 1 : 0) + (sellCondition3 ? 1 : 0) + 
+                (sellCondition4 ? 1 : 0) + (sellCondition5 ? 1 : 0) + (sellCondition6 ? 1 : 0) + 
+                (sellCondition7 ? 1 : 0) + (sellCondition8 ? 1 : 0) + (sellCondition9 ? 1 : 0) + 
+                (sellCondition10 ? 1 : 0) + (mtfSell ? 2 : 0) + (trendConfirmSell ? 2 : 0) + 
+                (divSellCondition ? 2 : 0)
+
+// Signal Quality Rating
+string buyQuality  = buyScore >= 10 ? "EXCELLENT" : buyScore >= 8 ? "VERY GOOD" : buyScore >= 6 ? "GOOD" : buyScore >= 4 ? "FAIR" : "WEAK"
+string sellQuality = sellScore >= 10 ? "EXCELLENT" : sellScore >= 8 ? "VERY GOOD" : sellScore >= 6 ? "GOOD" : sellScore >= 4 ? "FAIR" : "WEAK"
+
+// Final Signals
+bool strongBuy  = buyScore >= buyThreshold and (confirmTrend ? trendConfirmBuy : true)
+bool strongSell = sellScore >= sellThreshold and (confirmTrend ? trendConfirmSell : true)
+
+// Enhanced Exit Signals
+bool exitBuy  = rsi > 70 or macdCrossDown or stochOverbought or willROverbought
+bool exitSell = rsi < 30 or macdCrossUp or stochOversold or willROversold
+
+// ================= TRAILING STOP LOGIC =================
+var float trailPrice = na
+var float trailStop = na
+
+if strongBuy
+    trailPrice := close
+    trailStop := close - atr * trailATR
+else if strongBuy[1] and not strongBuy
+    trailPrice := na
+    trailStop := na
+else if trailPrice and close > trailPrice
+    trailPrice := close
+    trailStop := close - atr * trailATR
+
+if strongSell
+    trailPrice := close
+    trailStop := close + atr * trailATR
+else if strongSell[1] and not strongSell
+    trailPrice := na
+    trailStop := na
+else if trailPrice and close < trailPrice
+    trailPrice := close
+    trailStop := close + atr * trailATR
+
+// ================= PLOT SIGNALS =================
+plotshape(strongBuy and not strongBuy[1], title="BUY", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.large, text="BUY")
+plotshape(strongSell and not strongSell[1], title="SELL", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.large, text="SELL")
+plotshape(exitBuy and strongBuy[1], title="EXIT LONG", location=location.abovebar, color=color.orange, style=shape.xcross, size=size.normal, text="EXIT")
+plotshape(exitSell and strongSell[1], title="EXIT SHORT", location=location.belowbar, color=color.orange, style=shape.xcross, size=size.normal, text="EXIT")
+
+// ================= PLOT INDICATORS =================
+plot(ema20, color=color.blue, linewidth=2, title="EMA 20")
+plot(ema50, color=color.orange, linewidth=2, title="EMA 50")
+plot(ema200, color=color.purple, linewidth=2, title="EMA 200")
+
+varPlotUpper = plot(bbUpper, color=color.gray, linewidth=1, title="BB Upper")
+varPlotLower = plot(bbLower, color=color.gray, linewidth=1, title="BB Lower")
+fill(varPlotUpper, varPlotLower, color=color.new(color.gray, 90), title="BB Fill")
+
+// Plot Support/Resistance
+plot(pivotHigh, color=color.red, style=plot.style_circles, linewidth=2, title="Resistance")
+plot(pivotLow, color=color.green, style=plot.style_circles, linewidth=2, title="Support")
+
+// ================= SIGNAL STRENGTH DISPLAY =================
+bgcolor(strongBuy ? color.new(color.green, 85) : strongSell ? color.new(color.red, 85) : na, title="Signal Background")
+
+// ================= PLOT TRAILING STOP =================
+plot(useTrailingStop ? trailStop : na, color=color.yellow, style=plot.style_linebr, linewidth=2, title="Trailing Stop")
+
+// ================= STOP LOSS & TAKE PROFIT =================
+float atrSL = atr * 2
+float longSL = close - atrSL
+float shortSL = close + atrSL
+
+float atrTP = atr * 3
+float longTP = close + atrTP
+float shortTP = close - atrTP
+
+plot(not useTrailingStop and strongBuy ? longSL : na, color=color.red, style=plot.style_linebr, linewidth=1, title="Long Stop Loss")
+plot(not useTrailingStop and strongBuy ? longTP : na, color=color.green, style=plot.style_linebr, linewidth=1, title="Long Take Profit")
+plot(not useTrailingStop and strongSell ? shortSL : na, color=color.red, style=plot.style_linebr, linewidth=1, title="Short Stop Loss")
+plot(not useTrailingStop and strongSell ? shortTP : na, color=color.green, style=plot.style_linebr, linewidth=1, title="Short Take Profit")
+
+// ================= ALERTS =================
+alertcondition(strongBuy and not strongBuy[1], title="Loki ULTRA BUY Signal", message="Loki ULTRA BUY: {{ticker}} @ {{close}} | Score: {{buyScore}} | Quality: {{buyQuality}}")
+alertcondition(strongSell and not strongSell[1], title="Loki ULTRA SELL Signal", message="Loki ULTRA SELL: {{ticker}} @ {{close}} | Score: {{sellScore}} | Quality: {{sellQuality}}")
+alertcondition(exitBuy and strongBuy[1], title="Exit LONG Position", message="Loki Exit LONG: {{ticker}} @ {{close}}")
+alertcondition(exitSell and strongSell[1], title="Exit SHORT Position", message="Loki Exit SHORT: {{ticker}} @ {{close}}")
+
+// ================= ENHANCED INFORMATION TABLE =================
+var table infoTable = table.new(position.top_right, 2, 10, bgcolor=color.new(color.black, 85), border_width=1)
+
+if barstate.islast
+    table.cell(infoTable, 0, 0, "Loki ULTRA", text_color=color.white, text_size=size.normal)
+    table.cell(infoTable, 1, 0, strongBuy ? "STRONG BUY" : strongSell ? "STRONG SELL" : "NEUTRAL", text_color=strongBuy ? color.green : strongSell ? color.red : color.yellow, text_size=size.normal)
+    
+    table.cell(infoTable, 0, 1, "Buy Score", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 1, str.tostring(buyScore, "#") + " / 12", text_color=color.white, text_size=size.small)
+    
+    table.cell(infoTable, 0, 2, "Sell Score", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 2, str.tostring(sellScore, "#") + " / 12", text_color=color.white, text_size=size.small)
+    
+    table.cell(infoTable, 0, 3, "Quality", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 3, strongBuy ? buyQuality : strongSell ? sellQuality : "N/A", text_color=strongBuy ? color.green : strongSell ? color.red : color.white, text_size=size.small)
+    
+    table.cell(infoTable, 0, 4, "RSI", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 4, str.tostring(rsi, "#.##"), text_color=rsi > 70 ? color.red : rsi < 30 ? color.green : color.white, text_size=size.small)
+    
+    table.cell(infoTable, 0, 5, "Stoch", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 5, str.tostring(stochK, "#.##"), text_color=stochK > 80 ? color.red : stochK < 20 ? color.green : color.white, text_size=size.small)
+    
+    table.cell(infoTable, 0, 6, "ADX", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 6, str.tostring(adx, "#.##"), text_color=strongTrend ? color.green : weakTrend ? color.red : color.white, text_size=size.small)
+    
+    table.cell(infoTable, 0, 7, "Trend", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 7, trendUp ? "BULLISH" : trendDown ? "BEARISH" : "NEUTRAL", text_color=trendUp ? color.green : trendDown ? color.red : color.yellow, text_size=size.small)
+    
+    table.cell(infoTable, 0, 8, "Volatility", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 8, str.tostring(volatility, "#.##") + "%", text_color=highVol ? color.red : lowVol ? color.green : color.white, text_size=size.small)
+
+// ================= POSITION SIZE CALCULATION =================
+float positionSize = (accountValue * riskPercent / 100) / atrSL
+float lots = positionSize / close
+
+if barstate.islast and (strongBuy or strongSell)
+    table.cell(infoTable, 0, 9, "Position Size", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 9, str.tostring(lots, "#.####") + " lots", text_color=color.white, text_size=size.small)

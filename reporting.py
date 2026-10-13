@@ -1,0 +1,439 @@
+import logging
+import os
+import smtplib
+import datetime
+import calendar
+import pandas as pd
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from infra import read_json, state_path
+
+LOG_FILE = 'output/trade_log.xlsx'
+
+
+# --------------------------------------------------------------------------- #
+# Capital (start → end) helpers — read the per-day trade ledger
+# --------------------------------------------------------------------------- #
+def _ledger_for_date(date_obj) -> dict:
+    """Read state/trade_ledger_<date>.json for a given date (or {})."""
+    ds = date_obj.strftime("%Y-%m-%d")
+    return read_json(state_path(f"trade_ledger_{ds}.json"), default={}) or {}
+
+
+def _fmt_capital(v):
+    return f"₹{float(v):,.0f}" if v not in (None, "") else "—"
+
+
+def _capital_html(start, end) -> str:
+    """A small HTML block showing capital start → end and the day/period change."""
+    chg = ""
+    try:
+        if start not in (None, "") and end not in (None, ""):
+            d = float(end) - float(start)
+            sign = "+" if d >= 0 else "−"
+            color = "#1a7f37" if d >= 0 else "#cf222e"
+            chg = f' <span style="color:{color}">({sign}₹{abs(d):,.0f})</span>'
+    except Exception:
+        chg = ""
+    return (
+        f"<p style='font-size:1.05em'><strong>Capital:</strong> "
+        f"{_fmt_capital(start)} → {_fmt_capital(end)}{chg}</p>"
+    )
+
+
+def _iso_week_dates(week_str: str):
+    """Return the Mon–Sun date objects for an ISO week string like '2026-W23'."""
+    try:
+        year, wk = week_str.split("-W")
+        monday = datetime.date.fromisocalendar(int(year), int(wk), 1)
+        return [monday + datetime.timedelta(days=i) for i in range(7)]
+    except Exception:
+        return []
+os.makedirs('output', exist_ok=True)
+
+_SORRY_BANNER = """
+<div style="background:#fff3cd;border:2px solid #e0a800;border-radius:8px;
+            padding:18px 24px;margin-bottom:24px;font-family:Arial,sans-serif;">
+  <p style="font-size:1.3em;margin:0 0 6px 0;">🙏 Sorry maine aapka loss karwa diya aaj,</p>
+  <p style="font-size:1.2em;margin:0 0 6px 0;">iska reason to sun lo please!!</p>
+  <p style="font-size:1.25em;font-weight:bold;margin:0;">Sorry Shaktimaan!! 😔</p>
+</div>
+"""
+
+def initialize_trade_log():
+    """Creates the trade log Excel file with all necessary columns if it doesn't exist."""
+    if not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
+        # --- FIX: Added 'OrderID' to distinguish live vs paper trades ---
+        all_columns = [
+            'Timestamp', 'OrderID', 'Symbol', 'TradeType', 'EntryPrice', 'ExitPrice', 
+            'Quantity', 'ProfitLoss', 'ProfitLoss_Pct', 'Status', 'Strategy', 'Rationale'
+        ]
+        pd.DataFrame(columns=all_columns).to_excel(LOG_FILE, index=False)
+        logging.info(f"Trade log created at {LOG_FILE}")
+
+def log_trade(trade_details):
+    """Appends a single trade record to the Excel log file, ensuring all columns are present."""
+    try:
+        if trade_details.get('EntryPrice') and trade_details.get('Quantity') and trade_details['EntryPrice'] > 0 and trade_details['Quantity'] > 0:
+            pnl_pct = (trade_details.get('ProfitLoss', 0) / (trade_details['EntryPrice'] * trade_details['Quantity'])) * 100
+            trade_details['ProfitLoss_Pct'] = round(pnl_pct, 2)
+        else:
+            trade_details['ProfitLoss_Pct'] = 0.0
+
+        all_columns = ['Timestamp', 'OrderID', 'Symbol', 'TradeType', 'EntryPrice', 'ExitPrice', 'Quantity', 'ProfitLoss', 'ProfitLoss_Pct', 'Status', 'Strategy', 'Rationale',
+                       'EntryDelta', 'EntryGamma', 'EntryTheta', 'EntryVega', 'EntryIV',
+                       'PnlDelta', 'PnlGamma', 'PnlTheta', 'PnlVega', 'PnlResidual']
+        
+        # Ensure all keys exist in the dictionary to prevent errors
+        for col in all_columns:
+            trade_details.setdefault(col, None) 
+        
+        # Read existing log or create a new DataFrame
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 0:
+            df = pd.read_excel(LOG_FILE)
+        else:
+            df = pd.DataFrame(columns=all_columns)
+
+        new_trade_df = pd.DataFrame([trade_details])
+        df = pd.concat([df, new_trade_df], ignore_index=True)
+        df.to_excel(LOG_FILE, index=False)
+        logging.info(f"Successfully logged trade for {trade_details['Symbol']}")
+    except Exception as e:
+        logging.error(f"Failed to log trade to Excel: {e}", exc_info=True)
+
+
+def _send_email(config, subject, html_body) -> bool:
+    """
+    Generic email sender shared by the daily report and the loss-analysis
+    mailer. Returns True on success. Honours email_settings.send_daily_report
+    as the master on/off switch for ALL bot email.
+    """
+    email_conf = config.get('email_settings', {}) or {}
+    if not email_conf.get('send_daily_report', False):
+        logging.info("Email reporting is disabled in config; skipping email.")
+        return False
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = email_conf['sender_email']
+        msg['To'] = email_conf['receiver_email']
+        msg['Subject'] = subject
+        msg.attach(MIMEText(html_body, 'html'))
+        with smtplib.SMTP(
+            email_conf['smtp_server'],
+            email_conf['smtp_port'],
+            timeout=15,          # fail fast — don't hang the bot for 80s
+        ) as server:
+            server.starttls()
+            server.login(email_conf['sender_email'], email_conf['sender_password'])
+            server.send_message(msg)
+        logging.info(f"Email sent: {subject!r}")
+        return True
+    except Exception as e:
+        logging.warning(f"Email skipped ({subject!r}): {e}")
+        return False
+
+
+def send_loss_analysis_email(config, report_text, trade):
+    """
+    Sends a dedicated 'Trade Loss Analysis' email immediately after a losing
+    trade is booked. `report_text` is the plain-text post-mortem from
+    loss_analyzer.build_loss_report; `trade` is the completed-trade dict.
+    """
+    try:
+        from loss_analyzer import report_to_html
+        html = report_to_html(report_text)
+    except Exception:
+        # Fallback: minimal <pre> wrap if the helper isn't importable.
+        safe = (report_text or "").replace("<", "&lt;").replace(">", "&gt;")
+        html = f"<html><body><pre>{safe}</pre></body></html>"
+
+    # Prepend apology banner — inject after <body> tag (or at the top if absent).
+    if "<body>" in html:
+        html = html.replace("<body>", f"<body>{_SORRY_BANNER}", 1)
+    else:
+        html = _SORRY_BANNER + html
+
+    sym = trade.get('Symbol', '?')
+    pnl = trade.get('ProfitLoss', 0)
+    try:
+        pnl_str = f"{float(pnl):,.2f}"
+    except Exception:
+        pnl_str = str(pnl)
+    subject = f"Trade Loss Analysis: {sym} (P&L {pnl_str})"
+    _send_email(config, subject, html)
+
+
+def send_token_expiry_alert(config, error_msg: str = "", login_url: str = "") -> bool:
+    """
+    Sends an urgent email when the Zerodha access token has expired mid-session
+    or is found stale at startup. Includes the Kite login URL so the operator
+    can refresh the token from their phone/laptop within minutes.
+
+    Safe to call even when email is disabled — returns False without error.
+    """
+    import datetime as _dt
+    now_str = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    safe_err = (error_msg or "TokenException").replace("<", "&lt;").replace(">", "&gt;")
+    safe_url = (login_url or "https://kite.zerodha.com").replace("<", "&lt;").replace(">", "&gt;")
+
+    html = f"""
+<html><body style="font-family:Arial,sans-serif;color:#333">
+<h2 style="color:#c0392b">&#x26A0; zAck Bot — Zerodha Token Expired</h2>
+<p>The bot detected an expired / invalid access token at <strong>{now_str}</strong>
+and has halted to protect your account.</p>
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">
+  <tr><td><b>Error</b></td><td><code>{safe_err}</code></td></tr>
+  <tr><td><b>Action required</b></td>
+      <td>Refresh your Kite access token and restart the bot.</td></tr>
+  <tr><td><b>Login URL</b></td>
+      <td><a href="{safe_url}">{safe_url}</a></td></tr>
+</table>
+<p style="color:#888;font-size:0.85em">Zerodha tokens are valid for one trading
+session (reset at ~06:00 IST). Run <code>python trading_bot.py</code> after
+generating a new token.</p>
+</body></html>
+"""
+    subject = f"[URGENT] zAck Bot halted — Zerodha token expired ({now_str})"
+    return _send_email(config, subject, html)
+
+
+def send_daily_report(config, date_str, no_trades_reason=None):
+    """Reads the trade log and sends a daily report with segregated live and paper trade stats."""
+    email_conf = config.get('email_settings', {})
+    if not email_conf.get('send_daily_report', False):
+        logging.info("Email reporting is disabled."); return
+        
+    try:
+        today = pd.to_datetime(date_str).date()
+        df = pd.read_excel(LOG_FILE) if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 0 else pd.DataFrame()
+        
+        if not df.empty and 'Timestamp' in df.columns:
+            df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        
+        # --- FIX: Generate segregated summary and get separate P/L values ---
+        daily_html, live_pnl, paper_pnl = generate_daily_summary(df, today, no_trades_reason)
+
+        # Prepend apology banner when live trades ended in a loss.
+        if live_pnl is not None and live_pnl < 0:
+            if "<body>" in daily_html:
+                daily_html = daily_html.replace("<body>", f"<body>{_SORRY_BANNER}", 1)
+            else:
+                daily_html = _SORRY_BANNER + daily_html
+
+        # Build a dynamic subject line
+        subject_parts = [f"Trading Report for {today.strftime('%d %b, %Y')}"]
+        if live_pnl is not None:
+            subject_parts.append(f"Live P/L: {live_pnl:,.2f}")
+        if paper_pnl is not None:
+            subject_parts.append(f"Paper P/L: {paper_pnl:,.2f}")
+        subject = " | ".join(subject_parts)
+
+        msg = MIMEMultipart()
+        msg['From'] = email_conf['sender_email']
+        msg['To'] = email_conf['receiver_email']
+        msg['Subject'] = subject
+        msg.attach(MIMEText(daily_html, 'html'))
+        
+        with smtplib.SMTP(email_conf['smtp_server'], email_conf['smtp_port'], timeout=15) as server:
+            server.starttls()
+            server.login(email_conf['sender_email'], email_conf['sender_password'])
+            server.send_message(msg)
+        logging.info("Successfully sent daily email report.")
+    except Exception as e:
+        logging.error(f"Failed to send email report: {e}", exc_info=True)
+
+def _generate_summary_table(df, title):
+    """Helper function to generate an HTML summary table for a given dataframe."""
+    if df.empty:
+        return f"<h3>{title}</h3><p>No trades were executed in this mode today.</p>", None
+
+    total_pnl = df['ProfitLoss'].sum()
+    wins = (df['ProfitLoss'] > 0).sum()
+    losses = len(df) - wins
+    win_rate = (wins / len(df) * 100) if len(df) > 0 else 0
+    
+    summary_html = f"""
+    <h3>{title}</h3>
+    <table style="width:400px;">
+        <tr><td>Winning Trades</td><td>{wins}</td></tr>
+        <tr><td>Losing Trades</td><td>{losses}</td></tr>
+        <tr><td>Win Rate</td><td>{win_rate:.2f}%</td></tr>
+        <tr><td><strong>Total P/L</strong></td><td><strong>{total_pnl:,.2f}</strong></td></tr>
+    </table>
+    """
+    
+    df_display = df.copy()
+    for col in ['ProfitLoss', 'ProfitLoss_Pct', 'EntryPrice', 'ExitPrice']:
+        if col in df_display.columns:
+            df_display[col] = df_display[col].apply(lambda x: f'{x:,.2f}' if pd.notna(x) else 'N/A')
+    
+    df_display.fillna('', inplace=True)
+    trades_html = df_display.to_html(index=False)
+    
+    return f"{summary_html}<h4>Trade Details:</h4>{trades_html}", total_pnl
+
+def generate_daily_summary(df, date_obj, reason):
+    """Generates the HTML summary for a single day, segregating live and paper trades."""
+    html_style = "<style>body{font-family:Arial,sans-serif;margin:20px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background-color:#f2f2f2;}</style>"
+    
+    # Capital start → end, read from the day's persisted ledger.
+    _led = _ledger_for_date(date_obj)
+    _cap_html = _capital_html(_led.get("starting_capital"), _led.get("ending_capital"))
+    header = f"<h2>Daily Summary: {date_obj.strftime('%d %b, %Y')}</h2>{_cap_html}"
+
+    if reason:
+        body = f"{header}<p><strong>No trades were placed today. Reason:</strong> {reason}</p>"
+        return f"<html><head>{html_style}</head><body>{body}</body></html>", None, None
+
+    if df.empty or 'Timestamp' not in df.columns:
+        body = f"{header}<p>No trades found in log file.</p>"
+        return f"<html><head>{html_style}</head><body>{body}</body></html>", None, None
+
+    daily_trades = df[df['Timestamp'].dt.date == date_obj].copy()
+    if daily_trades.empty:
+        body = f"{header}<p>No trades were executed today.</p>"
+        return f"<html><head>{html_style}</head><body>{body}</body></html>", None, None
+
+    # --- FIX: Segregate trades based on OrderID ---
+    if 'OrderID' not in daily_trades.columns:
+        # Fallback for old logs without OrderID
+        live_trades = daily_trades
+        paper_trades = pd.DataFrame()
+    else:
+        daily_trades['IsPaper'] = daily_trades['OrderID'].astype(str).str.startswith('PAPER_')
+        live_trades = daily_trades[~daily_trades['IsPaper']].copy()
+        paper_trades = daily_trades[daily_trades['IsPaper']].copy()
+
+    live_html, live_pnl = _generate_summary_table(live_trades, "Live Trades Summary")
+    paper_html, paper_pnl = _generate_summary_table(paper_trades, "Paper Trades Summary")
+    
+    full_html_body = f"{header}{live_html}<hr>{paper_html}"
+    
+    return f"<html><head>{html_style}</head><body>{full_html_body}</body></html>", live_pnl, paper_pnl
+
+def send_weekly_report(config, week_str):
+    """
+    Build and email a weekly performance summary for the ISO week `week_str`
+    (e.g. '2026-W23'): trades, win rate, avg win/loss, net P&L, biggest loss,
+    days traded, and capital start → end (from the week's daily ledgers).
+    """
+    email_conf = config.get('email_settings', {}) or {}
+    if not email_conf.get('send_daily_report', False):
+        logging.info("Email reporting disabled; skipping weekly report.")
+        return
+    try:
+        dates = _iso_week_dates(week_str)
+        if not dates:
+            logging.warning(f"send_weekly_report: bad week string {week_str!r}.")
+            return
+        week_set = set(dates)
+
+        # Trades for the week from the persisted log.
+        df = pd.read_excel(LOG_FILE) if (os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 0) else pd.DataFrame()
+        if not df.empty and 'Timestamp' in df.columns:
+            df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+            wk = df[df['Timestamp'].dt.date.isin(week_set)].copy()
+        else:
+            wk = pd.DataFrame()
+
+        # Capital start → end across the week's daily ledgers.
+        start_cap = end_cap = None
+        traded_days = set()
+        for d in dates:
+            led = _ledger_for_date(d)
+            if led.get("starting_capital") not in (None, "") and start_cap is None:
+                start_cap = led.get("starting_capital")
+            if led.get("ending_capital") not in (None, ""):
+                end_cap = led.get("ending_capital")
+            if int(led.get("trades_today_count", 0) or 0) > 0:
+                traded_days.add(d.isoformat())
+
+        html_style = "<style>body{font-family:Arial,sans-serif;margin:20px;} table{border-collapse:collapse;width:520px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f2f2f2;}</style>"
+        mon, sun = dates[0], dates[6]
+        header = (f"<h2>Weekly Summary: {week_str} "
+                  f"({mon.strftime('%d %b')} – {sun.strftime('%d %b, %Y')})</h2>"
+                  + _capital_html(start_cap, end_cap))
+
+        if wk.empty or 'ProfitLoss' not in wk.columns:
+            body = f"{header}<p>No trades were placed this week.</p>"
+            _send_email(config, f"Weekly Trading Report — {week_str}",
+                        f"<html><head>{html_style}</head><body>{body}</body></html>")
+            return
+
+        pnl = wk['ProfitLoss'].astype(float)
+        n = len(wk)
+        wins = wk[pnl > 0]; losses = wk[pnl < 0]
+        win_rate = (len(wins) / n * 100) if n else 0.0
+        avg_win = wins['ProfitLoss'].astype(float).mean() if len(wins) else 0.0
+        avg_loss = losses['ProfitLoss'].astype(float).mean() if len(losses) else 0.0
+        net = pnl.sum()
+        biggest_loss = pnl.min() if n else 0.0
+
+        net_color = "#1a7f37" if net >= 0 else "#cf222e"
+        summary = f"""
+        <table>
+          <tr><td>Trading days</td><td>{len(traded_days)}</td></tr>
+          <tr><td>Trades</td><td>{n}</td></tr>
+          <tr><td>Winning / Losing</td><td>{len(wins)} / {len(losses)}</td></tr>
+          <tr><td>Win rate</td><td>{win_rate:.1f}%</td></tr>
+          <tr><td>Average win</td><td>₹{avg_win:,.2f}</td></tr>
+          <tr><td>Average loss</td><td>₹{avg_loss:,.2f}</td></tr>
+          <tr><td>Biggest single loss</td><td>₹{biggest_loss:,.2f}</td></tr>
+          <tr><td><strong>Net P&amp;L (after costs)</strong></td>
+              <td><strong style="color:{net_color}">₹{net:,.2f}</strong></td></tr>
+        </table>"""
+
+        body = f"{header}{summary}"
+        _send_email(config, f"Weekly Trading Report — {week_str} | Net ₹{net:,.0f}",
+                    f"<html><head>{html_style}</head><body>{body}</body></html>")
+        logging.info(f"Weekly report emailed for {week_str}.")
+    except Exception as e:
+        logging.error(f"send_weekly_report failed: {e}", exc_info=True)
+
+
+def send_monthly_report(config, date_str):
+    """Generates and sends a summary report for the entire month's performance."""
+    # This function can also be updated to segregate results if needed in the future.
+    # For now, it will report on all trades combined for the month.
+    email_conf = config.get('email_settings', {})
+    if not email_conf.get('send_daily_report', False): return
+    logging.info("Generating monthly report...")
+    today = pd.to_datetime(date_str).date()
+    
+    try:
+        df = pd.read_excel(LOG_FILE) if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 0 else pd.DataFrame()
+        if df.empty:
+            body = f"<p>No trades were executed during {today.strftime('%B %Y')}.</p>"
+        else:
+            df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+            monthly_trades = df[(df['Timestamp'].dt.year == today.year) & (df['Timestamp'].dt.month == today.month)]
+            if monthly_trades.empty:
+                body = f"<p>No trades were executed during {today.strftime('%B %Y')}.</p>"
+            else:
+                total_pnl = monthly_trades['ProfitLoss'].sum()
+                wins = (monthly_trades['ProfitLoss'] > 0).sum()
+                losses = len(monthly_trades) - wins
+                win_rate = (wins / len(monthly_trades) * 100) if len(monthly_trades) > 0 else 0
+                body = f"""
+                <h3>Monthly Performance Summary for {today.strftime('%B %Y')}</h3>
+                <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 400px;">
+                    <tr><td>Total P/L</td><td>{total_pnl:,.2f}</td></tr>
+                    <tr><td>Winning Trades</td><td>{wins}</td></tr>
+                    <tr><td>Losing Trades</td><td>{losses}</td></tr>
+                    <tr><td><strong>Monthly Win Rate</strong></td><td><strong>{win_rate:.2f}%</strong></td></tr>
+                </table><hr>
+                <h3>All Trades for the Month:</h3>
+                {monthly_trades.to_html(index=False)}
+                """
+        
+        subject = f"Monthly Trading Summary: {today.strftime('%B %Y')}"
+        msg = MIMEMultipart(); msg['From'], msg['To'], msg['Subject'] = email_conf['sender_email'], email_conf['receiver_email'], subject
+        msg.attach(MIMEText(f"<html><body>{body}</body></html>", 'html'))
+        
+        with smtplib.SMTP(email_conf['smtp_server'], email_conf['smtp_port']) as server:
+            server.starttls(); server.login(email_conf['sender_email'], email_conf['sender_password'])
+            server.send_message(msg)
+        logging.info("Successfully sent monthly report.")
+    except Exception as e:
+        logging.error(f"Failed to send monthly report: {e}", exc_info=True)

@@ -1,0 +1,154 @@
+# Self-Learning AI Configuration
+# Advanced AI features for adaptive trading
+
+# Self-Learning System Configuration
+self_learning:
+  enabled: true
+  learning_mode: "adaptive"  # adaptive, reinforcement, ensemble
+  min_trades_for_learning: 10
+  learning_interval_hours: 24
+  state_persistence: true
+
+# Reinforcement Learning Configuration
+rl:
+  enabled: true
+  algorithm: "q_learning"  # q_learning, sarsa, deep_q
+  learning_rate: 0.1
+  discount_factor: 0.95
+  epsilon: 0.1  # Exploration rate
+  epsilon_decay: 0.995
+  min_epsilon: 0.01
+  reward_function: "risk_adjusted_return"  # simple_return, risk_adjusted_return, sharpe_ratio
+
+# Adaptive Parameter Tuning
+adaptive_tuning:
+  enabled: true
+  optimization_interval: 24  # hours
+  min_trades_for_optimization: 15
+  parameter_adjustment_factor: 0.1
+  max_adjustment_per_day: 3
+
+# Ensemble Strategy Configuration
+ensemble:
+  enabled: true
+  method: "performance_based"  # weighted_voting, performance_based, market_condition_based
+  min_strategies_for_ensemble: 2
+  weight_update_frequency: 5  # trades
+  confidence_threshold: 0.6
+
+# Market Regime Learning
+regime_learning:
+  enabled: true
+  detection_method: "statistical"  # statistical, ml_based, hybrid
+  regime_memory: 100  # number of historical regimes to remember
+  min_confidence_threshold: 0.7
+  regime_change_threshold: 0.3
+
+# Portfolio Optimization
+portfolio_optimization:
+  enabled: true
+  method: "equal_risk_contribution"  # equal_risk_contribution, mean_variance, kelly_criterion
+  rebalance_frequency: 7  # days
+  min_returns_for_optimization: 20
+  max_correlation_threshold: 0.8
+
+# Strategy Parameters (will be adapted by AI)
+strategy_params:
+  Gemini_Default:
+    risk_multiplier: 1.0
+    position_size_multiplier: 1.0
+    stop_loss_multiplier: 1.0
+    entry_threshold: 65.0
+    exit_threshold: 70.0
+  
+  Supertrend_MACD:
+    risk_multiplier: 1.0
+    position_size_multiplier: 1.0
+    stop_loss_multiplier: 1.0
+    entry_threshold: 65.0
+    exit_threshold: 70.0
+  
+  EMA_Cross_RSI:
+    risk_multiplier: 1.0
+    position_size_multiplier: 1.0
+    stop_loss_multiplier: 1.0
+    entry_threshold: 65.0
+    exit_threshold: 70.0
+
+# Advanced Features
+advanced_features:
+  enable_sentiment_integration: true
+  enable_macro_economic_analysis: true
+  enable_intermarket_analysis: true
+  enable_seasonal_adjustments: true
+  
+  # Feature Engineering
+  technical_indicators:
+    - RSI
+    - MACD
+    - Bollinger Bands
+    - ATR
+    - Volume Profile
+    - Order Flow
+  
+  market_features:
+    - VIX
+    - Put/Call Ratio
+    - FII/DII Activity
+    - Global Market Correlation
+    - Currency Impact
+
+# Performance Tracking
+performance_tracking:
+  enable_real_time_monitoring: true
+  benchmark_indices:
+    - "NIFTY 50"
+    - "BANKNIFTY"
+  tracking_metrics:
+    - win_rate
+    - profit_factor
+    - max_drawdown
+    - sharpe_ratio
+    - sortino_ratio
+    - calmar_ratio
+  performance_alerts:
+    enable: true
+    win_rate_threshold: 40  # Alert if below this
+    drawdown_threshold: 10  # Alert if drawdown exceeds this %
+
+# Risk Management with AI
+ai_risk_management:
+  enable_dynamic_position_sizing: true
+  enable_volatility_scaling: true
+  enable_correlation_adjustment: true
+  enable_tail_risk_protection: true
+  
+  dynamic_risk:
+    base_risk_per_trade: 1.0
+    max_risk_multiplier: 2.0
+    min_risk_multiplier: 0.5
+    adjustment_frequency: 1  # hours
+
+# Model Explainability
+explainability:
+  enabled: true
+  log_decision_reasons: true
+  feature_importance_tracking: true
+  model_interpretation: "shap"  # shap, lime, integrated_gradients
+
+# Continuous Learning
+continuous_learning:
+  enabled: true
+  learning_rate_schedule: "adaptive"  # fixed, adaptive, cosine_decay
+  batch_size: 32
+  validation_split: 0.2
+  early_stopping_patience: 10
+  model_checkpointing: true
+
+# Safety Limits
+safety_limits:
+  max_daily_parameter_changes: 5
+  max_parameter_drift: 0.3  # 30% change max
+  min_confidence_for_trading: 0.6
+  emergency_shutdown_on_performance_drop: true
+  performance_drop_threshold: 20  # %

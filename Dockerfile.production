@@ -1,0 +1,66 @@
+# Loki Trading Platform - Production Docker Image
+# Multi-stage build for optimized image size
+
+# Build stage
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    make \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt requirements_enhanced.txt ./
+RUN pip install --no-cache-dir --user -r requirements_enhanced.txt
+
+# Production stage
+FROM python:3.11-slim
+
+LABEL maintainer="Loki Trading Systems <support@lokitrading.ai>"
+LABEL description="Loki Trading Platform - Enterprise Algorithmic Trading System"
+LABEL version="2.0.0"
+
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Copy application code
+COPY loki/ ./loki/
+COPY setup.py pyproject.toml ./
+COPY alembic.ini ./
+
+# Install the package
+RUN pip install -e .
+
+# Create non-root user for security
+RUN useradd -m -u 1000 loki && chown -R loki:loki /app
+USER loki
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH=/root/.local/bin:$PATH \
+    LOKI_ENV=production
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose ports
+EXPOSE 8000 8001
+
+# Default command (can be overridden)
+CMD ["uvicorn", "loki.api.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

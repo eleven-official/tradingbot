@@ -1,0 +1,56 @@
+# Configuration files with sensitive data
+config.yaml
+.env
+.env.*
+!.env.example
+rag_service.py
+test_order.py
+test_fno_order.py
+
+# Persisted runtime state & local databases
+state/
+ngrok
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+
+# Output & log files
+output/
+*.log
+logs/
+
+# Cache folders
+cache/
+news_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Python virtual environment & cache folders
+trade_bot/
+venv/
+.venv/
+env/
+ENV/
+__pycache__/
+*.pyc
+*.py[co]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# IDE & OS-specific files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

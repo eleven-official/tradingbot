@@ -1,0 +1,657 @@
+# =============================================================================
+# zAck Trading Bot — example config
+# =============================================================================
+# Copy this file to `config.yaml` and edit for your account:
+#     cp config.example.yaml config.yaml
+#
+# Two ways to fill in secrets (API keys, broker secrets, email password):
+#
+#   1. (Recommended) Keep the ${VAR_NAME} placeholders and put real values in
+#      a `.env` file in this directory. python-dotenv substitutes them at
+#      startup. .env is gitignored — secrets stay off git.
+#      See `.env.example` for the variable names.
+#
+#   2. (Simpler, less safe) Replace each ${VAR_NAME} with the real string.
+#      `config.yaml` is also gitignored, but laptop backups (Time Machine,
+#      iCloud) WILL capture it. Rotate keys immediately if it leaks.
+#
+# Anything sensitive (real keys, real password) must NEVER be committed to
+# this example file. Only placeholders.
+# =============================================================================
+
+email_settings:
+  receiver_email: xxxxx@gmail.com
+  send_daily_report: true
+  sender_email: yyyyy@gmail.com
+  sender_password: ${EMAIL_APP_PASSWORD}    # Gmail App Password (16 chars), NOT your account password
+  smtp_port: 587
+  smtp_server: smtp.gmail.com
+google_api:
+  api_key: ${GOOGLE_API_KEY}
+news_api:
+  api_key: ${NEWS_API_KEY}
+openai_api:
+  api_key: ${OPENAI_API_KEY}
+# YouTube Data API v3 key — needed for listing recent uploads and resolving
+# channel handles. Free tier (10K quota units/day) covers this easily.
+# Get one at console.cloud.google.com -> Enable APIs -> YouTube Data API v3.
+youtube_api:
+  api_key: ${YOUTUBE_API_KEY}
+# YouTube-driven sentiment: fetch latest video per channel (last N hours),
+# strip sponsor segments via SponsorBlock, ask Gemini for a structured
+# directional verdict, blend with the news-based score.
+youtube_sentiment:
+  enable: true
+  max_video_age_hours: 18
+  transcript_max_chars: 8000
+  strip_categories:               # SponsorBlock categories to strip
+    - sponsor
+    - selfpromo
+    - interaction
+  llm_strip_fallback: true        # if no SponsorBlock data, ask Gemini to ignore promo
+  overall_weight_vs_news: 2.0     # YouTube block weight relative to news block
+  # Gemini model for transcript analysis. Persistent 429s mean free-tier quota
+  # is exhausted (not a code bug) — try "gemini-2.0-flash-lite" or enable billing.
+  gemini_model: gemini-2.0-flash
+  # Short backoff on 429 (daily-quota 429 won't clear in a minute). [] = no retries.
+  rate_limit_backoff_secs: [5, 10]
+  channels:
+    - handle: "@AkshatZayn"
+      display_name: "Akshat Zayn"
+      weight: 10
+    - handle: "@LearningMarketsWithManish"
+      display_name: "Learning Markets with Manish"
+      weight: 10
+risk_management:
+  atr_multiplier: 2.0
+  enable_daily_loss_limit: true
+  enable_volatility_adjustment: true
+  high_vix_risk_reduction_factor: 0.5
+  high_vix_threshold: 22.0
+  max_daily_loss_percent: 2.5
+  # Consecutive-loss circuit breaker: halt the session after N losing trades
+  # in a row without a winning trade in between. A winning trade resets the
+  # streak to 0. The breaker is session-scoped (resets on bot restart).
+  enable_consecutive_loss_limit: true
+  max_consecutive_losses: 3
+  # Weekly P&L cap: halt new entries for the remainder of the ISO week once
+  # cumulative realized losses since Monday reach this % of starting capital.
+  # Disabled by default — opt in by setting enable_weekly_loss_limit: true.
+  enable_weekly_loss_limit: false
+  max_weekly_loss_percent: 5.0
+# ---------------------------------------------------------------------------
+# Tiered per-trade risk by LIVE capital (playbook alignment). The first tier
+# whose capital < max_capital wins; a null max_capital is the top catch-all tier.
+# When present, this overrides the static risk_per_trade_percent and the
+# AGGRESSIVE/MODERATE risk override for the per-trade risk figure.
+# COHERENCE RULE: keep each tier's risk_pct ≤ max_daily_loss_percent / 2, or a
+# single stop-out halts the day and multi-trade settings become unreachable.
+# The bot warns at startup ([RiskCoherence]) when this rule is violated.
+risk_tiers:
+  - { max_capital: 100000, risk_pct: 5 }    # under $100,000     → 5%
+  - { max_capital: 300000, risk_pct: 3 }    # $100,000–$300,000 → 3%
+  - { max_capital: null,   risk_pct: 2 }    # above $300,000     → 2%
+# ---------------------------------------------------------------------------
+# Regime governor — selectivity + survival ("cash is a position").
+#   max_trading_days_per_week : sit out new days once this many distinct days
+#                               have already been traded this ISO week.
+#   vix_no_trade_below        : when India VIX is below this, the market is too
+#                               calm for option buyers to overcome theta → sit out.
+#   require_clean_regime      : (Phase B) when no clear regime can be assigned,
+#                               stand down for the day.
+regime:
+  enable: true
+  require_clean_regime: true
+  max_trading_days_per_week: 5
+  vix_no_trade_below: 12
+  # 5-regime classifier (TRENDING/RANGE/PRE_EVENT/POST_EVENT/EXPIRY/UNCLEAR):
+  pre_event_days: 3                 # known event within N days → PRE_EVENT
+  sit_out_pre_event: true           # buy-only has no straddle → sit out pre-event
+  expiry_dte_threshold: 1           # DTE ≤ this → EXPIRY (gamma scalp)
+  post_event_wait_until: "10:30"    # POST_EVENT: no entries before this (avoid open chaos)
+  low_vix_threshold: 16             # TRENDING below this VIX → VWAP-anchored family
+# ---------------------------------------------------------------------------
+# Reporting — daily + weekly emails, each showing capital start → end.
+reporting:
+  weekly_report: true
+  weekly_report_day: "Friday"
+# ---------------------------------------------------------------------------
+# WEIGHTED SETUP SCORE — replaces the old AND-gate stack. Soft confluence
+# factors (15m confirm, PCR, OI-wall, ATR momentum, day-quality, direction
+# alignment) each contribute 0..1 × weight; an entry needs score ≥
+# entry_threshold (factors with no data are excluded, not counted against).
+# Marginal passes trade at reduced size. Hard vetoes that remain: buy-only,
+# loss breakers, costs/net-edge, VIX ceiling, trap detection, re-entry cooldown.
+setup_score:
+  enable: true
+  entry_threshold: 65
+  size_full_above: 85
+  size_min_factor: 0.75
+  counter_direction_value: 0.4
+  # Structure factor: NIFTY-point room to the nearest adverse S/R level scoring
+  # a full 1.0 (less room scales toward 0). Effective room = max(this, atr × mult).
+  structure_target_room_points: 25.0
+  structure_room_atr_mult: 2.0
+  pcr_slope_min: 0.01          # min |PCR change/min| for the slope factor to count
+  # Daily trend (playbook: never buy options against the daily chart).
+  daily_trend_ma_period: 20    # daily closes vs this DMA
+  daily_trend_slope_bars: 5    # DMA must also be rising/falling over these days
+  daily_trend_hard_block: true # HARD-block counter-daily-trend entries (mean-reversion exempt);
+                               # false = weighted score factor only
+  # Candle confirmation at structure levels (entry timing).
+  candle_level_proximity_points: 10.0  # wick must touch within this of the level
+  # Late-window selectivity (playbook: after 14:00 high-conviction only).
+  late_window_start: "14:00"
+  late_window_threshold: 80    # raised score bar after late_window_start
+  weights:
+    direction: 20
+    htf_15m: 25
+    pcr: 15
+    structure: 15            # graded room to nearest S/R wall (replaces oi_wall veto)
+    momentum: 15
+    day_quality: 10
+    exhaustion: 18           # penalise buying into an RSI divergence (momentum top/bottom)
+    pcr_slope: 10            # PCR rising/falling confirms the trade direction
+    flow_bias: 6            # FII+DII T-1 institutional bias (small tie-breaker)
+    daily_trend: 20          # aligned with the daily chart trend (near-veto when opposed)
+    candle: 12               # last-bar candle/wick confirmation at structure levels
+# Structure-target EXIT: bank the move at the nearest favourable S/R level the
+# market actually offered, instead of giving it back to the trail. Scales out a
+# slice if >1 lot held, then breakeven stop + tight trail on the runner.
+structure_exit:
+  enable: true
+  scale_out_pct: 50
+  tight_trail_pct_at_target: 8.0
+# In-trade CONFIRMED-REVERSAL exit: while holding, if an adverse RSI divergence is
+# confirmed by a structure break (close crosses VWAP/EMA-9 against the option), exit
+# EVEN AT A LOSS — the principled carve-out from indicator_exit_profit_only.
+reversal_exit:
+  enable: true
+  lookback: 45
+  min_hold_minutes: 5
+# ---------------------------------------------------------------------------
+# Conviction scoring: regime + sentiment strength + global-cue (market_trend)
+# alignment → a 0..1 score and a LOW/MEDIUM/HIGH level. HIGH = full size + lets
+# the trade ride to near-close (hold-the-winner); MEDIUM/LOW = reduced size.
+conviction:
+  enable: true
+  high_threshold: 0.70
+  medium_threshold: 0.45
+  size_factors: { HIGH: 1.0, MEDIUM: 0.75, LOW: 0.5 }
+# Hold-the-winner: a HIGH-conviction, TRENDING, aligned, in-profit trade is
+# allowed to ride to exit_time (vs the default 14:00 hard exit) and keeps its
+# wide trail past 13:30 — so winners run the afternoon trend instead of being
+# cut early. The profit-protector indicator exit still locks gains on a reversal.
+hold_to_close:
+  enable: true
+  exit_time: "15:15"
+# ---------------------------------------------------------------------------
+# IV-percentile gate (playbook: buy cheap IV, avoid expensive). Uses the same
+# rolling IV history as IV-Rank. buy_below is a soft caution; avoid_above is a
+# hard skip on long-option entries.
+iv_percentile:
+  buy_below: 40
+  avoid_above: 70
+# Open-interest analytics: max-pain + heavy call/put OI walls. The OI-wall gate
+# refuses to buy CALLS when spot has reached a heavy call-OI strike (resistance).
+oi_analytics:
+  enable: true
+# FII derivative positioning (best-effort, informational — NEVER gates trades).
+# Reliable path: drop a state/fii_bias.json from your own source, e.g.
+#   {"bias": "BEARISH", "net_index_futures": -12000, "note": "FII net short"}
+# Optionally enable the fragile direct NSE fetch (often blocked).
+fii:
+  enable: true
+  try_nse_fetch: false
+  # local_file: state/fii_bias.json
+# ---------------------------------------------------------------------------
+# Transaction costs (brokerage, STT, exchange/SEBI charges, stamp duty, GST).
+# A small gross profit on an options scalp is often a NET LOSS once these are
+# deducted. With enable: true the bot:
+#   • reports & tracks NET P&L (gross − costs) — loss limits use net too;
+#   • refuses to ENTER a trade whose best-case target can't net min_net_profit_inr;
+#   • refuses to BOOK a profit-taking indicator exit that can't clear costs+margin
+#     (loss-protective exits and the trailing stop are never blocked).
+# Rates below are for crypto/futures exchanges (Binance reference values).
+# Verify against your exchange's fee schedule and adjust accordingly.
+transaction_costs:
+  enable: true
+  maker_fee_pct: 0.0002           # 0.02% maker fee (Binance futures)
+  taker_fee_pct: 0.0004           # 0.04% taker fee (Binance futures)
+  funding_rate_pct: 0.0001        # Approximate funding rate (per 8 hours)
+  # Minimum NET profit (AUD, after all costs) required to take/book a trade.
+  # Entry gate: skip if best-case target nets less than this.
+  # Exit guard: keep holding rather than booking a profit smaller than this.
+  min_net_profit_aud: 10.0
+  guard_profit_exits: true        # apply the min-net guard to profit-taking indicator exits
+strategy_signals:
+  use_cpr_breakout: true
+  use_ema_20_crossover: true
+  use_ema_50_crossover: true
+  use_rsi_divergence: true
+# ---------------------------------------------------------------------------
+# Pre-market price-action / global-cues trend module (market_trend.py).
+# When enable: true, the day's directional bias (CE = buy calls / bullish,
+# PE = buy puts / bearish) is decided from global markets + GIFT-Nifty implied
+# gap + the NIFTY open gap + recent price action, INSTEAD of the news/YouTube
+# sentiment flow. The operator gets a 20-second window to override (type CE/PE
+# or a sentiment word); otherwise the automated verdict is used.
+# Global feeds use yfinance (no API key). Each source is best-effort — a missing
+# feed just drops out of the weighted score. GIFT Nifty has no reliable free
+# feed: set gift_nifty_ticker to a working yfinance symbol to include it, else
+# it's skipped and the verdict still works from the other cues.
+market_trend:
+  enable: false                       # set true to use price-action trend as the directional driver
+  us_futures_tickers: ["ES=F", "NQ=F", "YM=F"]   # S&P/Nasdaq/Dow futures (overnight, freshest)
+  us_index_tickers:   ["^GSPC", "^IXIC", "^DJI"] # US cash indices (prior close)
+  asia_tickers:       ["^N225", "^HSI"]          # Nikkei / Hang Seng (live in IST pre-open)
+  gift_nifty_ticker:  ""              # optional yfinance symbol for GIFT Nifty ("" = skip)
+  nifty_yf_ticker:    "^NSEI"         # NIFTY 50 prior-close fallback for gap
+  neutral_band: 0.15                  # |score| below this → Neutral (no trade bias)
+  strong_band:  0.50                  # |score| at/above this → "Very" Bullish/Bearish
+  weights:
+    gift_nifty:   0.30
+    gap:          0.25
+    us_futures:   0.18
+    us_indices:   0.10
+    asia:         0.10
+    price_action: 0.07
+  scales:                             # % move that maps to a full ±1.0 component score
+    gift_nifty:   0.50
+    gap:          0.50
+    us_futures:   0.75
+    us_indices:   0.75
+    asia:         0.90
+    price_action: 1.00
+# Put-Call Ratio feed. Fetches NIFTY option chain OI from Kite (NFO instruments
+# + quote API). Used as a pre-trade gate: a PCR_BEARISH reading blocks BUY
+# entries, PCR_BULLISH blocks SELL entries. Set enable: false to disable.
+pcr_feed:
+  enable: true
+  strikes_each_side: 5          # ATM ± 5 strikes (11 total) for OI aggregation
+  bullish_threshold: 1.2        # PCR >= this → PCR_BULLISH (confirms BUY bias)
+  bearish_threshold: 0.8        # PCR <= this → PCR_BEARISH (confirms SELL bias)
+  cache_seconds: 300            # refresh at most once per 5-min bar
+# 15-minute confirmation gate. Before placing any trade, the bot fetches the
+# 15-min bar series and checks that the higher-timeframe trend agrees:
+#   BUY  requires: 15-min RSI > 50 AND close > 15-min EMA20
+#   SELL requires: 15-min RSI < 50 AND close < 15-min EMA20
+# Gate is bypassed when the 15-min data is unavailable or indicators are NaN,
+# so a transient outage never silently blocks all trades.
+# Set enable_15m_confirmation: false in trading_flags to disable.
+trading_flags:
+  # BUY-ONLY guarantee. When true (default) the bot NEVER writes/sells an
+  # option to open — it only BUYS long options (CALL for a bullish signal, PUT
+  # for a bearish signal), with risk capped at the premium paid. This hard-
+  # disables debit spreads (whose short leg is a sold option) regardless of the
+  # debit_spread block. Set to false only if you explicitly want option-writing.
+  buy_only: true
+  backtest_years: 2
+  chart_timeframe: 5minute
+  ema_cross_lookback: 50
+  enable_natural_language_prompt: true
+  enable_parallel_processing: true
+  enable_gemini_loss_analysis: true
+  manual_sentiment_override: true
+  max_trades_per_day: 3
+  # Re-entry guard: after an exit, block re-buying the SAME direction for this
+  # many minutes (stops chop in/out of the same setup). 0 = disabled.
+  reentry_cooldown_minutes: 15
+  max_vix_level: 25.0
+  order_variety: regular
+  # Entry fill confirmation: if a LIMIT entry doesn't fill within
+  # order_fill_timeout_seconds / (max_fill_retries + 1) seconds, the order is
+  # cancelled and re-submitted at a wider price (slippage * fill_retry_slippage_mult).
+  # After max_fill_retries attempts, falls back to a MARKET order.
+  max_fill_retries: 2
+  fill_retry_slippage_mult: 2.0
+  paper_trading: true
+  product_type: PERPETUAL
+  rag_min_trading_days: 1
+  risk_per_trade_percent: 1.0
+  run_startup_backtest: false
+  # Alignment note: backtest_years drives the date range only when
+  # run_startup_backtest is true. The bot will auto-align the window to
+  # max(rag.recency_window_days + 20, 60) calendar days so generated data
+  # actually falls inside the RAG recency window. Explicitly large values
+  # trigger a warning log.
+  stop_loss_percent: 25.0
+  strategy_reassessment_period_minutes: 15
+  # If a strategy produces 0 non-HOLD signals during its window, it's put in
+  # cooldown for this many minutes. Time-based so it can rotate back later
+  # as market conditions evolve.
+  strategy_cooldown_minutes: 60
+  # When true, every HOLD also logs the specific reason (which condition
+  # wasn't met). Useful for diagnosing days where nothing fires.
+  log_hold_reasons: false
+  # ATR momentum gate. Skip entry when the avg ATR over the last N completed
+  # bars is below this threshold — market is grinding too slowly for options
+  # buying to be viable (theta > expected move). Set to 0 to disable.
+  # NIFTY 5-min guidance: ~15 pts = slow chop (skip), 20-25 = moderate (borderline),
+  # >25 = tradeable momentum (take it). Start at 15 and tune from logs.
+  min_atr_per_bar: 0
+  min_atr_lookback_bars: 3
+  force_one_trade_today: false
+  # 15-minute confirmation gate (see pcr_feed block comment above for details).
+  # NOTE: this gate is automatically skipped for mean-reversion / reversal
+  # strategies (VWAP_Reversion, RSI_Divergence, Reversal_Detector,
+  # Volatility_Cluster_Reversal), which trade against the short-term move by
+  # design — a higher-timeframe trend filter would reject every such entry.
+  enable_15m_confirmation: true
+  # SOFT sentiment gate: a signal whose direction disagrees with the locked
+  # day-sentiment is no longer hard-blocked — it is taken at this fraction of
+  # normal size (0.0–1.0). Set to 1.0 to fully ignore the sentiment direction,
+  # or lower it to penalise counter-sentiment trades more. Full-conviction
+  # trades (signal agrees with sentiment, or reversal/force mode) always use 1.0.
+  counter_sentiment_size_factor: 0.5
+  underlying_instrument: BTCUSDT
+  use_rag: true
+  win_rate_threshold: 55.0
+  min_stop_loss_points: 7.0
+  risk_reward_ratio: 2.0
+  min_days_to_expiry: 2
+  limit_order_slippage_percent: 0.5
+  operator_input_timeout_seconds: 20
+  pre_market_start_time: "08:50"
+  entry_start_time: "09:30"
+  # Hard new-entry cutoff. Professional rule: no new options entries after 13:30.
+  # Theta and bid-ask spreads widen in the last 75 min before close.
+  entry_cutoff_time: "13:30"
+  # HARD TIME EXIT for OPEN positions (configurable; default 14:00). The bot also
+  # refuses NEW entries within min_minutes_before_hard_exit of this time, so a
+  # trade is never opened only to be force-closed seconds later.
+  hard_exit_time: "14:00"
+  min_minutes_before_hard_exit: 15
+  # Skip a trade when the conviction/score haircut shrinks intended size below
+  # one lot, rather than force-buying a full lot and overshooting the risk cap.
+  skip_sub_lot_trades: true
+  early_entry_gap_threshold_percent: 0.4
+  strike_offset_steps: 1
+  # ── Professional profit + quality controls ─────────────────────────────────
+  # Daily profit target: halt new entries once this % of starting capital is
+  # realized as profit. Protects morning gains from afternoon theta drain.
+  # Set to 0 to disable.
+  max_daily_profit_percent: 3.0
+  # Day quality filter: only take entries on TRENDING days (ADX-based).
+  # RANGE / CHOPPY days bleed theta with no directional persistence.
+  enable_day_quality_filter: true
+  # Trap / false-breakout detection: skips entries where the breakout bar
+  # immediately reverses back inside the prior bar's high/low range.
+  enable_trap_detection: true
+  # Time-of-day position sizing: prime entry windows (09:30-10:15, 11:30-12:30)
+  # get full size; lunch drift (12:30-13:30) gets 50%; after 13:30 = blocked.
+  enable_time_of_day_sizing: true
+# Tiered partial profit booking (professional 40/40/20 framework).
+# T1: book t1_exit_pct% of original position when premium gains t1_gain_pct%;
+#     simultaneously slides SL to breakeven.
+# T2: book t2_exit_pct% when premium gains t2_gain_pct%;
+#     the remaining 20% runner is trailed with a tightening % band.
+# Partial exits are SKIPPED if fewer than 2 lots are held (can't split).
+partial_exits:
+  enable: true
+  t1_gain_pct: 30          # +30% on entry premium → T1 exit
+  t2_gain_pct: 60          # +60% on entry premium → T2 exit
+  t1_exit_pct: 40          # sell 40% of original position at T1
+  t2_exit_pct: 40          # sell 40% of original position at T2
+  # Runner (remaining 20%) trail: tightened automatically by _dynamic_trail_pct
+  # 0→T1: base trail %, T1→T2: 8%, T2+: 5%, after 13:30: forced to 5%
+# Range-day scalping. On RANGE days (ADX < 20, low open range) the bot rotates
+# to VWAP_Reversion / Reversal_Detector instead of sitting out completely.
+# Tighter targets + smaller size match the lower momentum environment.
+# CHOPPY days (7+ direction changes per hour) are still fully blocked.
+# Set enable: false to revert to "skip RANGE days entirely".
+range_scalp:
+  enable: true
+  size_factor: 0.5        # position size as a fraction of normal
+  trail_pct: 10.0         # trailing stop % (vs 15% on trending days)
+  t1_gain_pct: 15.0       # T1 profit target: +15% on entry premium
+  t2_gain_pct: 25.0       # T2 profit target: +25% on entry premium
+trailing_stop_loss:
+  indicator_exit_type: PSAR
+  ma_period: 9
+  percentage: 15.0
+  type: PERCENTAGE
+  use_indicator_exit: true
+  psar_step: 0.02
+  psar_max: 0.2
+  # Prevent the indicator exit from chopping trades out on micro-noise:
+  #  indicator_exit_min_hold_minutes : suppress the indicator exit for the first
+  #    N minutes after entry (hard SL + trailing stop still protect downside).
+  #  indicator_exit_atr_buffer_mult  : require the underlying to be beyond the
+  #    PSAR/EMA by ≥ this × ATR before exiting — a volatility-aware buffer.
+  # Set either to 0 to disable that guard (reverts to the old twitchy behaviour).
+  indicator_exit_min_hold_minutes: 10
+  indicator_exit_atr_buffer_mult: 0.25
+  # Profit-protector mode: indicator exit only LOCKS A PROFIT on a reversal; it
+  # won't cut a small loss on a wobble (death-by-cuts). Losers are handled by the
+  # hard SL / trailing stop / give-up rule / 14:00 exit. false = legacy behaviour.
+  indicator_exit_profit_only: true
+# Automatic position-size mode switching.
+# AGGRESSIVE: activated when recent performance warrants larger bets.
+# MODERATE:   default; forced on consecutive losses, high drawdown, or elevated VIX.
+# The effective risk % is injected into agents.py at each setup() call.
+mode_switching:
+  enable: true
+  lookback_trades: 5              # evaluate this many recent trades for the mode decision
+  # --- AGGRESSIVE thresholds ---
+  aggressive_trigger_wins: 3     # wins needed in lookback window to go AGGRESSIVE
+  aggressive_max_drawdown: 0.05  # max equity drawdown while staying AGGRESSIVE (5%)
+  aggressive_risk_percent: 2.0   # risk_per_trade_percent when AGGRESSIVE (vs 1.0 default)
+  aggressive_max_trades: 5       # max trades/day in AGGRESSIVE mode (vs 3 in MODERATE)
+  aggressive_trail_pct: 20.0     # base trailing-stop % in AGGRESSIVE (vs 15%)
+  aggressive_t1_gain_pct: 40.0   # T1 profit target in AGGRESSIVE (vs 30%)
+  aggressive_t2_gain_pct: 80.0   # T2 profit target in AGGRESSIVE (vs 60%)
+  # --- MODERATE thresholds ---
+  moderate_trigger_losses: 2     # consecutive losses to force MODERATE
+  moderate_drawdown: 0.08        # equity drawdown threshold to force MODERATE (8%)
+  moderate_vix_threshold: 18.0   # VIX level that blocks AGGRESSIVE mode
+# Partial exits: book profits progressively instead of all-or-nothing.
+# Requires at least 2 lots (1 lot = can't be split). Disabled by default;
+# enable once you've verified the partial-exit logic in paper mode.
+partial_exits:
+  enable: false
+  t1_gain_pct: 30     # T1 target: +30% of entry premium
+  t2_gain_pct: 60     # T2 target: +60% of entry premium
+  t1_exit_pct: 40     # % of original position to close at T1
+  t2_exit_pct: 40     # % of original position to close at T2
+  # Remaining 20% trails at the normal trailing_stop_loss.percentage setting.
+  # After T1: SL is automatically moved to breakeven (entry price).
+  hard_sl_pct: 40     # hard stop on remaining lots: -40% from entry premium
+strike_steps:
+  NIFTY: 50
+  BANKNIFTY: 100
+  FINNIFTY: 50
+  MIDCPNIFTY: 25
+  SENSEX: 100
+# Strategy-selection RAG: only consider trades from the recency window, and
+# only count strategies with enough recent trades. Stops the LLM and the
+# regime/score fallback from anchoring on stale data from older bot versions.
+rag:
+  recency_window_days: 30
+  min_trades_per_strategy: 3
+# Deterministic strategy selector — no LLM required. 5-layer cascade:
+#   1. Hard pins (event days / weekly expiry)
+#   2. Open-gap override (gap-and-go days)
+#   3. Indicator overrides (BB squeeze / NR7 / RSI extreme / volume spike / Supertrend flip)
+#   4. Regime table (VIX x IV x Sentiment)
+#   5. Last-resort default
+strategy_selector:
+  use_llm: false            # if true, consult Gemini first; cascade is fallback
+  gap_override_pct: 0.8     # |open gap %| threshold for Layer-2 override
+  # STRATEGY CULL — only whitelisted strategies may trade (selector, regime
+  # families, range-scalp rotation and fallback all respect it). default_strategy
+  # replaces the old hardcoded Gemini_Default last resort (a chronic loser).
+  default_strategy: Momentum_VWAP_RSI
+  # EMA_Cross_RSI culled: redundant with Momentum_VWAP_RSI and the laggiest signal.
+  whitelist:
+    - Momentum_VWAP_RSI
+    - VWAP_Reversion
+    - Breakout_Prev_Day_HL
+    - Expiry_Momentum_Scalp
+# Expiry-day overrides — auto-applied on any day where a contract of the
+# configured underlying expires (detected from the live instrument list).
+# Reduces risk on the day the broader market is being whipsawed by gamma trades.
+expiry_day_overrides:
+  enable: true
+  risk_reduction_factor: 0.5      # halve risk per trade
+  max_trades: 1                   # at most one trade on expiry day
+  entry_cutoff_time: "13:00"      # tighter than the regular 14:30 cutoff
+# 0-DTE EXPIRY GAMMA SCALP (advanced, high-variance — playbook Strategy 6).
+# When enable:true, on expiry day the bot trades the EXPIRING contract's gamma
+# (not the 5-10 DTE option): no entries before start_after, HALF size, flat by
+# hard_exit_time. Default OFF — the doc says paper-trade ~20 expiries first.
+expiry_gamma_scalp:
+  enable: false
+  dte: 0
+  start_after: "09:45"            # earliest entry on a HIGH-conviction gap-and-go (never first 15 min)
+  confirmed_after: "11:00"        # murky / medium-low conviction days wait until here
+  hard_exit_time: "14:30"
+  size_factor: 0.5
+# Sentiment-refresh policy: capture sentiment + NL-prompt ONCE at startup,
+# reuse on every strategy reassessment unless the market has materially shifted.
+sentiment_refresh:
+  enable: true
+  spot_change_pct: 1.0     # underlying moved this much from baseline -> re-prompt
+  vix_change_pct: 25.0     # VIX changed this much from baseline -> re-prompt
+  on_sentiment_flip: true  # automated news-sentiment regime flipped -> re-prompt
+# Option-chain analytics: liquidity filter + IV-Rank gate + IV/RV gate +
+# delta-targeted strike selection. Disable by flipping `enable: false` to fall
+# back to the legacy ATM/offset path with no chain checks.
+option_filters:
+  enable: true
+  # Liquidity (gate the chosen strike, not just ATM)
+  max_spread_percent: 2.0
+  min_open_interest: 50000
+  max_quote_age_seconds: 5
+  # IV-Rank: skip new long-premium entries when today's ATM IV is in the top
+  # `(100 - ivr_max_for_long)` percent of the recent IV range.
+  ivr_max_for_long: 60
+  ivr_lookback_days: 60
+  ivr_min_samples: 10        # below this many samples in history, the gate is bypassed
+  # IV vs realized vol: skip when implied vastly exceeds realized. Indian
+  # options structurally trade ~1.3-1.5x of realized (overnight gap premium +
+  # put skew), so 1.3 rejects most days. 1.5 is the realistic cutoff.
+  # Indian options trade ~1.3-1.7x of realised vol naturally; 2.5 lets normal
+  # conditions through and only blocks genuinely expensive IV regimes.
+  iv_rv_max_ratio: 2.5       # set 0 to disable
+  rv_lookback_days: 20
+  # Strike selection: target a delta band (works around any IV regime). Falls
+  # back to strike_offset_steps if the chain has no Greeks.
+  use_delta_targeting: true
+  target_delta_low: 0.40
+  target_delta_high: 0.55
+  use_gamma_theta_strike: false   # Phase 5b: pick max gamma/|theta| in the delta band (else delta-midpoint)
+  # Risk-free rate used in Black-Scholes (India 10-yr ~7%).
+  risk_free_rate: 0.07
+  # How many strikes each side of ATM to fetch for the snapshot.
+  chain_strikes_each_side: 5
+# DTE-aware position sizing. Risk is scaled continuously based on how many
+# calendar days remain until the selected option's expiry.
+# Rationale: theta and gamma risks accelerate non-linearly in the final 2 DTE;
+# buying options that close reduces size without skipping the trade entirely.
+# Each factor multiplies risk_per_trade_percent (1.0 = no change).
+# Debit-spread entry. When enabled, the bot buys the long leg (ATM/ITM option
+# selected by the chain analysis or legacy path) AND sells an OTM option
+# `spread_width_steps` strike steps away on the same expiry — converting the
+# naked long into a 1×1 debit spread. The spread hard-caps the maximum loss to
+# the net debit paid, eliminating unlimited theta / IV blowup risk.
+#
+# entry_price is stored as net debit (long fill − short fill), so all
+# downstream P&L math (exit − entry) × qty remains unchanged.
+#
+# Disabled by default (enable: false) — naked-long behaviour is preserved.
+# Enable only after confirming your Kite account has multi-leg NFO permissions.
+debit_spread:
+  enable: false
+  spread_width_steps: 2   # short leg is this many strike steps OTM from the long leg
+                           # NIFTY step=50 → 2 steps = 100 pts OTM
+dte_sizing:
+  factor_0: 0.50       # 0 DTE — expiry day: theta crush + binary gamma risk
+  factor_1: 0.70       # 1 DTE — overnight gap risk compounds theta
+  factor_2: 0.85       # 2 DTE — moderate theta drag, two sessions to go
+  factor_3_4: 0.95     # 3-4 DTE — short window but workable
+  factor_5_plus: 1.00  # 5+ DTE — full size, normal theta regime
+
+# Pre-market intelligence brief printed at startup (and auto-refreshed at
+# 09:00 if the bot was started in the pre-market window). Shows top-5 NIFTY
+# component moves, corporate events (NSE event calendar; best-effort), the
+# computed big-move risk, and NIFTY support/resistance (CPR + prev-day H/L).
+# Persisted to state/premarket_briefing.json for the dashboard.
+premarket_briefing:
+  enable: true
+  components: ["HDFCBANK", "RELIANCE", "ICICIBANK", "INFY", "TCS"]
+  event_lookahead_days: 3
+# Phase 2 — theta-budget gate: refuse a long option whose expected (realized-vol)
+# move can't out-earn its decay before the hard time-exit. Skips when the
+# expected-gain / theta-cost ratio falls below the minimum. Graceful-bypass on
+# missing greeks/vol; force-mode bypasses.
+theta_budget:
+  enable: true
+  max_theta_pct_of_premium: 0.30  # skip if decay over the window > this % of premium
+  expiry_dte_exempt: 1            # DTE <= this is exempt (high theta is intended there)
+  trading_hours_per_day: 6.25     # NSE 09:15-15:30 — for the informational move/theta ratio
+# Phase 4 — skew gate: NIFTY puts are structurally dearer (crash-hedge demand);
+# don't overpay for the rich side. Skips when the 25-delta skew of the side being
+# bought exceeds this (in IV points; 0.04 = 4 vol points).
+skew_gate:
+  enable: true
+  max_adverse_skew: 0.04
+# Phase 4 — event-implied-move gate (event days only): if realized-vol's expected
+# move is far below the ATM straddle-implied move, the catalyst is already priced
+# in and buying it is a vega-crush bet. Quantifies the old binary pre-event sit-out.
+event_move_gate:
+  enable: true
+  min_expected_to_implied: 0.7
+# Phase 5a — gamma-scalp the winner: once estimated delta (entry δ + γ·move) grows
+# past delta_trigger on a WINNING trade, peel a slice and tighten the trail to lock
+# the convexity. Only acts with >1 lot held. Off by default (most aggressive).
+gamma_scalp:
+  enable: false
+  delta_trigger: 0.75
+  scale_out_pct: 50
+  tight_trail_pct: 10.0
+# Crypto Broker Configuration (Binance, Bybit, etc.)
+crypto_broker:
+  exchange: binance           # Options: binance, bybit, kraken
+  api_key: ${CRYPTO_API_KEY}
+  api_secret: ${CRYPTO_API_SECRET}
+  testnet: true               # Use testnet for paper trading
+  base_currency: AUD          # Display currency
+  
+# Australian Market Configuration
+australian_markets:
+  timezone: Australia/Sydney
+  trading_hours:
+    start: "09:00"
+    end: "17:00"
+  instruments:
+    BTC: BTCUSDT
+    ETH: ETHUSDT
+    XRP: XRPUSDT
+    ADA: ADAUSDT
+    SOL: SOLUSDT
+    MATIC: MATICUSDT
+    DOT: DOTUSDT
+
+# ── Server / mobile deployment ───────────────────────────────────────────────
+# headless: true on the cloud box — the daily Kite login arrives from your
+# phone via the dashboard's "Kite login" button instead of a terminal prompt.
+server:
+  headless: false
+  login_wait_minutes: 90
+
+# Push notifications to your phone (ntfy app — free, Android + iOS).
+# The topic name IS the credential: long random suffix, keep it private.
+ntfy:
+  enable: false
+  topic: ""
+  server: "https://ntfy.sh"
+  include_pnl: true   # false = pushes say only profit/loss, no rupee amounts
+
+# Mobile dashboard (dashboard.py). token gates all data endpoints; control_pin
+# gates the Arm/Kill buttons (empty = controls disabled). Env DASHBOARD_TOKEN
+# and DASHBOARD_PIN override these. See deploy/README.md for full setup.
+dashboard:
+  token: ""
+  control_pin: ""
+  bot_service: "zack-bot.service"
