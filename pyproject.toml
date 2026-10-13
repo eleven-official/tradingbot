@@ -7,7 +7,7 @@ name = "loki-trading-platform"
 dynamic = ["version"]
 description = "Enterprise-grade AI-powered algorithmic trading platform"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {text = "Proprietary"}
 authors = [
     {name = "Loki Trading Systems", email = "support@lokitrading.ai"}
@@ -28,7 +28,7 @@ version = {attr = "loki.version.__version__"}
 
 [tool.black]
 line-length = 100
-target-version = ['py310', 'py311', 'py312']
+target-version = ['py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -54,7 +54,7 @@ use_parentheses = true
 ensure_newline_before_comments = true
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
