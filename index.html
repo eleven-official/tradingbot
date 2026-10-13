@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loki Trading Dashboard</title>
+    <style>
+      :root {
+        --bg: #07111f;
+        --panel: #101d2e;
+        --panel-2: #0d1728;
+        --border: rgba(148, 163, 184, 0.18);
+        --text: #e5eefc;
+        --muted: #9eb1c7;
+        --green: #22c55e;
+        --red: #ef4444;
+        --blue: #3b82f6;
+        --amber: #f59e0b;
+      }
+
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: linear-gradient(180deg, #08121d 0%, #0d1728 100%);
+        color: var(--text);
+        font-family: Inter, Arial, sans-serif;
+      }
+
+      body {
+        min-height: 100vh;
+        padding: 28px;
+      }
+
+      .app {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 28px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .logo {
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #3b82f6, #22c55e);
+        font-weight: 800;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.5rem, 2vw, 2.3rem);
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .pill, .button {
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.8);
+        color: var(--text);
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-size: 0.92rem;
+      }
+
+      .button {
+        cursor: pointer;
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        border: none;
+        font-weight: 600;
+      }
+
+      .button.secondary {
+        background: rgba(148,163,184,0.08);
+        border: 1px solid var(--border);
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 18px;
+        margin-bottom: 28px;
+      }
+
+      .card {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 10px 30px rgba(2, 6, 23, 0.25);
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-bottom: 8px;
+      }
+
+      .value {
+        font-size: clamp(1.5rem, 2vw, 2.3rem);
+        font-weight: 800;
+      }
+
+      .good { color: var(--green); }
+      .bad { color: var(--red); }
+      .warn { color: var(--amber); }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+        gap: 22px;
+      }
+
+      .chart-panel {
+        min-height: 500px;
+      }
+
+      .chart-box {
+        height: 420px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(2, 6, 23, 0.75), rgba(15, 23, 42, 0.95));
+        position: relative;
+        overflow: hidden;
+      }
+
+      .chart-grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px);
+        background-size: 30px 30px;
+      }
+
+      .candlestick-demo {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 80%;
+        height: 260px;
+      }
+
+      .candle {
+        position: absolute;
+        bottom: 40px;
+        width: 18px;
+        border-radius: 4px;
+      }
+
+      .bullish {
+        background: linear-gradient(180deg, #22c55e, #16a34a);
+        box-shadow: 0 0 18px rgba(34, 197, 94, 0.4);
+      }
+
+      .bearish {
+        background: linear-gradient(180deg, #ef4444, #dc2626);
+        box-shadow: 0 0 18px rgba(239, 68, 68, 0.4);
+      }
+
+      .wick {
+        position: absolute;
+        width: 2px;
+        background: #d1d5db;
+      }
+
+      .panel-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin-bottom: 14px;
+      }
+
+      .list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .muted { color: var(--muted); }
+
+      .section {
+        margin-top: 18px;
+      }
+
+      .order-box {
+        display: grid;
+        gap: 12px;
+      }
+
+      .input-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .field {
+        flex: 1;
+        min-width: 110px;
+      }
+
+      .field label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.75rem;
+        margin-bottom: 6px;
+      }
+
+      .field input, .field select {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(148,163,184,0.05);
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+
+      .explain {
+        margin-top: 20px;
+        display: grid;
+        gap: 10px;
+        color: var(--muted);
+      }
+
+      @media (max-width: 980px) {
+        .layout { grid-template-columns: 1fr; }
+        .topbar { align-items: flex-start; flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="logo">L</div>
+          <div>
+            <h1>Loki Trading Dashboard</h1>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="pill">BTCUSDT</button>
+          <button class="pill">1H</button>
+          <button class="button secondary">Paper Trade</button>
+          <button class="button">Live Mode</button>
+        </div>
+      </header>
+
+      <section class="stats">
+        <div class="card">
+          <div class="label">Portfolio</div>
+          <div class="value">$128,420.00</div>
+        </div>
+        <div class="card">
+          <div class="label">24h P&amp;L</div>
+          <div class="value good">+$3,240.00</div>
+        </div>
+        <div class="card">
+          <div class="label">Win Rate</div>
+          <div class="value">63.2%</div>
+        </div>
+        <div class="card">
+          <div class="label">Risk</div>
+          <div class="value warn">Moderate</div>
+        </div>
+      </section>
+
+      <section class="layout">
+        <div class="card chart-panel">
+          <div class="panel-title">Candlestick View</div>
+          <div class="chart-box">
+            <div class="chart-grid"></div>
+            <div class="candlestick-demo">
+              <div class="wick" style="left: 20%; height: 110px; bottom: 115px;"></div>
+              <div class="candle bullish" style="left: 35%; height: 80px; bottom: 75px;"></div>
+              <div class="wick" style="left: 35%; height: 130px; bottom: 155px;"></div>
+
+              <div class="wick" style="left: 48%; height: 90px; bottom: 98px;"></div>
+              <div class="candle bearish" style="left: 49%; height: 42px; bottom: 80px;"></div>
+
+              <div class="wick" style="left: 62%; height: 120px; bottom: 108px;"></div>
+              <div class="candle bullish" style="left: 65%; height: 92px; bottom: 90px;"></div>
+
+              <div class="wick" style="left: 80%; height: 140px; bottom: 130px;"></div>
+              <div class="candle bullish" style="left: 81%; height: 60px; bottom: 60px;"></div>
+            </div>
+          </div>
+
+          <div class="explain">
+            <div><strong>What each candle means:</strong></div>
+            <div>Each candle represents a time period. The body shows the open-to-close move, and the wicks show the high and low extremes. Green = bullish close, red = bearish close.</div>
+            <div>Open = first price in the interval, Close = last price in the interval, High = highest price, Low = lowest price.</div>
+            <div>Use many candles together to see trend, momentum, and reversals. Longer bodies = stronger moves; long wicks = volatility and rejection.</div>
+          </div>
+        </div>
+
+        <aside class="card">
+          <div class="panel-title">Portfolio and orders</div>
+          <div class="list">
+            <div class="stat-row"><span class="muted">Live Market</span><span class="good">Connected</span></div>
+            <div class="stat-row"><span class="muted">Paper Balance</span><span>$25,000.00</span></div>
+            <div class="stat-row"><span class="muted">Open Positions</span><span>3</span></div>
+            <div class="stat-row"><span class="muted">Drawdown</span><span class="bad">-1.8%</span></div>
+            <div class="stat-row"><span class="muted">Sharpe</span><span>1.42</span></div>
+          </div>
+
+          <div class="section">
+            <div class="panel-title">Quick order</div>
+            <div class="order-box">
+              <div class="input-row">
+                <div class="field">
+                  <label>Side</label>
+                  <select>
+                    <option>Buy</option>
+                    <option>Sell</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Type</label>
+                  <select>
+                    <option>Market</option>
+                    <option>Limit</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="input-row">
+                <div class="field">
+                  <label>Symbol</label>
+                  <input value="BTCUSDT" />
+                </div>
+                <div class="field">
+                  <label>Qty</label>
+                  <input value="0.12" />
+                </div>
+              </div>
+
+              <button class="button" style="width:100%">Submit Paper Order</button>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </div>
+  </body>
+</html>
