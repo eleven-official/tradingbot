@@ -51,6 +51,7 @@ aiohttp>=3.8.0                # Async HTTP
 websockets>=11.0              # WebSocket support
 fastapi>=0.110.0              # Enterprise REST API framework
 uvicorn>=0.28.0               # ASGI production server
+flask>=3.0.0                 # Flask dependency for the Loki webhook bot
 python-multipart>=0.0.9       # Form data & OAuth2 support
 pyjwt>=2.8.0                  # JWT authentication tokens
 structlog>=24.1.0             # Structured JSON logging
@@ -78,52 +79,3 @@ tqdm>=4.66.0                  # Progress bars
 colorama>=0.4.6               # Colored terminal output
 python-dateutil>=2.8.2        # Date utilities
 pytz>=2023.3                  # Timezone handling
-
-# ============================================
-# INSTALLATION NOTES
-# ============================================
-
-# TA-Lib Installation (Optional but Recommended):
-# 
-# Windows:
-#   1. Download TA-Lib from: https://github.com/mrjbq7/ta-lib#windows
-#   2. Install the wheel: pip install TA_Lib-0.4.XX-cpXX-cpXX-win_amd64.whl
-#   OR use pandas-ta as alternative (no compilation needed)
-#
-# Linux:
-#   sudo apt-get install ta-lib
-#   pip install ta-lib
-#
-# macOS:
-#   brew install ta-lib
-#   pip install ta-lib
-#
-# If TA-Lib fails, pandas-ta is used as fallback automatically
-
-# ============================================
-# QUICK START
-# ============================================
-#
-# 1. Install Python 3.8 or higher
-# 2. Create virtual environment (recommended):
-#      python -m venv venv
-#      venv\Scripts\activate  (Windows)
-#      source venv/bin/activate  (Linux/Mac)
-# 3. Install dependencies:
-#      pip install -r requirements.txt
-# 4. Create .env file with Alpaca credentials
-# 5. Run: python -m loki.ui.main_app
-#    OR use: LAUNCH_LOKI.bat
-
-# ============================================
-# MINIMUM REQUIREMENTS (Core Only)
-# ============================================
-# If you want minimal installation for testing:
-#   pip install alpaca-py yfinance pandas numpy PyQt6 pyqtgraph python-dotenv pyyaml
-
-# ============================================
-# PYTHON VERSION
-# ============================================
-# Requires: Python 3.8+
-# Recommended: Python 3.10 or 3.11
-# Not compatible with Python 3.12+ yet (some dependencies lag behind)
