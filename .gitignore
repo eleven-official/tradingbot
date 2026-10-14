@@ -46,6 +46,10 @@ __pycache__/
 build/
 dist/
 
+# JavaScript / Next.js build output
+.next/
+node_modules/
+
 # IDE & OS-specific files
 .idea/
 .vscode/
