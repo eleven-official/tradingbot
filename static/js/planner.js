@@ -8,6 +8,9 @@ const strategyBoard = document.querySelector("#strategy-board");
 const strategyEmpty = document.querySelector("#strategy-empty");
 let marketSnapshot = null;
 let selectedStrategyKey = "";
+const JOURNAL_STORAGE_KEY = "loki.paper-journal.v1";
+let journalEntries = readJournalEntries();
+let lastDecision = null;
 
 const number = (value, digits = 2) => new Intl.NumberFormat(undefined, { maximumFractionDigits: digits }).format(Number(value));
 const price = (value) => new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }).format(Number(value));
@@ -226,8 +229,12 @@ function planMap(plan, input) {
 function renderDecision(data, input) {
   const placeholder = document.querySelector("#council-placeholder");
   const output = document.querySelector("#council-output");
+  lastDecision = { data, input: { ...input }, snapshot: marketSnapshot ? { ...marketSnapshot } : null };
   placeholder.hidden = true;
   output.hidden = false;
+  document.querySelector("#decision-journal-actions").hidden = false;
+  document.querySelector("#track-paper-position").hidden = data.action !== "BUY";
+  document.querySelector("#decision-journal-feedback").textContent = "";
   const state = data.action.toLowerCase();
   const passed = data.reviews.filter((review) => review.verdict === "PASS").length;
   document.querySelector("#council-decision").innerHTML = `<div class="decision-row"><span class="decision-badge ${state}">${escapeHtml(data.action)} · PAPER</span><span class="decision-summary">${escapeHtml(data.rationale)}</span></div>`;
@@ -244,6 +251,8 @@ function renderDecision(data, input) {
 }
 
 function renderError(message) {
+  lastDecision = null;
+  document.querySelector("#decision-journal-actions").hidden = true;
   document.querySelector("#council-placeholder").hidden = true;
   document.querySelector("#council-output").hidden = false;
   document.querySelector("#council-decision").innerHTML = `<div class="decision-row"><span class="decision-badge error">CHECK INPUTS</span><span class="decision-summary">${escapeHtml(message)}</span></div>`;
@@ -256,6 +265,8 @@ function renderError(message) {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  lastDecision = null;
+  document.querySelector("#decision-journal-actions").hidden = true;
   const values = Object.fromEntries(new FormData(form));
   Object.keys(values).forEach((key) => {
     if (!["side", "trend", "market_open", "setup_name"].includes(key) && values[key] !== "") values[key] = Number(values[key]);
@@ -280,4 +291,209 @@ form.addEventListener("submit", async (event) => {
     runButton.innerHTML = "Run the Defence Council <span aria-hidden=\"true\">↗</span>";
   }
 });
+
+function readJournalEntries() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(JOURNAL_STORAGE_KEY) || "[]");
+    return Array.isArray(saved) ? saved.filter((entry) => entry && typeof entry.id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function journalAmount(value) {
+  return number(Number(value) || 0, 2);
+}
+
+function journalTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleString();
+}
+
+function persistJournal(nextEntries) {
+  try {
+    localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(nextEntries));
+    journalEntries = nextEntries;
+    renderJournal();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function saveDecisionToJournal(trackPosition) {
+  const feedback = document.querySelector("#decision-journal-feedback");
+  if (!lastDecision) return;
+  if (trackPosition && lastDecision.tracked) return;
+  if (!trackPosition && lastDecision.reviewSaved) return;
+
+  const { data, input, snapshot } = lastDecision;
+  const quantity = Number(data.plan.quantity);
+  const estimatedLoss = Number(data.plan.estimated_loss);
+  if (trackPosition && (data.action !== "BUY" || !(quantity > 0) || !(estimatedLoss > 0))) {
+    feedback.textContent = "This plan cannot be tracked as a paper position because its size or planned risk is invalid.";
+    return;
+  }
+
+  const record = {
+    id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    createdAt: new Date().toISOString(),
+    status: trackPosition ? "open" : "review",
+    symbol: snapshot?.symbol || liveForm.elements.symbol.value.trim().toUpperCase() || "UNKNOWN",
+    interval: snapshot?.interval || liveForm.elements.interval.value,
+    setupName: input.setup_name || "Unselected setup",
+    setupScore: Number(input.setup_score) || 0,
+    action: data.action,
+    rationale: data.rationale,
+    passedGates: (data.reviews || []).filter((review) => review.verdict === "PASS").length,
+    gateCount: (data.reviews || []).length,
+    entryPrice: Number(input.entry_price),
+    stopPrice: Number(input.stop_price),
+    targetPrice: Number(input.target_price),
+    quantity,
+    estimatedLoss,
+    projectedProfit: Number(data.plan.projected_profit),
+    note: document.querySelector("#council-note").value.trim(),
+  };
+  const nextEntries = [record, ...journalEntries].slice(0, 250);
+  if (!persistJournal(nextEntries)) {
+    feedback.textContent = "Could not save to this browser. Check available local storage and try again.";
+    return;
+  }
+
+  if (trackPosition) {
+    lastDecision.tracked = true;
+    document.querySelector("#track-paper-position").disabled = true;
+    document.querySelector("#track-paper-position").textContent = "Paper entry tracked";
+    feedback.textContent = "Added to the local journal as an open paper entry. No order was sent.";
+  } else {
+    lastDecision.reviewSaved = true;
+    document.querySelector("#save-review").disabled = true;
+    document.querySelector("#save-review").textContent = "Review saved";
+    feedback.textContent = "Council review saved to this browser.";
+  }
+}
+
+function setupReviewRows() {
+  const closed = journalEntries.filter((entry) => entry.status === "closed" && Number.isFinite(Number(entry.pnl)));
+  const groups = new Map();
+  closed.forEach((entry) => {
+    const name = entry.setupName || "Unselected setup";
+    const stats = groups.get(name) || { count: 0, wins: 0, totalR: 0, pnl: 0 };
+    stats.count += 1;
+    stats.wins += Number(entry.pnl) > 0 ? 1 : 0;
+    stats.totalR += Number(entry.rMultiple) || 0;
+    stats.pnl += Number(entry.pnl) || 0;
+    groups.set(name, stats);
+  });
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+}
+
+function renderJournal() {
+  const closed = journalEntries.filter((entry) => entry.status === "closed");
+  const open = journalEntries.filter((entry) => entry.status === "open");
+  const winners = closed.filter((entry) => Number(entry.pnl) > 0).length;
+  const pnlTotal = closed.reduce((sum, entry) => sum + (Number(entry.pnl) || 0), 0);
+  const averageR = closed.length ? closed.reduce((sum, entry) => sum + (Number(entry.rMultiple) || 0), 0) / closed.length : null;
+
+  document.querySelector("#journal-open-count").textContent = String(open.length);
+  document.querySelector("#journal-closed-count").textContent = String(closed.length);
+  document.querySelector("#journal-win-rate").textContent = closed.length ? `${number(winners / closed.length * 100, 1)}%` : "—";
+  document.querySelector("#journal-average-r").textContent = averageR === null ? "—" : `${averageR > 0 ? "+" : ""}${number(averageR)}R`;
+  const pnlValue = document.querySelector("#journal-pnl");
+  pnlValue.textContent = closed.length ? journalAmount(pnlTotal) : "—";
+  pnlValue.className = pnlTotal > 0 ? "positive" : pnlTotal < 0 ? "negative" : "";
+
+  const playbookRows = setupReviewRows();
+  document.querySelector("#playbook-review-empty").hidden = playbookRows.length > 0;
+  document.querySelector("#playbook-review-body").innerHTML = playbookRows.map(([name, stats]) => `<tr><td>${escapeHtml(name)}</td><td>${stats.count}</td><td>${number(stats.wins / stats.count * 100, 1)}%</td><td>${stats.totalR > 0 ? "+" : ""}${number(stats.totalR / stats.count)}R</td><td class="${stats.pnl > 0 ? "positive" : stats.pnl < 0 ? "negative" : ""}">${journalAmount(stats.pnl)}</td></tr>`).join("");
+
+  const filter = document.querySelector("#journal-filter").value;
+  const visible = filter === "all" ? journalEntries : journalEntries.filter((entry) => entry.status === filter);
+  document.querySelector("#journal-entry-count").textContent = `${visible.length} shown · ${journalEntries.length} total`;
+  const empty = document.querySelector("#journal-empty");
+  empty.hidden = visible.length > 0;
+  empty.innerHTML = journalEntries.length === 0
+    ? "<strong>Your learning loop starts with a record.</strong><span>Save a council review or track a BUY as a paper entry. Later, record its exit and compare setups.</span>"
+    : "<strong>No entries match this filter.</strong><span>Choose another journal view to see your saved reviews and paper outcomes.</span>";
+  document.querySelector("#export-journal").disabled = journalEntries.length === 0;
+  document.querySelector("#clear-journal").disabled = journalEntries.length === 0;
+  document.querySelector("#journal-list").innerHTML = visible.map((entry) => {
+    const stateLabel = entry.status === "open" ? "OPEN PAPER POSITION" : entry.status === "closed" ? "CLOSED PAPER POSITION" : "COUNCIL REVIEW";
+    const outcome = entry.status === "open"
+      ? `<div class="paper-close-controls"><label>Manual exit price<input type="number" min="0.000001" step="any" data-exit-price value="" aria-label="Manual exit price for ${escapeHtml(entry.symbol)}" /></label><button class="secondary-button" type="button" data-close-paper>Mark paper position closed</button><span class="close-feedback" role="status"></span></div>`
+      : entry.status === "closed"
+        ? `<div class="journal-outcome"><strong class="${Number(entry.pnl) > 0 ? "positive" : Number(entry.pnl) < 0 ? "negative" : ""}">${journalAmount(entry.pnl)} quote units gross · ${Number(entry.rMultiple) > 0 ? "+" : ""}${number(entry.rMultiple)}R</strong><span>Manual exit ${price(entry.exitPrice)} · ${escapeHtml(journalTime(entry.closedAt))}</span></div>`
+        : `<p class="review-only-note">Saved decision review · no simulated position was tracked</p>`;
+    const note = entry.note ? `<p class="journal-note">${escapeHtml(entry.note)}</p>` : "";
+    return `<article class="journal-entry-card" data-journal-id="${escapeHtml(entry.id)}">
+      <div class="journal-entry-head"><div><span class="journal-status ${entry.status}">${stateLabel}</span><h3>${escapeHtml(entry.symbol)} <small>${escapeHtml(entry.interval)}</small></h3></div><time>${escapeHtml(journalTime(entry.createdAt))}</time></div>
+      <div class="journal-entry-summary"><div><span>SETUP</span><strong>${escapeHtml(entry.setupName)}</strong></div><div><span>RULES MATCHED</span><strong>${number(entry.setupScore, 0)} / 100</strong></div><div><span>COUNCIL</span><strong>${escapeHtml(entry.action)} · ${entry.passedGates} / ${entry.gateCount} passed</strong></div><div><span>ENTRY / SIZE</span><strong>${price(entry.entryPrice)} · ${number(entry.quantity, 6)}</strong></div></div>
+      <p class="journal-rationale">${escapeHtml(entry.rationale || "No council rationale recorded.")}</p>
+      ${note}${outcome}
+    </article>`;
+  }).join("");
+}
+
+function closePaperPosition(button) {
+  const card = button.closest(".journal-entry-card");
+  const entry = journalEntries.find((item) => item.id === card?.dataset.journalId && item.status === "open");
+  const feedback = card?.querySelector(".close-feedback");
+  const exitPrice = Number(card?.querySelector("[data-exit-price]")?.value);
+  if (!entry || !(exitPrice > 0) || !Number.isFinite(exitPrice)) {
+    if (feedback) feedback.textContent = "Enter a valid manual exit price.";
+    return;
+  }
+  if (!(Number(entry.estimatedLoss) > 0) || !(Number(entry.quantity) > 0)) {
+    if (feedback) feedback.textContent = "This entry has no usable planned risk or size and cannot be measured.";
+    return;
+  }
+  const pnl = Number(entry.quantity) * (exitPrice - Number(entry.entryPrice));
+  const nextEntries = journalEntries.map((item) => item.id === entry.id ? {
+    ...item,
+    status: "closed",
+    exitPrice,
+    closedAt: new Date().toISOString(),
+    pnl,
+    rMultiple: pnl / Number(entry.estimatedLoss),
+  } : item);
+  if (!persistJournal(nextEntries) && feedback) feedback.textContent = "Could not update local storage. Check available space and try again.";
+}
+
+function exportJournalCsv() {
+  const fields = ["createdAt", "closedAt", "symbol", "interval", "setupName", "setupScore", "action", "status", "entryPrice", "stopPrice", "targetPrice", "quantity", "estimatedLoss", "exitPrice", "pnl", "rMultiple", "passedGates", "gateCount", "rationale", "note"];
+  const cell = (value) => {
+    let text = String(value ?? "");
+    if (/^\s*[=+@-]/.test(text)) text = `'${text}`;
+    return `"${text.replaceAll('"', '""')}"`;
+  };
+  const csv = [fields, ...journalEntries.map((entry) => fields.map((field) => entry[field]))].map((row) => row.map(cell).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `loki-paper-journal-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+document.querySelector("#save-review").addEventListener("click", () => saveDecisionToJournal(false));
+document.querySelector("#track-paper-position").addEventListener("click", () => saveDecisionToJournal(true));
+document.querySelector("#journal-filter").addEventListener("change", renderJournal);
+document.querySelector("#journal-list").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-close-paper]");
+  if (button) closePaperPosition(button);
+});
+document.querySelector("#export-journal").addEventListener("click", exportJournalCsv);
+document.querySelector("#clear-journal").addEventListener("click", () => {
+  if (journalEntries.length && window.confirm("Clear all paper journal entries saved in this browser?")) {
+    if (!persistJournal([])) window.alert("Could not clear the local journal. Check browser storage permissions.");
+  }
+});
+window.addEventListener("storage", (event) => {
+  if (event.key === JOURNAL_STORAGE_KEY) {
+    journalEntries = readJournalEntries();
+    renderJournal();
+  }
+});
+renderJournal();
 
