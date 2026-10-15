@@ -42,7 +42,7 @@ def test_risk_plan_returns_a_non_executable_calculation():
     assert response.json()["mode"] == "paper-only"
     assert response.json()["approved"] is True
     assert response.json()["quantity"] > 0
-    assert "not an order" in response.json()["disclaimer"]
+    assert "not financial advice or an order" in response.json()["disclaimer"]
 
 
 def test_risk_plan_rejects_a_stop_on_the_profit_side():
