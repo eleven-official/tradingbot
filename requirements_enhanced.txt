@@ -24,7 +24,7 @@ ccxt>=4.0.0
 
 # Async & Networking
 aiohttp>=3.8.0
-websockets>=11.0.0
+websockets>=9,<11
 requests>=2.31.0
 
 # Utilities
