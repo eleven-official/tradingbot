@@ -326,6 +326,13 @@ input:focus, select:focus { border-color: var(--mint-deep); box-shadow: 0 0 0 3p
 .journal-rationale, .journal-note { color: var(--muted); font-size: .6rem; line-height: 1.45; margin: 10px 0 0; }
 .journal-rationale { border-left: 2px solid var(--line-strong); padding-left: 9px; }
 .journal-note { background: rgba(180, 242, 210, .05); border-radius: 5px; color: var(--mint); padding: 8px 9px; white-space: pre-wrap; }
+.journal-details { border-top: 1px solid var(--line); margin-top: 9px; padding-top: 8px; }
+.journal-details summary { color: var(--muted); cursor: pointer; font-size: .59rem; font-weight: 750; list-style: none; }
+.journal-details summary::-webkit-details-marker { display: none; }
+.journal-details summary::before { color: var(--mint); content: "+"; display: inline-block; font-size: .8rem; margin-right: 7px; width: 9px; }
+.journal-details[open] summary::before { content: "−"; }
+.journal-details .focus-evidence { margin: 8px 0 2px; }
+.journal-details .review-list { margin-top: 8px; }
 .review-only-note { color: var(--dim); font-size: .58rem; margin: 10px 0 0; }
 .paper-close-controls { align-items: end; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; padding-top: 10px; }
 .paper-close-controls label { flex: 0 1 175px; font-size: .56rem; }
