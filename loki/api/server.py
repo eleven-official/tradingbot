@@ -1,57 +1,90 @@
+"""A Vercel-friendly, paper-only web surface for Loki."""
 from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
+from loki.api.risk_planner import RiskPlanError, RiskPlanInput, build_risk_plan
 from loki.version import __version__
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+STATIC_DIR = PROJECT_ROOT / "static"
+TEMPLATES_DIR = PROJECT_ROOT / "templates"
 
 app = FastAPI(
     title="Loki Trading Platform",
     version=__version__,
-    description="Loki trading API and lightweight landing page",
+    description="Paper-only risk planning tools for the Loki trading project.",
 )
 
-# Serve a small /static directory for CSS/JS/images used by the landing page.
-static_dir = Path(__file__).parent.parent / "static"
-if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# Templates dir
-templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=str(templates_dir))
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+class RiskPlanRequest(BaseModel):
+    """The browser-safe request schema for a paper trade plan."""
+
+    side: str
+    capital: float = Field(gt=0)
+    risk_percent: float = Field(gt=0, le=100)
+    entry_price: float = Field(gt=0)
+    stop_price: float = Field(gt=0)
+    target_price: float = Field(gt=0)
+    max_notional_percent: float = Field(default=10.0, gt=0, le=100)
+    minimum_reward_risk: float = Field(default=1.5, gt=0)
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """Render a small landing page so the repo is a website-ready deployment."""
-    context = {"request": request, "version": __version__}
-    return templates.TemplateResponse("index.html", context)
+async def root(request: Request) -> HTMLResponse:
+    """Render the paper-only risk-planning dashboard."""
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"version": __version__},
+    )
 
 
 @app.get("/health")
-async def health():
-    return JSONResponse({"status": "ok", "service": "loki", "version": __version__})
+async def health() -> JSONResponse:
+    return JSONResponse(
+        {
+            "status": "ok",
+            "service": "loki",
+            "version": __version__,
+            "mode": "paper-tools-only",
+        }
+    )
+
+
+@app.post("/api/risk-plan")
+async def create_risk_plan(payload: RiskPlanRequest) -> dict[str, object]:
+    """Create a non-executable plan from supplied entry, stop and target data."""
+    try:
+        plan = build_risk_plan(RiskPlanInput(**payload.model_dump()))
+    except RiskPlanError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {
+        "mode": "paper-only",
+        "disclaimer": "This is a calculation, not financial advice or an order.",
+        **plan.__dict__,
+    }
 
 
 @app.get("/favicon.ico", include_in_schema=False)
-async def favicon_ico():
-    # Prefer static/favicon.ico if present, fallback to repo root loki.ico if available.
-    static_fav = Path("static") / "favicon.ico"
-    if static_fav.exists():
-        return FileResponse(static_fav)
-    root_fav = Path("loki.ico")
-    if root_fav.exists():
-        return FileResponse(root_fav)
-    return JSONResponse(status_code=204, content=None)
+async def favicon_ico() -> Response:
+    favicon = STATIC_DIR / "favicon.ico"
+    return FileResponse(favicon) if favicon.exists() else Response(status_code=204)
 
 
 @app.get("/favicon.png", include_in_schema=False)
-async def favicon_png():
-    static_fav = Path("static") / "favicon.png"
-    if static_fav.exists():
-        return FileResponse(static_fav)
-    return JSONResponse(status_code=204, content=None)
+async def favicon_png() -> Response:
+    favicon = STATIC_DIR / "favicon.png"
+    return FileResponse(favicon) if favicon.exists() else Response(status_code=204)
+
