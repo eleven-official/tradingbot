@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from loki.api.binance_market_data import MarketDataError, get_binance_spot_snapshot
 from loki.api.risk_planner import RiskPlanError, RiskPlanInput, build_risk_plan
 from loki.api.trade_council import CouncilRequest, evaluate_trade_council
 from loki.version import __version__
@@ -86,6 +87,20 @@ async def health() -> JSONResponse:
             "mode": "paper-tools-only",
         }
     )
+
+
+@app.get("/api/market-snapshot")
+def market_snapshot(symbol: str = "BTCUSDT", interval: str = "1m") -> dict[str, object]:
+    """Read public Binance Spot data for the selected dashboard symbol.
+
+    This endpoint is read-only and does not use API credentials.  Its brief
+    in-process cache reduces repeat requests while a dashboard is open.
+    """
+    try:
+        snapshot = get_binance_spot_snapshot(symbol, interval)
+    except MarketDataError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return {"mode": "read-only-market-data", "snapshot": asdict(snapshot)}
 
 
 @app.post("/api/risk-plan")
