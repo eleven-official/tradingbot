@@ -24,12 +24,12 @@ class CouncilRequest:
     stop_price: float
     target_price: float
     current_price: float
-    trend: str = "BULLISH"
+    trend: str = "NEUTRAL"
     volatility_percent: float = 2.0
-    volume_ratio: float = 1.0
-    market_data_age_seconds: float = 0.0
+    volume_ratio: float = 0.0
+    market_data_age_seconds: float = 61.0
     spread_percent: float = 0.1
-    market_open: bool = True
+    market_open: bool = False
     max_notional_percent: float = 10.0
     minimum_reward_risk: float = 1.5
     max_data_age_seconds: float = 60.0
@@ -37,6 +37,9 @@ class CouncilRequest:
     max_volatility_percent: float = 5.0
     max_spread_percent: float = 0.5
     max_entry_deviation_percent: float = 0.5
+    setup_name: str = ""
+    setup_score: float | None = None
+    min_setup_score: float = 80.0
 
 
 @dataclass(frozen=True)
@@ -103,16 +106,27 @@ def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
     entry_tolerance = _finite_nonnegative(
         "max_entry_deviation_percent", request.max_entry_deviation_percent
     )
+    min_setup_score = _finite_nonnegative("min_setup_score", request.min_setup_score)
+    setup_name = str(request.setup_name).strip()
+    setup_score = None
+    if request.setup_score is not None:
+        setup_score = _finite_nonnegative("setup_score", request.setup_score)
+        if setup_score > 100:
+            raise RiskPlanError("setup_score cannot exceed 100")
+        if not setup_name:
+            raise RiskPlanError("setup_name is required when setup_score is supplied")
+    elif setup_name:
+        raise RiskPlanError("setup_score is required when setup_name is supplied")
 
     reviews: list[AgentReview] = []
 
     # 1. Scout: makes sure the information is recent and liquid enough to use.
     if data_age > max_data_age:
-        reviews.append(AgentReview("Scout", "SKIP", "Market data is stale; refresh before considering a trade."))
+        reviews.append(AgentReview("Scout", "SKIP", f"Market data is {data_age:.0f}s old; refresh before considering a trade."))
     elif volume_ratio < min_volume:
-        reviews.append(AgentReview("Scout", "WAIT", "Volume is below the configured participation threshold."))
+        reviews.append(AgentReview("Scout", "WAIT", f"Volume is {volume_ratio:.2f}× baseline, below the {min_volume:.2f}× participation threshold."))
     else:
-        reviews.append(AgentReview("Scout", "PASS", "Market data is fresh and participation is sufficient."))
+        reviews.append(AgentReview("Scout", "PASS", f"Data is {data_age:.0f}s old and participation is {volume_ratio:.2f}× baseline."))
 
     # 2. Trend: avoids buying into a declared downtrend.
     trend = str(request.trend).upper().strip()
@@ -124,17 +138,49 @@ def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
         reviews.append(AgentReview("Trend", "WAIT", "Trend is neutral; wait for directional confirmation."))
     elif trend != "BULLISH":
         reviews.append(AgentReview("Trend", "WAIT", "Trend classification is unknown; verify the market regime."))
+    elif setup_score is not None and setup_score < min_setup_score:
+        reviews.append(
+            AgentReview(
+                "Trend",
+                "WAIT",
+                f"{setup_name} matches {setup_score:.0f}/100 setup rules; {min_setup_score:.0f} are required. This score is rule confluence, not a win probability.",
+            )
+        )
+    elif setup_score is not None:
+        reviews.append(
+            AgentReview(
+                "Trend",
+                "PASS",
+                f"Bullish trend aligns with {setup_name} ({setup_score:.0f}/100 rule confluence; not a win probability).",
+            )
+        )
     else:
         reviews.append(AgentReview("Trend", "PASS", "The declared bullish trend supports the long thesis."))
 
     # 3. Chart guardian: preserves the entry / stop / target plan on the chart.
     entry_deviation = abs(current_price - request.entry_price) / request.entry_price * 100
-    if entry_deviation > entry_tolerance:
+    if current_price <= request.stop_price:
+        reviews.append(
+            AgentReview(
+                "Chart Guardian",
+                "SKIP",
+                "Price is at or below the planned stop; the proposed long thesis is already invalidated.",
+            )
+        )
+    elif current_price >= request.target_price:
         reviews.append(
             AgentReview(
                 "Chart Guardian",
                 "WAIT",
-                "Current price has moved beyond the permitted entry zone; do not chase the setup.",
+                "Price has reached or passed the target; re-map the trade instead of chasing the original setup.",
+            )
+        )
+    elif entry_deviation > entry_tolerance:
+        reviews.append(
+            AgentReview(
+                "Chart Guardian",
+                "WAIT",
+                f"Price is {entry_deviation:.2f}% from entry, beyond the {entry_tolerance:.2f}% zone; do not chase the setup.",
             )
         )
     else:
@@ -154,23 +200,23 @@ def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
             AgentReview(
                 "Risk Sentinel",
                 "PASS",
-                f"Plan caps whole-unit size at {plan.quantity} with estimated loss {plan.estimated_loss:.2f}.",
+                f"Size {plan.quantity} whole units; estimated loss {plan.estimated_loss:.2f}, reward/risk {plan.reward_risk_ratio:.2f}×, notional {plan.notional:.2f}.",
             )
         )
 
     # 5. Volatility guardian: avoids entries in an explicitly excessive regime.
     if volatility > max_volatility:
-        reviews.append(AgentReview("Volatility Guardian", "SKIP", "Volatility exceeds the configured safety ceiling."))
+        reviews.append(AgentReview("Volatility Guardian", "SKIP", f"Volatility is {volatility:.2f}%, above the {max_volatility:.2f}% safety ceiling."))
     else:
-        reviews.append(AgentReview("Volatility Guardian", "PASS", "Volatility is inside the configured safety ceiling."))
+        reviews.append(AgentReview("Volatility Guardian", "PASS", f"Volatility is {volatility:.2f}%, within the {max_volatility:.2f}% ceiling."))
 
     # 6. Execution gate: blocks closed markets and pauses on a wide spread.
     if not request.market_open:
         reviews.append(AgentReview("Execution Gate", "SKIP", "The market is marked closed; no new plan should be acted on."))
     elif spread > max_spread:
-        reviews.append(AgentReview("Execution Gate", "WAIT", "Spread is wider than the configured execution threshold."))
+        reviews.append(AgentReview("Execution Gate", "WAIT", f"Spread is {spread:.3f}%, above the {max_spread:.3f}% execution threshold."))
     else:
-        reviews.append(AgentReview("Execution Gate", "PASS", "Market is open and the quoted spread is within the execution threshold."))
+        reviews.append(AgentReview("Execution Gate", "PASS", f"Market is open and spread is {spread:.3f}%, within the {max_spread:.3f}% threshold."))
 
     if any(review.verdict == "SKIP" for review in reviews):
         return CouncilDecision("SKIP", _first_reason(reviews, "SKIP"), tuple(reviews), plan)
@@ -182,4 +228,5 @@ def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
         tuple(reviews),
         plan,
     )
+
 
