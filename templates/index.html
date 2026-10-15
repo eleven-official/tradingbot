@@ -16,13 +16,18 @@
         <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
         <span><strong>LOKI</strong><small>TRADE CONSOLE</small></span>
       </a>
+      <nav class="workspace-nav" aria-label="Workspace navigation">
+        <a href="#market-desk">Market</a>
+        <a href="#risk-desk">Risk desk</a>
+        <a href="#paper-journal">Journal</a>
+      </nav>
       <div class="topbar-meta">
         <span class="mode-pill"><i></i> PAPER WORKBENCH</span>
         <span class="build-tag">{{ version }}</span>
       </div>
     </header>
 
-    <section class="market-strip" aria-labelledby="market-title">
+    <section id="market-desk" class="market-strip" aria-labelledby="market-title">
       <div class="market-heading">
         <div>
           <p class="eyebrow">MARKET DESK <span class="eyebrow-line"></span> PUBLIC DATA ONLY</p>
@@ -85,7 +90,7 @@
         </section>
       </div>
 
-      <aside class="side-column">
+      <aside id="risk-desk" class="side-column">
         <form id="trade-council-form" class="panel plan-panel">
           <div class="panel-header">
             <div><p class="section-kicker">03 / PLAN THE RISK</p><h2>Define your levels</h2></div>
@@ -149,9 +154,70 @@
             <div class="plan-map-wrap" id="plan-map-wrap"></div>
             <ol class="review-list" id="review-list"></ol>
             <p class="disclaimer" id="council-disclaimer">A calculated stop loss is an estimate; gaps and slippage can increase losses.</p>
+            <div id="decision-journal-actions" class="decision-journal-actions" hidden>
+              <label class="journal-note-label" for="council-note">Add a note to your review
+                <textarea id="council-note" maxlength="500" rows="2" placeholder="What did you see? What would change your mind?"></textarea>
+              </label>
+              <div class="journal-action-buttons">
+                <button id="save-review" class="secondary-button" type="button">Save decision review</button>
+                <button id="track-paper-position" class="run-button track-button" type="button" hidden>Track paper entry <span aria-hidden="true">＋</span></button>
+              </div>
+              <p id="decision-journal-feedback" class="journal-feedback" role="status"></p>
+            </div>
           </div>
         </section>
       </aside>
+    </section>
+
+    <section id="paper-journal" class="panel journal-panel" aria-labelledby="journal-title">
+      <div class="journal-topline">
+        <div>
+          <p class="section-kicker">05 / REVIEW THE PROCESS</p>
+          <h2 id="journal-title">Paper journal</h2>
+          <p class="journal-intro">Keep the setup, council reasons and outcome together. Entries stay in this browser.</p>
+        </div>
+        <div class="journal-tools">
+          <label class="journal-filter-label" for="journal-filter">Show
+            <select id="journal-filter">
+              <option value="all">All entries</option>
+              <option value="open">Open paper</option>
+              <option value="closed">Closed paper</option>
+              <option value="review">Decision reviews</option>
+            </select>
+          </label>
+          <button id="export-journal" class="secondary-button" type="button">Export CSV</button>
+          <button id="clear-journal" class="quiet-button" type="button">Clear history</button>
+        </div>
+      </div>
+
+      <div class="journal-stats" aria-label="Journal performance summary">
+        <article><span>OPEN PAPER</span><strong id="journal-open-count">0</strong><small>Manually tracked</small></article>
+        <article><span>CLOSED</span><strong id="journal-closed-count">0</strong><small>Recorded outcomes</small></article>
+        <article><span>WIN RATE</span><strong id="journal-win-rate">—</strong><small>Closed entries only</small></article>
+        <article><span>AVERAGE R</span><strong id="journal-average-r">—</strong><small>Outcome / planned risk</small></article>
+        <article class="journal-pnl-stat"><span>GROSS P&amp;L · QUOTE UNITS</span><strong id="journal-pnl">—</strong><small>Excludes fees and slippage</small></article>
+      </div>
+
+      <section class="playbook-review" aria-labelledby="playbook-review-title">
+        <div class="playbook-heading">
+          <div><span class="section-kicker">YOUR RECORDED OUTCOMES</span><h3 id="playbook-review-title">Setup feedback</h3></div>
+          <span class="playbook-caveat">Historical notes, not a forecast</span>
+        </div>
+        <div class="playbook-table-wrap">
+          <table class="playbook-table">
+            <thead><tr><th scope="col">Setup</th><th scope="col">Closed</th><th scope="col">Win rate</th><th scope="col">Avg R</th><th scope="col">Gross P&amp;L · quote units</th></tr></thead>
+            <tbody id="playbook-review-body"></tbody>
+          </table>
+        </div>
+        <p id="playbook-review-empty" class="playbook-empty">Track and close a paper entry to start comparing outcomes by setup.</p>
+      </section>
+
+      <div class="journal-list-heading"><span id="journal-entry-count">No saved entries</span><span>Close prices are entered manually; no orders or price triggers run here.</span></div>
+      <div id="journal-empty" class="journal-empty">
+        <strong>Your learning loop starts with a record.</strong>
+        <span>Save a council review or track a BUY as a paper entry. Later, record its exit and compare setups.</span>
+      </div>
+      <div id="journal-list" class="journal-list" aria-live="polite"></div>
     </section>
 
     <footer class="footer"><span>LOKI / PAPER RESEARCH CONSOLE</span><span>Market data: Binance Spot public API · Read only</span><a href="/health">SYSTEM HEALTH <span aria-hidden="true">↗</span></a></footer>
