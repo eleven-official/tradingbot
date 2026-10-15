@@ -1,5 +1,7 @@
 const form = document.querySelector("#trade-council-form");
 const result = document.querySelector("#plan-result");
+const liveForm = document.querySelector("#live-feed-form");
+const liveStatus = document.querySelector("#live-feed-status");
 
 const number = (value) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 
@@ -42,6 +44,41 @@ function renderError(message) {
     <p class="result-reason">${message}</p>
     <p class="disclaimer">A valid long needs stop &lt; entry &lt; target. A valid short needs target &lt; entry &lt; stop.</p>`;
 }
+
+function setPlanField(name, value) {
+  form.elements[name].value = value;
+}
+
+function renderLiveSnapshot(snapshot) {
+  setPlanField("entry_price", snapshot.current_price);
+  setPlanField("current_price", snapshot.current_price);
+  setPlanField("trend", snapshot.trend);
+  setPlanField("volatility_percent", snapshot.volatility_percent.toFixed(3));
+  setPlanField("volume_ratio", snapshot.volume_ratio.toFixed(2));
+  setPlanField("spread_percent", snapshot.spread_percent.toFixed(3));
+  setPlanField("market_data_age_seconds", Math.ceil(snapshot.data_age_seconds));
+  form.elements.stop_price.value = "";
+  form.elements.target_price.value = "";
+  liveStatus.textContent = `${snapshot.symbol} ${number(snapshot.current_price)} · ${snapshot.trend.toLowerCase()} · ${number(snapshot.change_24h_percent)}% over 24h. Set a stop and exit target to continue.`;
+  liveStatus.className = "live-ok";
+}
+
+liveForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(liveForm));
+  liveStatus.textContent = "Loading read-only market snapshot…";
+  liveStatus.className = "";
+  try {
+    const search = new URLSearchParams({ symbol: values.symbol.toUpperCase(), interval: values.interval });
+    const response = await fetch(`/api/market-snapshot?${search}`);
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || "Unable to load live market data.");
+    renderLiveSnapshot(body.snapshot);
+  } catch (error) {
+    liveStatus.textContent = error.message;
+    liveStatus.className = "live-error";
+  }
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
