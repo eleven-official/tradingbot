@@ -1,242 +1,112 @@
-"""
-Comprehensive API tests for Loki Trading Platform
-Tests REST endpoints, authentication, and WebSocket connections
-"""
-import pytest
+"""Contract tests for Loki's paper-only web surface."""
+from dataclasses import dataclass
+
 from fastapi.testclient import TestClient
-from loki.api.server import app
 
-client = TestClient(app)
+import loki.api.server as server
 
-
-class TestHealthEndpoints:
-    """Test health check and system status endpoints"""
-    
-    def test_root_endpoint(self):
-        """Test root endpoint returns correct application info"""
-        response = client.get("/")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["application"] == "Loki Trading Platform"
-        assert data["version"] == "2.0.0"
-        assert data["status"] == "operational"
-    
-    def test_health_check(self):
-        """Test health check endpoint"""
-        response = client.get("/health")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "healthy"
-        assert "uptime_seconds" in data
-        assert "active_strategies" in data
-        assert data["market_connection"] is True
+client = TestClient(server.app)
 
 
-class TestAuthentication:
-    """Test authentication and authorization"""
-    
-    @pytest.fixture
-    def admin_token(self):
-        """Get admin authentication token"""
-        response = client.post(
-            "/token",
-            data={"username": "admin", "password": "admin123"}
-        )
-        assert response.status_code == 200
-        return response.json()["access_token"]
-    
-    def test_login_success(self):
-        """Test successful login"""
-        response = client.post(
-            "/token",
-            data={"username": "admin", "password": "admin123"}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
-    
-    def test_login_failure(self):
-        """Test login with wrong credentials"""
-        response = client.post(
-            "/token",
-            data={"username": "admin", "password": "wrong"}
-        )
-        assert response.status_code == 401
-    
-    def test_protected_endpoint_without_auth(self):
-        """Test accessing protected endpoint without auth"""
-        response = client.get("/api/v1/portfolio")
-        assert response.status_code == 401
-    
-    def test_protected_endpoint_with_auth(self, admin_token):
-        """Test accessing protected endpoint with valid token"""
-        response = client.get(
-            "/api/v1/portfolio",
-            headers={"Authorization": f"Bearer {admin_token}"}
-        )
-        assert response.status_code == 200
+def test_console_renders_the_market_and_journal_workspace():
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Market structure" in response.text
+    assert "Paper journal" in response.text
 
 
-class TestPortfolioEndpoints:
-    """Test portfolio management endpoints"""
-    
-    @pytest.fixture
-    def auth_headers(self):
-        """Get authenticated headers"""
-        response = client.post(
-            "/token",
-            data={"username": "admin", "password": "admin123"}
-        )
-        token = response.json()["access_token"]
-        return {"Authorization": f"Bearer {token}"}
-    
-    def test_get_portfolio(self, auth_headers):
-        """Test portfolio retrieval"""
-        response = client.get("/api/v1/portfolio", headers=auth_headers)
-        assert response.status_code == 200
-        data = response.json()
-        assert "total_value" in data
-        assert "daily_pnl" in data
-        assert data["total_value"] > 0
-    
-    def test_get_positions(self, auth_headers):
-        """Test positions retrieval"""
-        response = client.get("/api/v1/positions", headers=auth_headers)
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
+def test_health_endpoint_identifies_the_paper_only_mode():
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["mode"] == "paper-tools-only"
 
 
-class TestTradingEndpoints:
-    """Test trading order endpoints"""
-    
-    @pytest.fixture
-    def auth_headers(self):
-        """Get authenticated headers"""
-        response = client.post(
-            "/token",
-            data={"username": "admin", "password": "admin123"}
-        )
-        token = response.json()["access_token"]
-        return {"Authorization": f"Bearer {token}"}
-    
-    def test_place_order(self, auth_headers):
-        """Test order placement"""
-        order_data = {
-            "symbol": "AAPL",
-            "side": "buy",
-            "quantity": 10,
-            "order_type": "market"
-        }
-        response = client.post(
-            "/api/v1/orders",
-            json=order_data,
-            headers=auth_headers
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "order_id" in data
-        assert data["status"] == "submitted"
-    
-    def test_place_invalid_order(self, auth_headers):
-        """Test invalid order placement"""
-        order_data = {
-            "symbol": "INVALID",
-            "side": "invalid_side",
-            "quantity": -10
-        }
-        response = client.post(
-            "/api/v1/orders",
-            json=order_data,
-            headers=auth_headers
-        )
-        assert response.status_code == 422  # Validation error
+def test_risk_plan_returns_a_non_executable_calculation():
+    response = client.post(
+        "/api/risk-plan",
+        json={
+            "side": "BUY",
+            "capital": 10_000,
+            "risk_percent": 1,
+            "entry_price": 100,
+            "stop_price": 95,
+            "target_price": 110,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "paper-only"
+    assert response.json()["approved"] is True
+    assert response.json()["quantity"] > 0
+    assert "not an order" in response.json()["disclaimer"]
 
 
-class TestStrategyEndpoints:
-    """Test strategy management endpoints"""
-    
-    @pytest.fixture
-    def auth_headers(self):
-        """Get authenticated headers"""
-        response = client.post(
-            "/token",
-            data={"username": "admin", "password": "admin123"}
-        )
-        token = response.json()["access_token"]
-        return {"Authorization": f"Bearer {token}"}
-    
-    def test_get_strategies(self, auth_headers):
-        """Test strategies list"""
-        response = client.get("/api/v1/strategies", headers=auth_headers)
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
-        if len(data) > 0:
-            assert "name" in data[0]
-            assert "enabled" in data[0]
-    
-    def test_update_strategy(self, auth_headers):
-        """Test strategy update"""
-        config = {
-            "name": "QuantumMomentum",
-            "enabled": True,
-            "risk_per_trade": 0.02,
-            "max_positions": 5,
-            "symbols": ["AAPL", "MSFT"]
-        }
-        response = client.put(
-            "/api/v1/strategies/QuantumMomentum",
-            json=config,
-            headers=auth_headers
-        )
-        assert response.status_code == 200
-    
-    def test_start_strategy(self, auth_headers):
-        """Test strategy start"""
-        response = client.post(
-            "/api/v1/strategies/QuantumMomentum/start",
-            headers=auth_headers
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "started"
-    
-    def test_stop_strategy(self, auth_headers):
-        """Test strategy stop"""
-        response = client.post(
-            "/api/v1/strategies/QuantumMomentum/stop",
-            headers=auth_headers
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "stopped"
+def test_risk_plan_rejects_a_stop_on_the_profit_side():
+    response = client.post(
+        "/api/risk-plan",
+        json={
+            "side": "BUY",
+            "capital": 10_000,
+            "risk_percent": 1,
+            "entry_price": 100,
+            "stop_price": 105,
+            "target_price": 110,
+        },
+    )
+
+    assert response.status_code == 422
 
 
-@pytest.mark.asyncio
-class TestWebSocket:
-    """Test WebSocket connections"""
-    
-    async def test_websocket_connection(self):
-        """Test WebSocket market data connection"""
-        from fastapi.testclient import TestClient
-        with TestClient(app) as client:
-            with client.websocket_connect("/ws/market-data") as websocket:
-                data = websocket.receive_json()
-                assert "timestamp" in data
-                assert "portfolio_value" in data
+def test_council_returns_six_explainable_gates_without_execution():
+    response = client.post(
+        "/api/trade-council",
+        json={
+            "side": "BUY",
+            "capital": 10_000,
+            "risk_percent": 1,
+            "entry_price": 100,
+            "stop_price": 95,
+            "target_price": 110,
+            "current_price": 100,
+            "trend": "BULLISH",
+            "volatility_percent": 2,
+            "volume_ratio": 2,
+            "market_data_age_seconds": 0,
+            "spread_percent": 0.1,
+            "market_open": True,
+            "setup_name": "Test continuation",
+            "setup_score": 90,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "paper-only"
+    assert response.json()["action"] in {"BUY", "WAIT", "SKIP"}
+    assert len(response.json()["reviews"]) == 6
+    assert all(review["reason"] for review in response.json()["reviews"])
 
 
-class TestMetrics:
-    """Test Prometheus metrics endpoint"""
-    
-    def test_metrics_endpoint(self):
-        """Test metrics are exposed"""
-        response = client.get("/metrics")
-        assert response.status_code == 200
-        assert "text/plain" in response.headers["content-type"]
+def test_market_snapshot_endpoint_uses_the_read_only_data_adapter(monkeypatch):
+    @dataclass(frozen=True)
+    class Snapshot:
+        provider: str
+        symbol: str
+        interval: str
 
+    requested = []
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=loki.api", "--cov-report=html"])
+    def fake_snapshot(symbol, interval):
+        requested.append((symbol, interval))
+        return Snapshot("Binance Spot", symbol, interval)
+
+    monkeypatch.setattr(server, "get_binance_spot_snapshot", fake_snapshot)
+    response = client.get("/api/market-snapshot?symbol=ETHUSDT&interval=5m")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "read-only-market-data"
+    assert response.json()["snapshot"]["symbol"] == "ETHUSDT"
+    assert requested == [("ETHUSDT", "5m")]
