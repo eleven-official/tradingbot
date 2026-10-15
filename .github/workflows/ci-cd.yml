@@ -53,7 +53,7 @@ jobs:
     
     - name: Check code formatting with black
       # Keep the deployment entrypoint gated while legacy package formatting is handled separately.
-      run: black --check --diff main.py
+      run: black --check main.py
     
     - name: Type check with mypy
       run: mypy loki --ignore-missing-imports
