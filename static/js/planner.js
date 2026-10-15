@@ -334,6 +334,7 @@ function saveDecisionToJournal(trackPosition) {
     feedback.textContent = "This plan cannot be tracked as a paper position because its size or planned risk is invalid.";
     return;
   }
+  const setupCandidate = snapshot?.strategy_candidates?.find((candidate) => candidate.name === input.setup_name);
 
   const record = {
     id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -347,6 +348,8 @@ function saveDecisionToJournal(trackPosition) {
     rationale: data.rationale,
     passedGates: (data.reviews || []).filter((review) => review.verdict === "PASS").length,
     gateCount: (data.reviews || []).length,
+    councilReviews: (data.reviews || []).map((review) => ({ agent: String(review.agent), verdict: String(review.verdict), reason: String(review.reason) })),
+    setupEvidence: (setupCandidate?.evidence || []).map(String),
     entryPrice: Number(input.entry_price),
     stopPrice: Number(input.stop_price),
     targetPrice: Number(input.target_price),
@@ -426,11 +429,13 @@ function renderJournal() {
         ? `<div class="journal-outcome"><strong class="${Number(entry.pnl) > 0 ? "positive" : Number(entry.pnl) < 0 ? "negative" : ""}">${journalAmount(entry.pnl)} quote units gross · ${Number(entry.rMultiple) > 0 ? "+" : ""}${number(entry.rMultiple)}R</strong><span>Manual exit ${price(entry.exitPrice)} · ${escapeHtml(journalTime(entry.closedAt))}</span></div>`
         : `<p class="review-only-note">Saved decision review · no simulated position was tracked</p>`;
     const note = entry.note ? `<p class="journal-note">${escapeHtml(entry.note)}</p>` : "";
+    const setupDetails = (entry.setupEvidence || []).length ? `<details class="journal-details"><summary>Setup checklist · ${entry.setupEvidence.length} conditions</summary><ul class="focus-evidence">${entry.setupEvidence.map((item) => `<li class="${String(item).startsWith("PASS") ? "matched" : "missed"}">${escapeHtml(item)}</li>`).join("")}</ul></details>` : "";
+    const councilDetails = (entry.councilReviews || []).length ? `<details class="journal-details"><summary>Council review · ${entry.councilReviews.length} gates</summary><ol class="review-list">${entry.councilReviews.map((review) => `<li class="${escapeHtml(String(review.verdict).toLowerCase())}"><b>${escapeHtml(review.agent)}</b><span>${escapeHtml(review.verdict)}</span><p>${escapeHtml(review.reason)}</p></li>`).join("")}</ol></details>` : "";
     return `<article class="journal-entry-card" data-journal-id="${escapeHtml(entry.id)}">
       <div class="journal-entry-head"><div><span class="journal-status ${entry.status}">${stateLabel}</span><h3>${escapeHtml(entry.symbol)} <small>${escapeHtml(entry.interval)}</small></h3></div><time>${escapeHtml(journalTime(entry.createdAt))}</time></div>
       <div class="journal-entry-summary"><div><span>SETUP</span><strong>${escapeHtml(entry.setupName)}</strong></div><div><span>RULES MATCHED</span><strong>${number(entry.setupScore, 0)} / 100</strong></div><div><span>COUNCIL</span><strong>${escapeHtml(entry.action)} · ${entry.passedGates} / ${entry.gateCount} passed</strong></div><div><span>ENTRY / SIZE</span><strong>${price(entry.entryPrice)} · ${number(entry.quantity, 6)}</strong></div></div>
       <p class="journal-rationale">${escapeHtml(entry.rationale || "No council rationale recorded.")}</p>
-      ${note}${outcome}
+      ${note}${setupDetails}${councilDetails}${outcome}
     </article>`;
   }).join("");
 }
