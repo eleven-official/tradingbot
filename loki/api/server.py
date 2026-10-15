@@ -60,6 +60,12 @@ class TradeCouncilRequest(RiskPlanRequest):
     max_entry_deviation_percent: float = Field(default=0.5, ge=0)
 
 
+def _model_data(payload: BaseModel) -> dict[str, object]:
+    """Support both Pydantic v2 (`model_dump`) and v1 (`dict`) runtimes."""
+    model_dump = getattr(payload, "model_dump", None)
+    return model_dump() if model_dump else payload.dict()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request) -> HTMLResponse:
     """Render the paper-only risk-planning dashboard."""
@@ -86,7 +92,7 @@ async def health() -> JSONResponse:
 async def create_risk_plan(payload: RiskPlanRequest) -> dict[str, object]:
     """Create a non-executable plan from supplied entry, stop and target data."""
     try:
-        plan = build_risk_plan(RiskPlanInput(**payload.model_dump()))
+        plan = build_risk_plan(RiskPlanInput(**_model_data(payload)))
     except RiskPlanError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {
@@ -100,7 +106,7 @@ async def create_risk_plan(payload: RiskPlanRequest) -> dict[str, object]:
 async def run_trade_council(payload: TradeCouncilRequest) -> dict[str, object]:
     """Run the six explainable paper-trade gates for a proposed long entry."""
     try:
-        decision = evaluate_trade_council(CouncilRequest(**payload.model_dump()))
+        decision = evaluate_trade_council(CouncilRequest(**_model_data(payload)))
     except RiskPlanError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {
