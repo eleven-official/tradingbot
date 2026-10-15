@@ -22,6 +22,24 @@
       </div>
     </header>
 
+    <section class="live-feed" aria-label="Live Binance Spot market data">
+      <div>
+        <p class="section-label">LIVE SCOUT FEED</p>
+        <h2>Binance Spot public data</h2>
+        <p>Read-only price, candles, trend, volume, volatility and spread. Loading data updates the Scout inputs; you still set the stop and exit target yourself.</p>
+      </div>
+      <form id="live-feed-form" class="feed-controls">
+        <label>Symbol
+          <input name="symbol" value="BTCUSDT" pattern="[A-Za-z0-9]{5,20}" maxlength="20" required />
+        </label>
+        <label>Interval
+          <select name="interval"><option value="1m">1 minute</option><option value="5m">5 minutes</option><option value="15m">15 minutes</option><option value="1h">1 hour</option></select>
+        </label>
+        <button type="submit">Load live data</button>
+        <p id="live-feed-status" role="status">No live snapshot loaded.</p>
+      </form>
+    </section>
+
     <section class="planner-grid" aria-label="Risk plan calculator">
       <form id="trade-council-form" class="planner-card">
         <div class="card-heading">
