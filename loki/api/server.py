@@ -1,6 +1,7 @@
 """A Vercel-friendly, paper-only web surface for Loki."""
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -10,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from loki.api.risk_planner import RiskPlanError, RiskPlanInput, build_risk_plan
+from loki.api.trade_council import CouncilRequest, evaluate_trade_council
 from loki.version import __version__
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +41,23 @@ class RiskPlanRequest(BaseModel):
     target_price: float = Field(gt=0)
     max_notional_percent: float = Field(default=10.0, gt=0, le=100)
     minimum_reward_risk: float = Field(default=1.5, gt=0)
+
+
+class TradeCouncilRequest(RiskPlanRequest):
+    """Optional market context used by the six paper-trade defence roles."""
+
+    current_price: float = Field(gt=0)
+    trend: str = "BULLISH"
+    volatility_percent: float = Field(default=2.0, ge=0)
+    volume_ratio: float = Field(default=1.0, ge=0)
+    market_data_age_seconds: float = Field(default=0.0, ge=0)
+    spread_percent: float = Field(default=0.1, ge=0)
+    market_open: bool = True
+    max_data_age_seconds: float = Field(default=60.0, ge=0)
+    min_volume_ratio: float = Field(default=0.8, ge=0)
+    max_volatility_percent: float = Field(default=5.0, ge=0)
+    max_spread_percent: float = Field(default=0.5, ge=0)
+    max_entry_deviation_percent: float = Field(default=0.5, ge=0)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -74,6 +93,23 @@ async def create_risk_plan(payload: RiskPlanRequest) -> dict[str, object]:
         "mode": "paper-only",
         "disclaimer": "This is a calculation, not financial advice or an order.",
         **plan.__dict__,
+    }
+
+
+@app.post("/api/trade-council")
+async def run_trade_council(payload: TradeCouncilRequest) -> dict[str, object]:
+    """Run the six explainable paper-trade gates for a proposed long entry."""
+    try:
+        decision = evaluate_trade_council(CouncilRequest(**payload.model_dump()))
+    except RiskPlanError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {
+        "mode": "paper-only",
+        "disclaimer": "This is a calculation, not financial advice or an order.",
+        "action": decision.action,
+        "rationale": decision.rationale,
+        "reviews": [asdict(review) for review in decision.reviews],
+        "plan": asdict(decision.plan),
     }
 
 
