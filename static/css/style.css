@@ -53,13 +53,26 @@ button span { font-size: 1.15rem; margin-left: 8px; }
 .muted strong { color: #66718a; }
 .status { align-items: center; border-radius: 999px; display: inline-flex; font-size: .75rem; font-weight: 850; margin-bottom: 20px; padding: 7px 10px; }
 .status.approved { background: rgba(141, 242, 191, .12); color: var(--green); }
-.status.rejected { background: rgba(255, 157, 157, .12); color: var(--red); }
+.status.buy { background: rgba(141, 242, 191, .12); color: var(--green); }
+.status.wait { background: rgba(255, 219, 134, .12); color: var(--yellow); }
+.status.skip { background: rgba(255, 157, 157, .12); color: var(--red); }
 .status.error { background: rgba(255, 219, 134, .12); color: var(--yellow); }
 .result-reason { font-size: .91rem; line-height: 1.5; min-height: 43px; }
 .disclaimer { color: var(--muted); font-size: .73rem; line-height: 1.45; margin: 25px 0 0; }
+.plan-map { display: block; margin: 5px auto 23px; max-width: 100%; }
+.plan-map text { font-family: inherit; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+.review-list { display: grid; gap: 8px; list-style: none; margin: 23px 0 0; padding: 0; }
+.review-list li { background: #0b101a; border-left: 3px solid var(--line); border-radius: 0 7px 7px 0; display: grid; grid-template-columns: 1fr auto; padding: 9px 10px; }
+.review-list li.pass { border-color: var(--green); }
+.review-list li.wait { border-color: var(--yellow); }
+.review-list li.skip { border-color: var(--red); }
+.review-list b { font-size: .76rem; }
+.review-list span { font-size: .7rem; font-weight: 850; color: var(--muted); }
+.review-list p { color: var(--muted); font-size: .7rem; grid-column: span 2; line-height: 1.35; margin: 5px 0 0; }
 
 .principles { border-top: 1px solid var(--line); margin-top: 52px; padding-top: 26px; }
 .principles > div { display: grid; gap: 28px; grid-template-columns: repeat(3, 1fr); }
+.role-grid { row-gap: 36px !important; }
 .principles article { padding-right: 16px; }
 .principles article > span { color: var(--green); display: block; font-size: .74rem; font-weight: 800; margin-bottom: 26px; }
 .principles p:not(.section-label) { color: var(--muted); font-size: .91rem; line-height: 1.55; margin: 0; }
