@@ -29,6 +29,15 @@ h3 { font-size: 1.08rem; letter-spacing: -.02em; margin: 0 0 8px; }
 .safety-badge { align-items: center; background: rgba(141, 242, 191, .1); border: 1px solid rgba(141, 242, 191, .3); border-radius: 999px; color: var(--green); display: flex; flex: none; font-size: .85rem; font-weight: 700; gap: 8px; padding: 10px 14px; }
 .pulse { background: var(--green); border-radius: 50%; box-shadow: 0 0 0 4px rgba(141, 242, 191, .13); height: 8px; width: 8px; }
 
+.live-feed { align-items: end; background: rgba(23, 31, 48, .7); border: 1px solid var(--line); border-radius: 16px; display: grid; gap: 28px; grid-template-columns: 1.2fr .8fr; margin-bottom: 18px; padding: 25px 29px; }
+.live-feed h2 { font-size: 1.3rem; }
+.live-feed p:not(.section-label) { color: var(--muted); font-size: .86rem; line-height: 1.5; margin: 9px 0 0; max-width: 570px; }
+.feed-controls { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+.feed-controls button { font-size: .82rem; margin: 0; padding: 11px; }
+.feed-controls #live-feed-status { grid-column: span 2; margin: 2px 0 0; min-height: 2.6em; }
+.feed-controls #live-feed-status.live-ok { color: var(--green); }
+.feed-controls #live-feed-status.live-error { color: var(--red); }
+
 .planner-grid { display: grid; gap: 18px; grid-template-columns: 1.14fr .86fr; }
 .planner-card, .result-card { background: linear-gradient(145deg, var(--surface-raised), var(--surface)); border: 1px solid var(--line); border-radius: 18px; padding: 30px; }
 .card-heading { margin-bottom: 28px; }
@@ -82,6 +91,7 @@ button span { font-size: 1.15rem; margin-left: 8px; }
   .hero { display: block; margin-bottom: 38px; }
   .safety-badge { margin-top: 25px; width: fit-content; }
   .planner-grid, .principles > div { grid-template-columns: 1fr; }
+  .live-feed { grid-template-columns: 1fr; }
   .field-row.three { grid-template-columns: 1fr; }
   .planner-card, .result-card { padding: 23px; }
 }
