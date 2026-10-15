@@ -52,7 +52,7 @@ jobs:
 
       - name: Check formatting for maintained API code
         run: |
-          python -m black --check --diff loki/api/server.py loki/portfolio.py tests/test_portfolio.py
+          python -m black --check loki/api/server.py loki/portfolio.py tests/test_portfolio.py
 
       - name: Type check
         run: python -m mypy loki --ignore-missing-imports
