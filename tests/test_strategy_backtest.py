@@ -32,6 +32,21 @@ def candle_series(count=200):
     return rows
 
 
+def test_strategy_lab_page_and_assets_are_served():
+    client = TestClient(server.app)
+
+    home = client.get("/")
+    page = client.get("/strategy-lab")
+
+    assert home.status_code == 200
+    assert 'href="/strategy-lab"' in home.text
+    assert page.status_code == 200
+    assert "Out-of-sample review" in page.text
+    assert "strategy_lab.js" in page.text
+    assert client.get("/static/js/strategy_lab.js").status_code == 200
+    assert client.get("/static/css/strategy_lab.css").status_code == 200
+
+
 def test_holdout_keeps_later_breakout_out_of_training_and_fills_next_bar():
     result = run_strategy_backtest(
         candle_series(),
