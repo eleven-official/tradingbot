@@ -329,3 +329,60 @@ def get_binance_spot_snapshot(symbol: str, interval: str = "1m") -> MarketSnapsh
     return snapshot
 
 
+
+
+def get_binance_spot_history(
+    symbol: str, interval: str = "1h", limit: int = 500
+) -> tuple[dict[str, float], ...]:
+    """Fetch recent completed candles from Binance Spot's public endpoint."""
+    normalized_symbol = _validate_symbol(symbol)
+    normalized_interval = _validate_interval(interval)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 120 <= limit <= 1000:
+        raise MarketDataError("history bars must be between 120 and 1000")
+    payload = _fetch_json(
+        "/api/v3/klines",
+        {"symbol": normalized_symbol, "interval": normalized_interval, "limit": limit},
+    )
+    if not isinstance(payload, list):
+        raise MarketDataError("Binance Spot returned an unexpected candle response")
+
+    now_ms = time() * 1000
+    candles: list[dict[str, float]] = []
+    previous_time = -1.0
+    for row in payload:
+        if not isinstance(row, (list, tuple)) or len(row) < 7:
+            raise MarketDataError("Binance Spot returned malformed candle data")
+        candle_time = _number("candle time", row[0]) / 1000
+        close_time_ms = _number("candle close time", row[6])
+        open_price = _number("candle open", row[1])
+        high_price = _number("candle high", row[2])
+        low_price = _number("candle low", row[3])
+        close_price = _number("candle close", row[4])
+        volume = _number("candle volume", row[5])
+        if close_time_ms > now_ms:
+            continue
+        if candle_time <= previous_time:
+            raise MarketDataError("Binance Spot returned candles out of chronological order")
+        if (
+            candle_time < 0
+            or min(open_price, high_price, low_price, close_price) <= 0
+            or volume < 0
+            or high_price < max(open_price, close_price)
+            or low_price > min(open_price, close_price)
+            or high_price < low_price
+        ):
+            raise MarketDataError("Binance Spot returned invalid candle values")
+        previous_time = candle_time
+        candles.append(
+            {
+                "time": candle_time,
+                "open": open_price,
+                "high": high_price,
+                "low": low_price,
+                "close": close_price,
+                "volume": volume,
+            }
+        )
+    if len(candles) < 100:
+        raise MarketDataError("Binance Spot returned too few completed candles for a replay")
+    return tuple(candles)

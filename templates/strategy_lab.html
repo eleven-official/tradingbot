@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Replay transparent trading rules on completed candles with fees, slippage and a chronological holdout." />
+  <meta name="theme-color" content="#080d12" />
+  <title>Loki · Strategy Lab</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/strategy_lab.css') }}" />
+  <script defer src="{{ url_for('static', path='/js/strategy_lab.js') }}"></script>
+</head>
+<body class="lab-page">
+  <header class="topbar lab-topbar">
+    <a class="brand" href="/" aria-label="Loki Trade Console home">
+      <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span><strong>LOKI</strong><small>TRADE CONSOLE</small></span>
+    </a>
+    <nav class="workspace-nav" aria-label="Workspace navigation">
+      <a href="/#market-desk">Market</a>
+      <a href="/#risk-desk">Risk desk</a>
+      <a href="/#paper-journal">Journal</a>
+      <a href="/strategy-lab" aria-current="page">Strategy lab</a>
+    </nav>
+    <div class="topbar-meta"><span class="mode-pill"><i></i> HISTORICAL PAPER REPLAY</span><span class="build-tag">{{ version }}</span></div>
+  </header>
+
+  <main class="lab-shell">
+    <section class="lab-intro">
+      <div class="lab-title">
+        <p class="eyebrow">STRATEGY LAB <span class="eyebrow-line"></span> PUBLIC DATA ONLY</p>
+        <h1>Test the rules.<br /><em>Respect the evidence.</em></h1>
+        <p class="lab-lede">Replay one fixed setup on completed candles, pay estimated trading costs, and judge it on the later 30% of the sample.</p>
+        <div class="lab-guardrails"><span>↳ Signals at candle close</span><span>↳ Entry on next candle open</span><span>↳ Spot exposure capped to equity</span></div>
+      </div>
+
+      <form id="backtest-form" class="lab-form">
+        <div class="lab-form-heading">
+          <div><p class="section-kicker">01 / BUILD A REPLAY</p><h2>Choose the rules</h2></div>
+          <span class="lab-readonly">READ ONLY</span>
+        </div>
+        <div class="lab-form-grid">
+          <label class="wide">Market
+            <input name="symbol" value="BTCUSDT" pattern="[A-Za-z0-9]{5,20}" maxlength="20" autocomplete="off" required />
+          </label>
+          <label>Timeframe
+            <select name="interval"><option value="5m">5m</option><option value="15m">15m</option><option value="1h" selected>1h</option><option value="4h">4h</option><option value="1d">1d</option></select>
+          </label>
+          <label>Completed bars
+            <select name="bars"><option value="120">120</option><option value="300">300</option><option value="500" selected>500</option><option value="1000">1,000</option></select>
+          </label>
+          <label class="wide">Strategy
+            <select name="strategy">
+              <option value="trend_following">EMA trend continuation</option>
+              <option value="breakout" selected>Volume-confirmed breakout</option>
+              <option value="pullback_reclaim">Trend pullback reclaim</option>
+            </select>
+          </label>
+          <label>Starting capital
+            <input name="starting_capital" type="number" value="10000" min="1" step="any" required />
+          </label>
+          <label>Risk per trade
+            <span class="lab-input-suffix"><input name="risk_percent" type="number" value="1" min="0.05" max="5" step="0.05" required /><i>%</i></span>
+          </label>
+          <label>Fee per side
+            <span class="lab-input-suffix"><input name="fee_bps" type="number" value="10" min="0" max="100" step="1" required /><i>bps</i></span>
+          </label>
+          <label>Slippage per side
+            <span class="lab-input-suffix"><input name="slippage_bps" type="number" value="5" min="0" max="100" step="1" required /><i>bps</i></span>
+          </label>
+          <label class="wide">Maximum time in trade
+            <span class="lab-input-suffix"><input name="max_holding_bars" type="number" value="20" min="1" max="100" step="1" required /><i>bars</i></span>
+          </label>
+        </div>
+        <button id="run-replay" class="run-button" type="submit">Run historical replay <span aria-hidden="true">↗</span></button>
+        <p class="lab-form-note">Fixed rules · 70% development / 30% chronological holdout · no orders sent</p>
+      </form>
+    </section>
+
+    <p id="replay-status" class="lab-status" role="status">Choose settings and run a replay. Binance Spot public candles are requested only when you submit.</p>
+
+    <section id="replay-results" class="lab-results" hidden aria-live="polite">
+      <div class="lab-results-heading">
+        <div><p class="section-kicker">02 / HOLDOUT RESULTS</p><h2>Out-of-sample review</h2></div>
+        <div id="result-market" class="result-market"></div>
+      </div>
+      <div class="holdout-metrics">
+        <article class="result-metric result-primary"><span>NET RETURN</span><strong id="holdout-return">—</strong><small>After modeled fees &amp; slippage</small></article>
+        <article class="result-metric"><span>TRADES</span><strong id="holdout-trades">—</strong><small id="holdout-bars">Holdout window</small></article>
+        <article class="result-metric"><span>WIN RATE</span><strong id="holdout-winrate">—</strong><small>Closed paper trades</small></article>
+        <article class="result-metric"><span>EXPECTANCY</span><strong id="holdout-expectancy">—</strong><small>Net R per trade</small></article>
+        <article class="result-metric"><span>MAX DRAWDOWN</span><strong id="holdout-drawdown">—</strong><small>Trade-close equity curve</small></article>
+        <article class="result-metric"><span>PROFIT FACTOR</span><strong id="holdout-profit-factor">—</strong><small>Net wins ÷ net losses</small></article>
+      </div>
+
+      <div class="lab-analysis-grid">
+        <section class="lab-card equity-card">
+          <div class="lab-card-heading"><div><p class="section-kicker">HOLDOUT / EQUITY</p><h3>What happened to the paper account?</h3></div><span class="chart-unit">Quote units</span></div>
+          <svg id="equity-chart" class="equity-chart" viewBox="0 0 860 230" role="img" aria-label="Out-of-sample paper equity curve"></svg>
+          <div class="equity-caption"><span id="equity-start">—</span><span id="equity-end">—</span></div>
+        </section>
+        <section class="lab-card comparison-card">
+          <div class="lab-card-heading"><div><p class="section-kicker">SAMPLE CHECK</p><h3>Development vs holdout</h3></div></div>
+          <div class="comparison-row"><span>Development net return</span><strong id="training-return">—</strong></div>
+          <div class="comparison-row"><span>Development trades</span><strong id="training-trades">—</strong></div>
+          <div class="comparison-row"><span>Holdout net return</span><strong id="comparison-holdout-return">—</strong></div>
+          <div class="comparison-row"><span>Buy &amp; hold holdout</span><strong id="benchmark-return">—</strong></div>
+          <p class="comparison-note">A strong development window can fail on later candles. Compare the holdout before changing rules.</p>
+        </section>
+      </div>
+
+      <section class="lab-card trade-card">
+        <div class="lab-card-heading"><div><p class="section-kicker">03 / CLOSED HOLDOUT TRADES</p><h3>Replay ledger</h3></div><span id="trade-count-note" class="chart-unit"></span></div>
+        <div class="trade-table-wrap">
+          <table class="trade-table">
+            <thead><tr><th>Opened</th><th>Entry</th><th>Exit</th><th>Net P&amp;L</th><th>Net R</th><th>Exit rule</th></tr></thead>
+            <tbody id="trade-rows"></tbody>
+          </table>
+        </div>
+      </section>
+      <p class="lab-disclaimer" id="replay-disclaimer"></p>
+    </section>
+  </main>
+</body>
+</html>

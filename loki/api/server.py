@@ -10,8 +10,16 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from loki.api.binance_market_data import MarketDataError, get_binance_spot_snapshot
+from loki.api.binance_market_data import (
+    MarketDataError,
+    get_binance_spot_history,
+    get_binance_spot_snapshot,
+)
 from loki.api.risk_planner import RiskPlanError, RiskPlanInput, build_risk_plan
+from loki.api.strategy_backtest import (
+    BacktestInputError,
+    run_strategy_backtest,
+)
 from loki.api.trade_council import CouncilRequest, evaluate_trade_council
 from loki.version import __version__
 
@@ -42,6 +50,20 @@ class RiskPlanRequest(BaseModel):
     target_price: float = Field(gt=0)
     max_notional_percent: float = Field(default=10.0, gt=0, le=100)
     minimum_reward_risk: float = Field(default=1.5, gt=0)
+
+
+class StrategyBacktestRequest(BaseModel):
+    """Bounded settings for a historical paper replay."""
+
+    symbol: str = Field(default="BTCUSDT", min_length=5, max_length=20)
+    interval: str = "1h"
+    strategy: str = "trend_following"
+    bars: int = Field(default=500, ge=120, le=1000)
+    starting_capital: float = Field(default=10000.0, gt=0)
+    risk_percent: float = Field(default=1.0, ge=0.05, le=5)
+    fee_bps: float = Field(default=10.0, ge=0, le=100)
+    slippage_bps: float = Field(default=5.0, ge=0, le=100)
+    max_holding_bars: int = Field(default=20, ge=1, le=100)
 
 
 class TradeCouncilRequest(RiskPlanRequest):
@@ -80,6 +102,16 @@ async def root(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/strategy-lab", response_class=HTMLResponse)
+async def strategy_lab(request: Request) -> HTMLResponse:
+    """Render the historical, out-of-sample strategy workbench."""
+    return templates.TemplateResponse(
+        request=request,
+        name="strategy_lab.html",
+        context={"version": __version__},
+    )
+
+
 @app.get("/health")
 async def health() -> JSONResponse:
     return JSONResponse(
@@ -104,6 +136,41 @@ def market_snapshot(symbol: str = "BTCUSDT", interval: str = "1m") -> dict[str, 
     except MarketDataError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
     return {"mode": "read-only-market-data", "snapshot": asdict(snapshot)}
+
+
+@app.post("/api/strategy-backtest")
+async def create_strategy_backtest(payload: StrategyBacktestRequest) -> dict[str, object]:
+    """Replay a fixed strategy against recent completed, public candles."""
+    values = _model_data(payload)
+    try:
+        candles = get_binance_spot_history(
+            str(values["symbol"]), str(values["interval"]), int(values["bars"])
+        )
+        result = run_strategy_backtest(
+            candles,
+            str(values["strategy"]),
+            starting_capital=float(values["starting_capital"]),
+            risk_percent=float(values["risk_percent"]),
+            fee_bps=float(values["fee_bps"]),
+            slippage_bps=float(values["slippage_bps"]),
+            max_holding_bars=int(values["max_holding_bars"]),
+        )
+    except MarketDataError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    except BacktestInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {
+        "mode": "historical-paper-replay",
+        "provider": "Binance Spot public candles",
+        "symbol": str(values["symbol"]).upper().strip(),
+        "interval": str(values["interval"]),
+        "bar_count": len(candles),
+        **result,
+        "disclaimer": (
+            "Historical replay is not a forecast. Fees, slippage, gaps, limited sample "
+            "size and changing market conditions can materially change outcomes."
+        ),
+    }
 
 
 @app.post("/api/risk-plan")
