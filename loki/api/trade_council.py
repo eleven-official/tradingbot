@@ -1,0 +1,185 @@
+"""Six independent, deterministic gates for paper-trade ideas.
+
+The council is deliberately conservative.  It does not forecast returns,
+connect to a broker, or make a loss-free promise.  Instead it records why a
+proposed long trade is safe to study, needs more confirmation, or should be
+skipped before any execution system sees it.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from math import isfinite
+
+from loki.api.risk_planner import RiskPlan, RiskPlanError, RiskPlanInput, build_risk_plan
+
+
+@dataclass(frozen=True)
+class CouncilRequest:
+    """Market and plan inputs consumed by the six independent reviews."""
+
+    side: str
+    capital: float
+    risk_percent: float
+    entry_price: float
+    stop_price: float
+    target_price: float
+    current_price: float
+    trend: str = "BULLISH"
+    volatility_percent: float = 2.0
+    volume_ratio: float = 1.0
+    market_data_age_seconds: float = 0.0
+    spread_percent: float = 0.1
+    market_open: bool = True
+    max_notional_percent: float = 10.0
+    minimum_reward_risk: float = 1.5
+    max_data_age_seconds: float = 60.0
+    min_volume_ratio: float = 0.8
+    max_volatility_percent: float = 5.0
+    max_spread_percent: float = 0.5
+    max_entry_deviation_percent: float = 0.5
+
+
+@dataclass(frozen=True)
+class AgentReview:
+    """One explainable verdict from a named council role."""
+
+    agent: str
+    verdict: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class CouncilDecision:
+    """The council's non-executable BUY, WAIT or SKIP decision."""
+
+    action: str
+    rationale: str
+    reviews: tuple[AgentReview, ...]
+    plan: RiskPlan
+
+
+def _finite_nonnegative(name: str, value: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise RiskPlanError(f"{name} must be a number") from error
+    if not isfinite(number) or number < 0:
+        raise RiskPlanError(f"{name} must be finite and cannot be negative")
+    return number
+
+
+def _first_reason(reviews: list[AgentReview], verdict: str) -> str:
+    return next(review.reason for review in reviews if review.verdict == verdict)
+
+
+def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
+    """Run six gates and return an explainable, paper-only decision.
+
+    `SKIP` is reserved for a broken plan or an outright safety conflict.
+    `WAIT` means a valid plan needs fresh confirmation.  Only a clean pass by
+    every role returns `BUY`; callers must still keep execution separate.
+    """
+    plan = build_risk_plan(
+        RiskPlanInput(
+            side=request.side,
+            capital=request.capital,
+            risk_percent=request.risk_percent,
+            entry_price=request.entry_price,
+            stop_price=request.stop_price,
+            target_price=request.target_price,
+            max_notional_percent=request.max_notional_percent,
+            minimum_reward_risk=request.minimum_reward_risk,
+        )
+    )
+    current_price = _finite_nonnegative("current_price", request.current_price)
+    data_age = _finite_nonnegative("market_data_age_seconds", request.market_data_age_seconds)
+    volatility = _finite_nonnegative("volatility_percent", request.volatility_percent)
+    volume_ratio = _finite_nonnegative("volume_ratio", request.volume_ratio)
+    spread = _finite_nonnegative("spread_percent", request.spread_percent)
+    max_data_age = _finite_nonnegative("max_data_age_seconds", request.max_data_age_seconds)
+    min_volume = _finite_nonnegative("min_volume_ratio", request.min_volume_ratio)
+    max_volatility = _finite_nonnegative("max_volatility_percent", request.max_volatility_percent)
+    max_spread = _finite_nonnegative("max_spread_percent", request.max_spread_percent)
+    entry_tolerance = _finite_nonnegative(
+        "max_entry_deviation_percent", request.max_entry_deviation_percent
+    )
+
+    reviews: list[AgentReview] = []
+
+    # 1. Scout: makes sure the information is recent and liquid enough to use.
+    if data_age > max_data_age:
+        reviews.append(AgentReview("Scout", "SKIP", "Market data is stale; refresh before considering a trade."))
+    elif volume_ratio < min_volume:
+        reviews.append(AgentReview("Scout", "WAIT", "Volume is below the configured participation threshold."))
+    else:
+        reviews.append(AgentReview("Scout", "PASS", "Market data is fresh and participation is sufficient."))
+
+    # 2. Trend: avoids buying into a declared downtrend.
+    trend = str(request.trend).upper().strip()
+    if str(request.side).upper().strip() != "BUY":
+        reviews.append(AgentReview("Trend", "SKIP", "This council currently approves only BUY, WAIT or SKIP decisions."))
+    elif trend == "BEARISH":
+        reviews.append(AgentReview("Trend", "SKIP", "The declared trend is bearish, which conflicts with a long entry."))
+    elif trend == "NEUTRAL":
+        reviews.append(AgentReview("Trend", "WAIT", "Trend is neutral; wait for directional confirmation."))
+    elif trend != "BULLISH":
+        reviews.append(AgentReview("Trend", "WAIT", "Trend classification is unknown; verify the market regime."))
+    else:
+        reviews.append(AgentReview("Trend", "PASS", "The declared bullish trend supports the long thesis."))
+
+    # 3. Chart guardian: preserves the entry / stop / target plan on the chart.
+    entry_deviation = abs(current_price - request.entry_price) / request.entry_price * 100
+    if entry_deviation > entry_tolerance:
+        reviews.append(
+            AgentReview(
+                "Chart Guardian",
+                "WAIT",
+                "Current price has moved beyond the permitted entry zone; do not chase the setup.",
+            )
+        )
+    else:
+        reviews.append(
+            AgentReview(
+                "Chart Guardian",
+                "PASS",
+                "Entry, stop and target geometry is valid and price remains in the entry zone.",
+            )
+        )
+
+    # 4. Risk sentinel: uses the deterministic position planner as a hard gate.
+    if not plan.approved:
+        reviews.append(AgentReview("Risk Sentinel", "SKIP", plan.reason))
+    else:
+        reviews.append(
+            AgentReview(
+                "Risk Sentinel",
+                "PASS",
+                f"Plan caps whole-unit size at {plan.quantity} with estimated loss {plan.estimated_loss:.2f}.",
+            )
+        )
+
+    # 5. Volatility guardian: avoids entries in an explicitly excessive regime.
+    if volatility > max_volatility:
+        reviews.append(AgentReview("Volatility Guardian", "SKIP", "Volatility exceeds the configured safety ceiling."))
+    else:
+        reviews.append(AgentReview("Volatility Guardian", "PASS", "Volatility is inside the configured safety ceiling."))
+
+    # 6. Execution gate: blocks closed markets and pauses on a wide spread.
+    if not request.market_open:
+        reviews.append(AgentReview("Execution Gate", "SKIP", "The market is marked closed; no new plan should be acted on."))
+    elif spread > max_spread:
+        reviews.append(AgentReview("Execution Gate", "WAIT", "Spread is wider than the configured execution threshold."))
+    else:
+        reviews.append(AgentReview("Execution Gate", "PASS", "Market is open and the quoted spread is within the execution threshold."))
+
+    if any(review.verdict == "SKIP" for review in reviews):
+        return CouncilDecision("SKIP", _first_reason(reviews, "SKIP"), tuple(reviews), plan)
+    if any(review.verdict == "WAIT" for review in reviews):
+        return CouncilDecision("WAIT", _first_reason(reviews, "WAIT"), tuple(reviews), plan)
+    return CouncilDecision(
+        "BUY",
+        "All six paper-trade gates passed. Keep the stop and target visible before any separate execution decision.",
+        tuple(reviews),
+        plan,
+    )
+
