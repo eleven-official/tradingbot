@@ -3,142 +3,158 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Loki's six-gate paper-trading defence council" />
-  <title>Loki · Trade Defence Council</title>
+  <meta name="description" content="Loki paper-trading strategy and risk workbench" />
+  <meta name="theme-color" content="#080d12" />
+  <title>Loki · Trade Console</title>
   <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}" />
   <script defer src="{{ url_for('static', path='/js/planner.js') }}"></script>
 </head>
 <body>
-  <main class="shell">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">LOKI / {{ version }}</p>
-        <h1>Let every trade<br />face six gates.</h1>
-        <p class="lede">A paper-only trade defence council. It turns one long idea into a clear <strong>BUY</strong>, <strong>WAIT</strong>, or <strong>SKIP</strong>, with the entry, stop and target plan as the final visual gate.</p>
-      </div>
-      <div class="safety-badge" aria-label="Paper tools only">
-        <span class="pulse"></span>
-        Paper tools only
+  <main class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Loki Trade Console home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span><strong>LOKI</strong><small>TRADE CONSOLE</small></span>
+      </a>
+      <div class="topbar-meta">
+        <span class="mode-pill"><i></i> PAPER WORKBENCH</span>
+        <span class="build-tag">{{ version }}</span>
       </div>
     </header>
 
-    <section class="live-feed" aria-label="Live Binance Spot market data">
-      <div>
-        <p class="section-label">LIVE SCOUT FEED</p>
-        <h2>Binance Spot public data</h2>
-        <p>Read-only price, candles, trend, volume, volatility and spread. Loading data updates the Scout inputs; you still set the stop and exit target yourself.</p>
+    <section class="market-strip" aria-labelledby="market-title">
+      <div class="market-heading">
+        <div>
+          <p class="eyebrow">MARKET DESK <span class="eyebrow-line"></span> PUBLIC DATA ONLY</p>
+          <h1 id="market-title">See the setup.<br /><em>Defend the trade.</em></h1>
+        </div>
+        <form id="live-feed-form" class="feed-controls">
+          <label class="symbol-control">Market
+            <input name="symbol" value="BTCUSDT" pattern="[A-Za-z0-9]{5,20}" maxlength="20" autocomplete="off" required />
+          </label>
+          <label class="interval-control">Frame
+            <select name="interval"><option value="1m">1m</option><option value="5m">5m</option><option value="15m">15m</option><option value="1h">1h</option></select>
+          </label>
+          <button type="submit" class="refresh-button"><span aria-hidden="true">↻</span> Refresh feed</button>
+          <p id="live-feed-status" role="status">Connect a read-only Binance Spot feed to begin.</p>
+        </form>
       </div>
-      <form id="live-feed-form" class="feed-controls">
-        <label>Symbol
-          <input name="symbol" value="BTCUSDT" pattern="[A-Za-z0-9]{5,20}" maxlength="20" required />
-        </label>
-        <label>Interval
-          <select name="interval"><option value="1m">1 minute</option><option value="5m">5 minutes</option><option value="15m">15 minutes</option><option value="1h">1 hour</option></select>
-        </label>
-        <button type="submit">Load live data</button>
-        <p id="live-feed-status" role="status">No live snapshot loaded.</p>
-      </form>
-    </section>
 
-    <section class="planner-grid" aria-label="Risk plan calculator">
-      <form id="trade-council-form" class="planner-card">
-        <div class="card-heading">
-          <p class="section-label">01 / INPUTS</p>
-          <h2>Trade plan</h2>
-        </div>
-        <div class="field-row two">
-          <label>Side
-            <select name="side">
-              <option value="BUY">Buy / long</option>
-            </select>
-          </label>
-          <label>Capital
-            <input name="capital" type="number" value="10000" min="1" step="any" required />
-          </label>
-        </div>
-        <div class="field-row three">
-          <label>Entry price
-            <input name="entry_price" type="number" value="100" min="0.000001" step="any" required />
-          </label>
-          <label>Stop price
-            <input name="stop_price" type="number" value="98" min="0.000001" step="any" required />
-          </label>
-          <label>Exit target
-            <input name="target_price" type="number" value="106" min="0.000001" step="any" required />
-          </label>
-        </div>
-        <div class="field-row three">
-          <label>Current price
-            <input name="current_price" type="number" value="100" min="0.000001" step="any" required />
-          </label>
-          <label>Risk per trade (%)
-            <input name="risk_percent" type="number" value="1" min="0.01" max="100" step="0.01" required />
-          </label>
-          <label>Max notional (%)
-            <input name="max_notional_percent" type="number" value="10" min="0.01" max="100" step="0.01" required />
-          </label>
-        </div>
-        <div class="field-row three">
-          <label>Trend
-            <select name="trend"><option value="BULLISH">Bullish</option><option value="NEUTRAL">Neutral</option><option value="BEARISH">Bearish</option></select>
-          </label>
-          <label>Volatility (%)
-            <input name="volatility_percent" type="number" value="2" min="0" step="0.1" required />
-          </label>
-          <label>Volume ratio
-            <input name="volume_ratio" type="number" value="1" min="0" step="0.1" required />
-          </label>
-        </div>
-        <div class="field-row three">
-          <label>Spread (%)
-            <input name="spread_percent" type="number" value="0.1" min="0" step="0.01" required />
-          </label>
-          <label>Data age (seconds)
-            <input name="market_data_age_seconds" type="number" value="0" min="0" step="1" required />
-          </label>
-          <label>Market status
-            <select name="market_open"><option value="true">Open</option><option value="false">Closed</option></select>
-          </label>
-        </div>
-        <div class="field-row two">
-          <label>Minimum R:R
-            <input name="minimum_reward_risk" type="number" value="1.5" min="0.01" step="0.1" required />
-          </label>
-          <label>Entry tolerance (%)
-            <input name="max_entry_deviation_percent" type="number" value="0.5" min="0" step="0.1" required />
-          </label>
-        </div>
-        <button type="submit">Run six-gate check <span>→</span></button>
-        <p class="form-note">No credentials. No execution. Whole units only. All market inputs are paper-test values.</p>
-      </form>
-
-      <section id="plan-result" class="result-card" aria-live="polite">
-        <div class="card-heading">
-          <p class="section-label">02 / RESULT</p>
-          <h2>Waiting for a plan</h2>
-        </div>
-        <p class="result-intro">Scout, Trend, Chart, Risk, Volatility and Execution each get a veto. The chart plan must keep the stop below entry and target above it.</p>
-        <div class="metric-grid muted">
-          <div><span>Quantity</span><strong>—</strong></div>
-          <div><span>Reward / risk</span><strong>—</strong></div>
-          <div><span>Worst-case loss</span><strong>—</strong></div>
-          <div><span>Target profit</span><strong>—</strong></div>
-        </div>
-        <p class="disclaimer">For education and paper evaluation only. Markets can gap past a stop; a calculated loss is not a guaranteed loss.</p>
-      </section>
-    </section>
-
-    <section class="principles" aria-label="The six paper-trade gates">
-      <p class="section-label">THE SIX-GATE COUNCIL</p>
-      <div class="role-grid">
-        <article><span>01 / SCOUT</span><h3>Fresh and liquid?</h3><p>Rejects stale inputs; pauses when participation is too low.</p></article>
-        <article><span>02 / TREND</span><h3>With the market?</h3><p>Blocks a long idea against a declared bearish trend.</p></article>
-        <article><span>03 / CHART</span><h3>Entry, stop, target</h3><p>Prevents chasing price and keeps the invalidation visible.</p></article>
-        <article><span>04 / RISK</span><h3>Size survives?</h3><p>Caps position size by both loss budget and notional exposure.</p></article>
-        <article><span>05 / VOLATILITY</span><h3>Regime is sane?</h3><p>Stops entries beyond the configured volatility ceiling.</p></article>
-        <article><span>06 / EXECUTION</span><h3>Can it fill cleanly?</h3><p>Blocks closed markets and pauses when the spread is too wide.</p></article>
+      <div class="market-stats" aria-label="Latest market snapshot">
+        <article class="market-stat featured"><span>SPOT PRICE</span><strong id="stat-price">—</strong><small id="stat-symbol">Awaiting snapshot</small></article>
+        <article class="market-stat"><span>24H CHANGE</span><strong id="stat-change">—</strong><small>Rolling 24-hour move</small></article>
+        <article class="market-stat"><span>QUOTE SPREAD</span><strong id="stat-spread">—</strong><small>Bid / ask midpoint</small></article>
+        <article class="market-stat"><span>DATA AGE</span><strong id="stat-age">—</strong><small id="stat-source">No feed loaded</small></article>
       </div>
     </section>
+
+    <section class="console-grid" aria-label="Market and trade review workspace">
+      <div class="main-column">
+        <section class="panel chart-panel" aria-labelledby="chart-title">
+          <div class="panel-header chart-header">
+            <div>
+              <p class="section-kicker">01 / PRICE ACTION</p>
+              <h2 id="chart-title">Market structure</h2>
+            </div>
+            <div class="chart-legend"><span><i class="legend-up"></i> Up</span><span><i class="legend-down"></i> Down</span><span><i class="legend-ema"></i> EMA 8 / 20</span></div>
+          </div>
+          <div class="chart-frame" id="market-chart-frame">
+            <div id="chart-empty" class="chart-empty"><span class="chart-glyph" aria-hidden="true">⌁</span><strong>Waiting for market data</strong><span>Load the public feed to see completed candles and moving averages.</span></div>
+            <svg id="market-chart" class="market-chart" role="img" aria-label="Live candlestick chart" hidden></svg>
+          </div>
+          <div class="chart-foot"><span id="chart-caption">Candles use completed bars only.</span><span id="chart-window">— bars</span></div>
+          <div class="indicator-strip" aria-label="Technical indicators">
+            <span><small>REGIME</small><b id="indicator-trend">—</b></span>
+            <span><small>RSI 14</small><b id="indicator-rsi">—</b></span>
+            <span><small>VOLUME</small><b id="indicator-volume">—</b></span>
+            <span><small>EMA 8 / 20</small><b id="indicator-ema">—</b></span>
+          </div>
+        </section>
+
+        <section class="panel strategy-panel" aria-labelledby="strategy-title">
+          <div class="panel-header">
+            <div><p class="section-kicker">02 / STRATEGY INTELLIGENCE</p><h2 id="strategy-title">Setup board</h2></div>
+            <span class="score-note">Rule confluence · not a win probability</span>
+          </div>
+          <div id="strategy-empty" class="strategy-empty">Load market data to compare momentum, pullback, breakout and reversion rules.</div>
+          <div id="strategy-board" class="strategy-board" hidden>
+            <div class="strategy-focus" id="strategy-focus"></div>
+            <div class="strategy-list" id="strategy-candidates" aria-label="Candidate strategy checklist"></div>
+          </div>
+          <p class="strategy-footnote">Rules describe how the selected timeframe looks now. They do not estimate returns or predict a win rate.</p>
+        </section>
+      </div>
+
+      <aside class="side-column">
+        <form id="trade-council-form" class="panel plan-panel">
+          <div class="panel-header">
+            <div><p class="section-kicker">03 / PLAN THE RISK</p><h2>Define your levels</h2></div>
+            <span class="long-only">LONG ONLY</span>
+          </div>
+          <p class="panel-intro">Set the invalidation first. Loki sizes the paper plan from your stop distance and exposure cap.</p>
+          <input type="hidden" name="setup_name" value="" />
+          <input type="hidden" name="setup_score" value="" />
+          <input type="hidden" name="side" value="BUY" />
+          <div class="input-grid two">
+            <label>Capital
+              <span class="input-wrap"><span class="input-prefix">$</span><input name="capital" type="number" value="10000" min="1" step="any" required /></span>
+            </label>
+            <label>Risk budget
+              <span class="input-wrap"><input name="risk_percent" type="number" value="1" min="0.01" max="100" step="0.01" required /><span class="input-suffix">%</span></span>
+            </label>
+          </div>
+          <div class="level-grid">
+            <label><span class="level-label entry-label">ENTRY</span><input name="entry_price" type="number" min="0.000001" step="any" required /></label>
+            <label><span class="level-label stop-label">STOP</span><input name="stop_price" type="number" min="0.000001" step="any" required /></label>
+            <label><span class="level-label target-label">TARGET</span><input name="target_price" type="number" min="0.000001" step="any" required /></label>
+          </div>
+          <details class="advanced-inputs">
+            <summary>Exposure &amp; market gates <span>Adjust thresholds</span></summary>
+            <div class="input-grid two advanced-grid">
+              <label>Max notional <span class="input-wrap"><input name="max_notional_percent" type="number" value="10" min="0.01" max="100" step="0.1" required /><span class="input-suffix">%</span></span></label>
+              <label>Current price <input name="current_price" type="number" min="0.000001" step="any" required /></label>
+              <label>Trend <select name="trend" required><option value="" disabled selected>Select trend</option><option value="BULLISH">Bullish</option><option value="NEUTRAL">Neutral</option><option value="BEARISH">Bearish</option></select></label>
+              <label>Volatility <span class="input-wrap"><input name="volatility_percent" type="number" min="0" step="0.01" required /><span class="input-suffix">%</span></span></label>
+              <label>Volume vs baseline <span class="input-wrap"><input name="volume_ratio" type="number" min="0" step="0.01" required /><span class="input-suffix">×</span></span></label>
+              <label>Bid / ask spread <span class="input-wrap"><input name="spread_percent" type="number" min="0" step="0.001" required /><span class="input-suffix">%</span></span></label>
+              <label>Data age <span class="input-wrap"><input name="market_data_age_seconds" type="number" min="0" step="1" required /><span class="input-suffix">sec</span></span></label>
+              <label>Freshness limit <span class="input-wrap"><input name="max_data_age_seconds" type="number" value="60" min="0" step="1" required /><span class="input-suffix">sec</span></span></label>
+              <label>Minimum participation <span class="input-wrap"><input name="min_volume_ratio" type="number" value="0.8" min="0" step="0.05" required /><span class="input-suffix">×</span></span></label>
+              <label>Max volatility <span class="input-wrap"><input name="max_volatility_percent" type="number" value="5" min="0" step="0.1" required /><span class="input-suffix">%</span></span></label>
+              <label>Max spread <span class="input-wrap"><input name="max_spread_percent" type="number" value="0.5" min="0" step="0.05" required /><span class="input-suffix">%</span></span></label>
+              <label>Minimum setup rules <span class="input-wrap"><input name="min_setup_score" type="number" value="80" min="0" max="100" step="5" required /><span class="input-suffix">/ 100</span></span></label>
+              <label>Minimum reward / risk <input name="minimum_reward_risk" type="number" value="1.5" min="0.01" step="0.1" required /></label>
+              <label>Entry tolerance <span class="input-wrap"><input name="max_entry_deviation_percent" type="number" value="0.5" min="0" step="0.1" required /><span class="input-suffix">%</span></span></label>
+              <label>Market session <select name="market_open" required><option value="" disabled selected>Select session</option><option value="true">Open</option><option value="false">Closed</option></select></label>
+            </div>
+          </details>
+          <button type="submit" id="run-council" class="run-button">Run the Defence Council <span aria-hidden="true">↗</span></button>
+          <p class="form-note"><i></i> Paper analysis only · No broker keys · No orders sent</p>
+        </form>
+
+        <section id="plan-result" class="panel council-panel" aria-live="polite" aria-labelledby="council-heading">
+          <div class="panel-header">
+            <div><p class="section-kicker">04 / TRADE DEFENCE COUNCIL</p><h2 id="council-heading">Council review</h2></div>
+            <span class="council-count">6 GATES</span>
+          </div>
+          <div class="council-placeholder" id="council-placeholder">
+            <span class="council-seal" aria-hidden="true">L</span>
+            <strong>Waiting for a plan</strong>
+            <span>Run the council to see every gate, reason and risk number.</span>
+          </div>
+          <div id="council-output" hidden>
+            <div id="council-decision"></div>
+            <div class="gate-summary" id="gate-summary"></div>
+            <div class="plan-metrics" id="plan-metrics"></div>
+            <div class="plan-map-wrap" id="plan-map-wrap"></div>
+            <ol class="review-list" id="review-list"></ol>
+            <p class="disclaimer" id="council-disclaimer">A calculated stop loss is an estimate; gaps and slippage can increase losses.</p>
+          </div>
+        </section>
+      </aside>
+    </section>
+
+    <footer class="footer"><span>LOKI / PAPER RESEARCH CONSOLE</span><span>Market data: Binance Spot public API · Read only</span><a href="/health">SYSTEM HEALTH <span aria-hidden="true">↗</span></a></footer>
   </main>
 </body>
 </html>
