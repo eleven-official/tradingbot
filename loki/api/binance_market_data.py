@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from math import isfinite, sqrt
+from math import isfinite
 from statistics import fmean, pstdev
 from time import time
 from typing import Any
@@ -29,6 +29,18 @@ class MarketDataError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class StrategyCandidate:
+    """A transparent checklist result, not a forecast or win probability."""
+
+    key: str
+    name: str
+    score: int
+    state: str
+    summary: str
+    evidence: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class MarketSnapshot:
     """A compact, provider-neutral snapshot used to pre-fill Scout inputs."""
 
@@ -46,6 +58,14 @@ class MarketSnapshot:
     volatility_percent: float
     volume_ratio: float
     candle_count: int
+    rsi_14: float
+    ema_fast: float
+    ema_slow: float
+    selected_strategy: str
+    setup_score: int
+    setup_state: str
+    strategy_candidates: tuple[StrategyCandidate, ...]
+    candles: tuple[dict[str, float], ...]
 
 
 def _validate_symbol(symbol: str) -> str:
@@ -86,17 +106,59 @@ def _number(name: str, value: Any) -> float:
     return number
 
 
-def _extract_candles(payload: Any) -> tuple[list[float], list[float]]:
+def _extract_candles(payload: Any) -> tuple[list[dict[str, float]], list[float], list[float]]:
     if not isinstance(payload, list) or len(payload) < 22:
         raise MarketDataError("Binance Spot returned too few candles to assess the market")
     try:
-        closes = [_number("candle close", candle[4]) for candle in payload]
-        volumes = [_number("candle volume", candle[5]) for candle in payload]
+        # Exclude Binance's current, still-forming candle from the strategy
+        # readout so indicator values only use completed bars.
+        completed = payload[:-1]
+        candles = [
+            {
+                "time": _number("candle time", candle[0]) / 1000,
+                "open": _number("candle open", candle[1]),
+                "high": _number("candle high", candle[2]),
+                "low": _number("candle low", candle[3]),
+                "close": _number("candle close", candle[4]),
+                "volume": _number("candle volume", candle[5]),
+            }
+            for candle in completed
+        ]
     except (IndexError, TypeError) as error:
         raise MarketDataError("Binance Spot returned malformed candle data") from error
-    if any(close <= 0 for close in closes) or any(volume < 0 for volume in volumes):
+    if any(
+        candle["low"] <= 0
+        or candle["volume"] < 0
+        or candle["high"] < max(candle["open"], candle["close"])
+        or candle["low"] > min(candle["open"], candle["close"])
+        for candle in candles
+    ):
         raise MarketDataError("Binance Spot returned invalid candle values")
-    return closes, volumes
+    closes = [candle["close"] for candle in candles]
+    volumes = [candle["volume"] for candle in candles]
+    return candles, closes, volumes
+
+
+def _ema(values: list[float], period: int) -> float:
+    alpha = 2 / (period + 1)
+    current = values[0]
+    for value in values[1:]:
+        current = alpha * value + (1 - alpha) * current
+    return current
+
+
+def _rsi(values: list[float], period: int = 14) -> float:
+    changes = [right - left for left, right in zip(values, values[1:])][-period:]
+    if not changes:
+        return 50.0
+    gains = [change for change in changes if change > 0]
+    losses = [-change for change in changes if change < 0]
+    average_gain = fmean(gains) if gains else 0.0
+    average_loss = fmean(losses) if losses else 0.0
+    if average_loss == 0:
+        return 100.0 if average_gain else 50.0
+    relative_strength = average_gain / average_loss
+    return 100 - 100 / (1 + relative_strength)
 
 
 def _trend(closes: list[float]) -> str:
@@ -116,9 +178,94 @@ def _volatility_percent(closes: list[float]) -> float:
 
 
 def _volume_ratio(volumes: list[float]) -> float:
-    latest_closed_volume = volumes[-2]
-    baseline = fmean(volumes[-22:-2])
+    latest_closed_volume = volumes[-1]
+    baseline = fmean(volumes[-21:-1])
     return latest_closed_volume / baseline if baseline > 0 else 1.0
+
+
+def _strategy_candidates(
+    candles: list[dict[str, float]],
+    closes: list[float],
+    trend: str,
+    volume_ratio: float,
+    rsi_14: float,
+    ema_fast: float,
+    ema_slow: float,
+) -> tuple[StrategyCandidate, ...]:
+    """Score four simple setups by matched rules; scores are not probabilities."""
+    latest = candles[-1]
+    previous = candles[-2]
+    recent = closes[-20:]
+    average = fmean(recent)
+    deviation = pstdev(recent)
+    lower_band = average - 2 * deviation
+    prior_high = max(candle["high"] for candle in candles[-21:-1])
+    last_five_high = max(closes[-6:-1])
+
+    checks = {
+        "trend_continuation": (
+            "Trend continuation",
+            [
+                (latest["close"] > ema_fast, "Close is above the fast EMA."),
+                (ema_fast > ema_slow, "Fast EMA is above the slow EMA."),
+                (50 <= rsi_14 <= 70, "RSI is in the momentum zone (50–70)."),
+                (volume_ratio >= 0.8, "Participation is at least 0.8× baseline."),
+                (latest["close"] > latest["open"], "The latest completed candle closed green."),
+            ],
+        ),
+        "pullback_continuation": (
+            "Trend pullback",
+            [
+                (ema_fast > ema_slow, "Fast EMA is above the slow EMA."),
+                (latest["close"] <= ema_fast, "Close has pulled back to the fast EMA."),
+                (latest["close"] > ema_slow, "Close remains above the slow EMA."),
+                (40 <= rsi_14 <= 58, "RSI is in the pullback zone (40–58)."),
+                (volume_ratio >= 0.7, "Participation is at least 0.7× baseline."),
+            ],
+        ),
+        "breakout": (
+            "Range breakout",
+            [
+                (latest["close"] > prior_high, "Close cleared the prior 20-bar high."),
+                (volume_ratio >= 1.2, "Volume is at least 1.2× baseline."),
+                (ema_fast > ema_slow, "Fast EMA is above the slow EMA."),
+                (latest["close"] > latest["open"], "The breakout candle closed green."),
+                (latest["close"] > last_five_high, "Close is above the prior five closes."),
+            ],
+        ),
+        "mean_reversion": (
+            "Oversold reversion",
+            [
+                (rsi_14 <= 35, "RSI is oversold (35 or lower)."),
+                (latest["close"] <= lower_band, "Close reached the lower 20-bar band."),
+                (trend != "BEARISH", "Trend is not classified as bearish."),
+                (volume_ratio >= 0.8, "Participation is at least 0.8× baseline."),
+                (latest["close"] > latest["open"] or latest["low"] < previous["low"], "Price showed a reversal attempt."),
+            ],
+        ),
+    }
+
+    candidates = []
+    for key, (name, rules) in checks.items():
+        passed = [description for matched, description in rules if matched]
+        score = round(len(passed) / len(rules) * 100)
+        state = "IN_FOCUS" if score >= 80 else "WATCH" if score >= 60 else "NO_SETUP"
+        summary = f"{len(passed)} of {len(rules)} checklist rules match."
+        candidates.append(
+            StrategyCandidate(
+                key=key,
+                name=name,
+                score=score,
+                state=state,
+                summary=summary,
+                evidence=tuple(
+                    f"{'PASS' if matched else 'MISS'} · {description}"
+                    for matched, description in rules
+                ),
+            )
+        )
+    candidates.sort(key=lambda candidate: (-candidate.score, candidate.key))
+    return tuple(candidates)
 
 
 def get_binance_spot_snapshot(symbol: str, interval: str = "1m") -> MarketSnapshot:
@@ -144,7 +291,16 @@ def get_binance_spot_snapshot(symbol: str, interval: str = "1m") -> MarketSnapsh
     if bid <= 0 or ask <= 0 or current_price <= 0 or ask < bid:
         raise MarketDataError("Binance Spot returned an invalid bid, ask, or last price")
 
-    closes, volumes = _extract_candles(candles)
+    candle_rows, closes, volumes = _extract_candles(candles)
+    volume_ratio = _volume_ratio(volumes)
+    fast_ema = _ema(closes, 8)
+    slow_ema = _ema(closes, 20)
+    trend = _trend(closes)
+    rsi_14 = _rsi(closes)
+    candidates = _strategy_candidates(
+        candle_rows, closes, trend, volume_ratio, rsi_14, fast_ema, slow_ema
+    )
+    best_candidate = candidates[0]
     snapshot = MarketSnapshot(
         provider="Binance Spot public market data",
         symbol=symbol,
@@ -156,11 +312,20 @@ def get_binance_spot_snapshot(symbol: str, interval: str = "1m") -> MarketSnapsh
         ask_price=ask,
         spread_percent=(ask - bid) / ((ask + bid) / 2) * 100,
         change_24h_percent=_number("24h price change", ticker.get("priceChangePercent")),
-        trend=_trend(closes),
+        trend=trend,
         volatility_percent=_volatility_percent(closes),
-        volume_ratio=_volume_ratio(volumes),
-        candle_count=len(closes),
+        volume_ratio=volume_ratio,
+        candle_count=len(candles),
+        rsi_14=rsi_14,
+        ema_fast=fast_ema,
+        ema_slow=slow_ema,
+        selected_strategy=best_candidate.key,
+        setup_score=best_candidate.score,
+        setup_state=best_candidate.state,
+        strategy_candidates=candidates,
+        candles=tuple(candle_rows),
     )
     _snapshot_cache[cache_key] = (now, snapshot)
     return snapshot
+
 
