@@ -1,4 +1,5 @@
 """Loki Trading Platform application entrypoint for local runners."""
+
 import uvicorn
 
 from loki.api.server import app
