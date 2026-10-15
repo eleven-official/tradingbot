@@ -48,17 +48,20 @@ class TradeCouncilRequest(RiskPlanRequest):
     """Optional market context used by the six paper-trade defence roles."""
 
     current_price: float = Field(gt=0)
-    trend: str = "BULLISH"
+    trend: str = "NEUTRAL"
     volatility_percent: float = Field(default=2.0, ge=0)
-    volume_ratio: float = Field(default=1.0, ge=0)
-    market_data_age_seconds: float = Field(default=0.0, ge=0)
+    volume_ratio: float = Field(default=0.0, ge=0)
+    market_data_age_seconds: float = Field(default=61.0, ge=0)
     spread_percent: float = Field(default=0.1, ge=0)
-    market_open: bool = True
+    market_open: bool = False
     max_data_age_seconds: float = Field(default=60.0, ge=0)
     min_volume_ratio: float = Field(default=0.8, ge=0)
     max_volatility_percent: float = Field(default=5.0, ge=0)
     max_spread_percent: float = Field(default=0.5, ge=0)
     max_entry_deviation_percent: float = Field(default=0.5, ge=0)
+    setup_name: str = Field(default="", max_length=60)
+    setup_score: float | None = Field(default=None, ge=0, le=100)
+    min_setup_score: float = Field(default=80.0, ge=0, le=100)
 
 
 def _model_data(payload: BaseModel) -> dict[str, object]:
@@ -144,4 +147,5 @@ async def favicon_ico() -> Response:
 async def favicon_png() -> Response:
     favicon = STATIC_DIR / "favicon.png"
     return FileResponse(favicon) if favicon.exists() else Response(status_code=204)
+
 
