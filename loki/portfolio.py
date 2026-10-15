@@ -37,9 +37,7 @@ class Position:
             ("current_price", self.current_price),
         ):
             if not isfinite(value) or value < 0:
-                raise PortfolioInputError(
-                    f"{name} must be a finite non-negative number."
-                )
+                raise PortfolioInputError(f"{name} must be a finite non-negative number.")
 
     @property
     def cost_basis(self) -> float:
