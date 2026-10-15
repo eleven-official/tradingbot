@@ -226,3 +226,4 @@ jobs:
         text: 'Loki CI/CD Pipeline: ${{ job.status }}'
         webhook_url: ${{ secrets.SLACK_WEBHOOK }}
       if: always()
+      continue-on-error: true
