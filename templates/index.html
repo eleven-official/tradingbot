@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Loki paper-trading risk planner" />
-  <title>Loki · Paper Risk Planner</title>
+  <meta name="description" content="Loki's six-gate paper-trading defence council" />
+  <title>Loki · Trade Defence Council</title>
   <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}" />
   <script defer src="{{ url_for('static', path='/js/planner.js') }}"></script>
 </head>
@@ -13,8 +13,8 @@
     <header class="hero">
       <div>
         <p class="eyebrow">LOKI / {{ version }}</p>
-        <h1>Plan the downside<br />before the upside.</h1>
-        <p class="lede">A paper-only position planner that sizes a proposed trade against a defined stop, target and notional limit. It never connects to a broker or places an order.</p>
+        <h1>Let every trade<br />face six gates.</h1>
+        <p class="lede">A paper-only trade defence council. It turns one long idea into a clear <strong>BUY</strong>, <strong>WAIT</strong>, or <strong>SKIP</strong>, with the entry, stop and target plan as the final visual gate.</p>
       </div>
       <div class="safety-badge" aria-label="Paper tools only">
         <span class="pulse"></span>
@@ -23,16 +23,15 @@
     </header>
 
     <section class="planner-grid" aria-label="Risk plan calculator">
-      <form id="risk-plan-form" class="planner-card">
+      <form id="trade-council-form" class="planner-card">
         <div class="card-heading">
           <p class="section-label">01 / INPUTS</p>
-          <h2>Position planner</h2>
+          <h2>Trade plan</h2>
         </div>
         <div class="field-row two">
           <label>Side
             <select name="side">
               <option value="BUY">Buy / long</option>
-              <option value="SELL">Sell / short</option>
             </select>
           </label>
           <label>Capital
@@ -46,31 +45,61 @@
           <label>Stop price
             <input name="stop_price" type="number" value="98" min="0.000001" step="any" required />
           </label>
-          <label>Target price
+          <label>Exit target
             <input name="target_price" type="number" value="106" min="0.000001" step="any" required />
           </label>
         </div>
         <div class="field-row three">
+          <label>Current price
+            <input name="current_price" type="number" value="100" min="0.000001" step="any" required />
+          </label>
           <label>Risk per trade (%)
             <input name="risk_percent" type="number" value="1" min="0.01" max="100" step="0.01" required />
           </label>
           <label>Max notional (%)
             <input name="max_notional_percent" type="number" value="10" min="0.01" max="100" step="0.01" required />
           </label>
+        </div>
+        <div class="field-row three">
+          <label>Trend
+            <select name="trend"><option value="BULLISH">Bullish</option><option value="NEUTRAL">Neutral</option><option value="BEARISH">Bearish</option></select>
+          </label>
+          <label>Volatility (%)
+            <input name="volatility_percent" type="number" value="2" min="0" step="0.1" required />
+          </label>
+          <label>Volume ratio
+            <input name="volume_ratio" type="number" value="1" min="0" step="0.1" required />
+          </label>
+        </div>
+        <div class="field-row three">
+          <label>Spread (%)
+            <input name="spread_percent" type="number" value="0.1" min="0" step="0.01" required />
+          </label>
+          <label>Data age (seconds)
+            <input name="market_data_age_seconds" type="number" value="0" min="0" step="1" required />
+          </label>
+          <label>Market status
+            <select name="market_open"><option value="true">Open</option><option value="false">Closed</option></select>
+          </label>
+        </div>
+        <div class="field-row two">
           <label>Minimum R:R
             <input name="minimum_reward_risk" type="number" value="1.5" min="0.01" step="0.1" required />
           </label>
+          <label>Entry tolerance (%)
+            <input name="max_entry_deviation_percent" type="number" value="0.5" min="0" step="0.1" required />
+          </label>
         </div>
-        <button type="submit">Build paper plan <span>→</span></button>
-        <p class="form-note">No credentials. No execution. Whole units only.</p>
+        <button type="submit">Run six-gate check <span>→</span></button>
+        <p class="form-note">No credentials. No execution. Whole units only. All market inputs are paper-test values.</p>
       </form>
 
       <section id="plan-result" class="result-card" aria-live="polite">
         <div class="card-heading">
           <p class="section-label">02 / RESULT</p>
-          <h2>Waiting for inputs</h2>
+          <h2>Waiting for a plan</h2>
         </div>
-        <p class="result-intro">Enter a thesis with a real invalidation point. Loki will calculate the maximum whole-unit position allowed by your risk budget and notional cap.</p>
+        <p class="result-intro">Scout, Trend, Chart, Risk, Volatility and Execution each get a veto. The chart plan must keep the stop below entry and target above it.</p>
         <div class="metric-grid muted">
           <div><span>Quantity</span><strong>—</strong></div>
           <div><span>Reward / risk</span><strong>—</strong></div>
@@ -81,12 +110,15 @@
       </section>
     </section>
 
-    <section class="principles" aria-label="Loki trading principles">
-      <p class="section-label">THE OPERATING RULES</p>
-      <div>
-        <article><span>01</span><h3>A stop is required</h3><p>A plan with no loss boundary is rejected before it can be sized.</p></article>
-        <article><span>02</span><h3>Risk beats conviction</h3><p>The smaller of the stop-based and notional-based quantities always wins.</p></article>
-        <article><span>03</span><h3>Execution stays separate</h3><p>This deployment calculates only. Broker connectivity belongs in a reviewed local service.</p></article>
+    <section class="principles" aria-label="The six paper-trade gates">
+      <p class="section-label">THE SIX-GATE COUNCIL</p>
+      <div class="role-grid">
+        <article><span>01 / SCOUT</span><h3>Fresh and liquid?</h3><p>Rejects stale inputs; pauses when participation is too low.</p></article>
+        <article><span>02 / TREND</span><h3>With the market?</h3><p>Blocks a long idea against a declared bearish trend.</p></article>
+        <article><span>03 / CHART</span><h3>Entry, stop, target</h3><p>Prevents chasing price and keeps the invalidation visible.</p></article>
+        <article><span>04 / RISK</span><h3>Size survives?</h3><p>Caps position size by both loss budget and notional exposure.</p></article>
+        <article><span>05 / VOLATILITY</span><h3>Regime is sane?</h3><p>Stops entries beyond the configured volatility ceiling.</p></article>
+        <article><span>06 / EXECUTION</span><h3>Can it fill cleanly?</h3><p>Blocks closed markets and pauses when the spread is too wide.</p></article>
       </div>
     </section>
   </main>
