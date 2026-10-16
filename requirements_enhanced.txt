@@ -22,7 +22,7 @@ ccxt>=4.0.0  # Cryptocurrency exchange library
 
 # Async & Networking
 aiohttp>=3.8.0
-websockets>=11.0.0
+websockets>=9.0,<11.0.0
 requests>=2.31.0
 
 # Utilities
