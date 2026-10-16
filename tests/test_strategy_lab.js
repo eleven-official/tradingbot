@@ -252,8 +252,14 @@ test("AI paper agent selects only candidates with enough profitable training evi
 test("AI agent candidate selection is unchanged when untouched holdout prices change", () => {
   const bars = Lab.makeScenario("rising");
   const first = Lab.agentEvaluate(bars, { splitPercent: 70 });
-  const changed = bars.map((bar, index) => index < first.splitIndex ? { ...bar } : {
-    ...bar, open: bar.open * 0.55, high: bar.high * 0.55, low: bar.low * 0.55, close: bar.close * 0.55,
+  const changed = bars.map((bar, index) => {
+    if (index < first.splitIndex) return { ...bar };
+    const progress = (index - first.splitIndex) / Math.max(1, bars.length - 1 - first.splitIndex);
+    const factor = 1 - 0.45 * progress;
+    return {
+      ...bar, open: bar.open * factor, high: bar.high * factor,
+      low: bar.low * factor, close: bar.close * factor,
+    };
   });
   const second = Lab.agentEvaluate(changed, { splitPercent: 70 });
   assert.equal(second.selectedStrategyId, first.selectedStrategyId);
