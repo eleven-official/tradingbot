@@ -123,6 +123,9 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn(f"RULE SET · VERSION {version}", html)
         self.assertIn(f'class="versionValue">{version}</strong>', html)
         self.assertIn(f"REVIEWING RULE SET {version}", html)
+        self.assertIn("matched-cost buy-and-hold baseline", html)
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("trainingBenchmarkReturnPct", workspace)
 
     def test_profile_code_persists_locally_without_sending_contact_details(self):
         source = (ROOT / "static" / "js" / "profile.js").read_text(encoding="utf-8")
