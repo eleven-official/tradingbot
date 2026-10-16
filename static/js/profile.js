@@ -27,6 +27,12 @@
     return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }
 
+  function announce(name, detail) {
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent === "function") {
+      window.dispatchEvent(new CustomEvent(name, { detail }));
+    }
+  }
+
   function render() {
     const hasProfile = Boolean(profile);
     onboarding.hidden = hasProfile;
@@ -35,6 +41,7 @@
       get("welcomeTitle").textContent = `Welcome back, ${profile.nickname}.`;
       get("welcomeDetail").textContent = "Your workspace is saved on this device and ready when you are.";
     }
+    announce("loki:profile", profile);
   }
 
   function openEditor() {
@@ -43,6 +50,7 @@
     error.textContent = "";
     onboarding.hidden = false;
     welcome.hidden = true;
+    announce("loki:profile-edit");
   }
 
   form.addEventListener("submit", (event) => {
