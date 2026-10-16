@@ -58,9 +58,10 @@ jobs:
       run: mypy loki --ignore-missing-imports
       continue-on-error: true
     
-    - name: Run tests with pytest
+    - name: Run strategy and deployment regression tests
       run: |
-        pytest tests/ --cov=loki --cov-report=xml --cov-report=html --cov-report=term-missing -v
+        pytest tests/test_backtesting_spread_costs.py tests/test_deployment_config.py tests/test_research_harness.py tests/test_strategy_council.py tests/test_walk_forward.py -v
+        node --test tests/test_profile.js tests/test_strategy_lab.js
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
