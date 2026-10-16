@@ -78,17 +78,25 @@ def build_strategy_council(
             "polarity": polarity,
         })
 
-    blockers = [_text(item, 180) for item in recent_blockers if _text(item, 180)]
+    blocker_items = [recent_blockers] if isinstance(recent_blockers, str) else (recent_blockers or ())
+    blockers = [_text(item, 180) for item in blocker_items if _text(item, 180)]
     disagreements = []
+    evidence_gaps = []
     if action in {"BUY", "SELL"}:
         if sentiment_direction not in {"NEUTRAL", action}:
             disagreements.append(
                 f"{action} signal disagrees with {sentiment or 'neutral'} sentiment."
             )
+        elif sentiment_direction == "NEUTRAL":
+            evidence_gaps.append("Sentiment is neutral or unavailable.")
         if trend_direction not in {"NEUTRAL", action}:
             disagreements.append(
                 f"{action} signal disagrees with the market trend composite."
             )
+        elif trend_score is None:
+            evidence_gaps.append("Market trend evidence is unavailable.")
+        if not _text(regime):
+            evidence_gaps.append("Market regime is unavailable.")
     disagreements.extend(blockers[:3])
 
     catalyst_reason = (
@@ -102,10 +110,17 @@ def build_strategy_council(
         market_facts.append(f"Regime: {_text(regime, 60)}")
     if trend_score is not None:
         market_facts.append(f"Trend composite: {trend_score:+.2f}")
-    for condition in list(conditions or ())[:5]:
+    condition_items = [conditions] if isinstance(conditions, str) else (conditions or ())
+    for condition in list(condition_items)[:5]:
         condition_text = _text(condition, 60)
         if condition_text:
             market_facts.append(condition_text)
+    for name, value in list((trend_components or {}).items())[:4]:
+        label = _text(name, 40)
+        numeric = _number(value)
+        detail = f"{numeric:+.2f}" if numeric is not None else _text(value, 40)
+        if label and detail:
+            market_facts.append(f"{label}: {detail}")
     market_reason = _text(trend_summary) or _text(regime_reason) or "; ".join(market_facts)
     if not market_reason:
         market_reason = "No fresh regime or trend explanation is available."
@@ -123,9 +138,12 @@ def build_strategy_council(
     elif action == "HOLD":
         decision = "WAIT"
         decision_reason = "The strategy has not produced a current BUY or SELL candidate."
-    elif disagreements:
+    elif disagreements or evidence_gaps:
         decision = "REVIEW"
-        decision_reason = "The candidate has dissenting evidence that should be reviewed against the bot's existing gates."
+        if disagreements:
+            decision_reason = "The candidate has dissenting evidence that should be reviewed against the bot's existing gates."
+        else:
+            decision_reason = "The candidate lacks enough market context for an aligned verdict; review the missing evidence and existing bot gates."
     else:
         decision = "CANDIDATE"
         decision_reason = "Evidence is aligned in this snapshot; the bot's existing risk and execution gates still decide whether an order is allowed."
@@ -156,10 +174,10 @@ def build_strategy_council(
             },
             {
                 "name": "Skeptic",
-                "stance": "DISSENT" if disagreements else "NO_DISSENT_RECORDED",
-                "reason": "; ".join(disagreements[:4]) or
+                "stance": "DISSENT" if disagreements else "NEEDS_EVIDENCE" if evidence_gaps else "NO_DISSENT_RECORDED",
+                "reason": "; ".join((disagreements + evidence_gaps)[:4]) or
                           "No disagreement was recorded. Missing evidence is still unknown, not a safety signal.",
-                "evidence": disagreements[:4],
+                "evidence": (disagreements + evidence_gaps)[:4],
             },
         ],
         "authority_note": "Advisory only. Existing strategy, risk limits, and execution checks remain authoritative; this council never places orders.",
