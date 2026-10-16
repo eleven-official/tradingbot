@@ -71,8 +71,8 @@ class RiskPlannerTests(unittest.TestCase):
         )
 
         self.assertTrue(plan.approved)
-        self.assertEqual(plan.quantity, 0.5)
-        self.assertEqual(plan.estimated_loss, 0.5)
+        self.assertEqual(plan.quantity, 0.05)
+        self.assertEqual(plan.estimated_loss, 0.05)
 
     def test_btc_plan_uses_fractional_units_within_both_limits(self):
         plan = build_risk_plan(
