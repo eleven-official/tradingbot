@@ -18,7 +18,9 @@ class DeploymentConfigTests(unittest.TestCase):
 
     def test_vercel_does_not_declare_an_invalid_custom_python_runtime(self):
         config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
-        self.assertNotIn("functions", config)
+        function = config["functions"]["main.py"]
+        self.assertEqual(function["includeFiles"], "{templates/**,static/**}")
+        self.assertNotIn("runtime", function)
         self.assertNotIn("routes", config)
 
     def test_fastapi_app_entrypoint_is_explicit(self):
