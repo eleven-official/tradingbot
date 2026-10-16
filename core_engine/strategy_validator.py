@@ -108,8 +108,7 @@ class PerformanceStats:
     def _calculate_sortino(self, risk_free_rate: float = 0.02) -> float:
         """Calculate Sortino ratio (downside deviation)."""
         excess_returns = self.returns - risk_free_rate / 252
-        downside_returns = excess_returns[excess_returns < 0]
-        downside_deviation = downside_returns.std() if len(downside_returns) > 0 else 0
+        downside_deviation = np.sqrt(np.square(excess_returns.clip(upper=0)).mean())
         return (excess_returns.mean() / downside_deviation) * np.sqrt(252) if downside_deviation > 0 else 0
     
     def _calculate_calmar(self) -> float:
@@ -122,14 +121,14 @@ class PerformanceStats:
     def _calculate_max_drawdown(self) -> float:
         """Calculate maximum drawdown."""
         cumulative = (1 + self.returns).cumprod()
-        running_max = cumulative.expanding().max()
+        running_max = cumulative.expanding().max().clip(lower=1.0)
         drawdown = (cumulative - running_max) / running_max
         return drawdown.min()
     
     def _calculate_avg_drawdown(self) -> float:
         """Calculate average drawdown."""
         cumulative = (1 + self.returns).cumprod()
-        running_max = cumulative.expanding().max()
+        running_max = cumulative.expanding().max().clip(lower=1.0)
         drawdown = (cumulative - running_max) / running_max
         return drawdown.mean()
     

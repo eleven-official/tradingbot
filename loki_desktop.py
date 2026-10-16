@@ -5,10 +5,10 @@ LOKI PRO - Professional Trading Terminal v7.0
 Enterprise-Grade Algorithmic Trading Workstation
 - Real market data integration (CCXT/Binance) + simulated mode
 - Professional candlestick visualization with real OHLCV
-- Paper trading and live trading modes (Alpaca)
-- Josh's Strategy v2.0 (proven 85%+ win rate target)
+- Paper execution with explicit data provenance
+- Josh's Strategy v2.0 (experimental; requires independent validation)
 - Enhanced ML Ensemble with 7 market regimes
-- Autonomous AI pilot with 85%+ reliability target
+- Autonomous paper pilot with measured outcomes
 - Self-learning with advanced performance tracking
 - Risk guards: daily loss limit, max drawdown halt, trailing stops
 - Professional charting, backtester, and audit log
@@ -25,10 +25,15 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from collections import deque
 from typing import Dict, List, Optional, Tuple, Any
+from core.copilot import LokiCopilot
+from core.strategy_lab import evaluate_strategy
+from core.desktop_presenter import (
+    candle_is_current, performance_evidence, quote_is_fresh, risk_sized_quantity, validate_risk_settings,
+)
 
 # Force UTF-8 on stdio so emoji/Unicode log output never raises on a Windows
 # cp1252 console, or when stdout/stderr is redirected to a pipe or file.
@@ -95,6 +100,7 @@ class RealMarketData:
         try:
             self.exchange = ccxt.binance({
                 'enableRateLimit': True,
+                'timeout': 10000,
                 'options': {'defaultType': 'spot'},
             })
             self.connected = True
@@ -116,7 +122,7 @@ class RealMarketData:
             bars = []
             for candle in ohlcv:
                 bars.append({
-                    'timestamp': pd.to_datetime(candle[0], unit='ms'),
+                    'timestamp': pd.to_datetime(candle[0], unit='ms', utc=True),
                     'open': candle[1],
                     'high': candle[2],
                     'low': candle[3],
@@ -137,6 +143,9 @@ class RealMarketData:
         try:
             exchange_symbol = self.symbols.get(symbol, symbol)
             ticker = self.exchange.fetch_ticker(exchange_symbol)
+            source_time = ticker.get('timestamp')
+            if source_time is not None and not quote_is_fresh(float(source_time) / 1000, time.time()):
+                return None
             return ticker['last']
         except Exception as e:
             logger.error(f"Failed to fetch ticker for {symbol}: {e}")
@@ -185,8 +194,7 @@ COLORS = {
     "warning_dim": "#E65100",   # Dark orange
     "text_primary": "#FFFFFF",  # Pure white
     "text_secondary": "#B8C5D6",# Soft gray-blue
-    "text_muted": "#7A8A9A",    # Muted gray
-    "text_muted": "#475569",    # Dark slate
+    "text_muted": "#A1AEC3",    # Readable supporting text on dark surfaces
 }
 
 
@@ -246,8 +254,8 @@ class AdvancedMarketSimulator:
             vol = data["vol"]
             now = datetime.now()
 
-            for i in range(150):
-                bar_time = now - timedelta(minutes=(150 - i) * 5)
+            for i in range(240):
+                bar_time = now - timedelta(minutes=(240 - i) * 5)
                 open_p = price
                 drift = np.random.normal(0, vol * 0.4) * price
                 high_p = open_p + abs(np.random.normal(0, vol * 0.7)) * price
@@ -572,7 +580,7 @@ class JoshStrategy:
     7. Trend strength indicator (ADX-style)
     8. Market structure analysis (higher highs/lows)
     
-    Targets 85%+ win rate with professional risk management.
+    Uses indicator confluence; scores are not calibrated probabilities of profit.
     """
 
     def generate_signal(self, df: pd.DataFrame) -> Optional[Dict[str, Any]]:
@@ -665,7 +673,7 @@ class JoshStrategy:
         not_at_resistance = latest_close < latest_resistance * 0.995
         not_at_support = latest_close > latest_support * 1.005
         
-        # Long conditions (7 conditions for 85%+ confluence)
+        # Long conditions (seven independent indicator checks)
         long_conditions = [
             ema_9_cross_21_up or ema_aligned_up,  # EMA cross or alignment
             latest_close > latest_ema_50,         # Above long-term trend
@@ -676,7 +684,7 @@ class JoshStrategy:
             strong_trend_up or trend_strength_long.iloc[-1] > 1.0,  # Trend strength
         ]
         
-        # Short conditions (7 conditions for 85%+ confluence)
+        # Short conditions (seven independent indicator checks)
         short_conditions = [
             ema_9_cross_21_down or ema_aligned_down,  # EMA cross or alignment
             latest_close < latest_ema_50,              # Below long-term trend
@@ -882,138 +890,111 @@ class QuantBacktester:
     @staticmethod
     def run_backtest(ohlcv_bars: List[Dict[str, Any]], strategy_name: str = "ml_ensemble",
                      initial_cash: float = 25000.0) -> Dict[str, Any]:
+        """Exploratory selected-strategy test; signals execute at the next bar open."""
         if len(ohlcv_bars) < 40:
             return {"error": "Insufficient historical bars"}
+        df = pd.DataFrame(ohlcv_bars)
+        strategies = {"josh": JoshStrategy(), "ml_ensemble": MLEnsembleStrategy(),
+                      "momentum": MomentumStrategy(), "mean_reversion": MeanReversionStrategy(),
+                      "breakout": BreakoutStrategy(), "volatility_surface": VolatilitySurfaceStrategy()}
+        strategy = strategies.get(strategy_name, strategies["josh"])
+        fee, slippage = 0.0005, 0.0001
+        cash, quantity, entry, entry_cost = initial_cash, 0.0, 0.0, 0.0
+        stop, target = 0.0, 0.0
+        entry_time = None
+        trades, equity, benchmark = [], [], []
+        total_fees = 0.0
+        first_open = float(df.iloc[30]["open"])
 
-        df_full = pd.DataFrame(ohlcv_bars)
-        strats = {
-            "josh": JoshStrategy(),
-            "ml_ensemble": MLEnsembleStrategy(),
-            "momentum": MomentumStrategy(),
-            "mean_reversion": MeanReversionStrategy(),
-            "breakout": BreakoutStrategy(),
-            "volatility_surface": VolatilitySurfaceStrategy(),
-        }
-        strat = strats.get(strategy_name, strats["josh"])
+        def close_position(reference, timestamp, reason):
+            nonlocal cash, quantity, total_fees
+            fill = reference * (1 - slippage)
+            exit_fee = fill * quantity * fee
+            proceeds = fill * quantity - exit_fee
+            cash += proceeds
+            total_fees += exit_fee
+            trades.append({"entry_time": entry_time, "exit_time": timestamp,
+                "entry_price": entry, "exit_price": fill, "pnl": proceeds - entry_cost,
+                "reason": reason})
+            quantity = 0.0
 
-        cash = initial_cash
-        position_qty = 0.0
-        entry_price = 0.0
-        sl_price = 0.0
-        tp_price = 0.0
-        trades = []
-        equity_curve = []
-        benchmark_curve = []
-        trade_open_time = None
-
-        start_price = df_full['close'].iloc[30]
-
-        for i in range(30, len(df_full)):
-            df_sub = df_full.iloc[:i+1]
-            curr_p = df_sub['close'].iloc[-1]
-            bar_time = df_sub['timestamp'].iloc[-1]
-
-            # Benchmark (Buy & Hold)
-            bench_val = initial_cash * (curr_p / start_price)
-            benchmark_curve.append(bench_val)
-
-            # Check open position exit triggers
-            if position_qty > 0:
-                if curr_p <= sl_price or curr_p >= tp_price:
-                    # Close trade
-                    exit_reason = "STOP_LOSS" if curr_p <= sl_price else "TAKE_PROFIT"
-                    pnl = (curr_p - entry_price) * position_qty - (curr_p * position_qty * 0.0005)
-                    cash += position_qty * curr_p
-                    trades.append({
-                        "entry_time": trade_open_time or bar_time,
-                        "exit_time": bar_time,
-                        "entry_price": entry_price,
-                        "exit_price": curr_p,
-                        "pnl": pnl,
-                        "reason": exit_reason
-                    })
-
-                    position_qty = 0.0
-                    trade_open_time = None
-
-            # Generate signal if no open position
-            if position_qty == 0:
-                sig = strat.generate_signal(df_sub)
-                if sig and sig["action"] == "BUY" and sig.get("confidence", 0) >= 0.65:
-                    trade_open_time = bar_time
-                    entry_price = curr_p
-                    sl_price = sig.get("stop_loss", curr_p * 0.97)
-                    tp_price = sig.get("take_profit", curr_p * 1.06)
-                    alloc = cash * 0.15  # 15% alloc per backtest trade
-                    position_qty = alloc / curr_p
-                    cash -= alloc
-
-
-            # Total current equity
-            total_eq = cash + (position_qty * curr_p)
-            equity_curve.append(total_eq)
-
-        # Close any lingering trade at end
-        if position_qty > 0:
-            final_p = df_full['close'].iloc[-1]
-            cash += position_qty * final_p
-            pnl = (final_p - entry_price) * position_qty
-            trades.append({"entry_price": entry_price, "exit_price": final_p, "pnl": pnl, "reason": "BACKTEST_END"})
-
-        final_equity = cash
-        net_profit = final_equity - initial_cash
-        ret_pct = (net_profit / initial_cash) * 100.0
-
-        wins = [t for t in trades if t["pnl"] > 0]
-        losses = [t for t in trades if t["pnl"] <= 0]
-        win_rate = (len(wins) / len(trades) * 100.0) if trades else 0.0
-
-        tot_win = sum(t["pnl"] for t in wins)
-        tot_loss = abs(sum(t["pnl"] for t in losses))
-        pf = (tot_win / tot_loss) if tot_loss > 0 else (99.0 if tot_win > 0 else 1.0)
-
-        # Max drawdown
-        peak = np.maximum.accumulate(equity_curve)
-        dd = (np.array(equity_curve) - peak) / peak
-        max_dd = abs(np.min(dd)) * 100.0 if len(dd) > 0 else 0.0
-
-        return {
-            "initial_cash": initial_cash,
-            "final_equity": final_equity,
-            "net_profit": net_profit,
-            "return_pct": ret_pct,
-            "win_rate": win_rate,
-            "profit_factor": pf,
-            "max_drawdown": max_dd,
-            "total_trades": len(trades),
-            "equity_curve": equity_curve,
-            "benchmark_curve": benchmark_curve,
-        }
+        for index in range(30, len(df)):
+            bar = df.iloc[index]
+            open_price, high, low, close = (float(bar[key]) for key in ("open", "high", "low", "close"))
+            signal = strategy.generate_signal(df.iloc[:index])  # Excludes this execution candle.
+            closed_this_bar = False
+            if quantity > 0:
+                if open_price <= stop:
+                    close_position(open_price, bar["timestamp"], "GAP_STOP")
+                elif open_price >= target:
+                    close_position(target, bar["timestamp"], "TAKE_PROFIT")
+                elif signal and signal.get("action") == "SELL":
+                    close_position(open_price, bar["timestamp"], "STRATEGY_EXIT")
+                closed_this_bar = quantity == 0
+            if quantity == 0 and not closed_this_bar and signal and signal.get("action") == "BUY" and signal.get("confidence", 0) >= 0.65:
+                fill = open_price * (1 + slippage)
+                candidate_stop = signal.get("stop_loss", fill * 0.97)
+                candidate_target = signal.get("take_profit", fill * 1.06)
+                if candidate_stop is not None and candidate_target is not None and 0 < candidate_stop < fill < candidate_target:
+                    entry, stop, target = fill, candidate_stop, candidate_target
+                    entry_cost = cash * 0.15
+                    quantity = entry_cost / (fill * (1 + fee))
+                    total_fees += fill * quantity * fee
+                    cash -= entry_cost
+                    entry_time = bar["timestamp"]
+            if quantity > 0:
+                # A stop takes precedence when both levels touch in one candle.
+                if low <= stop:
+                    close_position(stop, bar["timestamp"], "STOP_LOSS")
+                elif high >= target:
+                    close_position(target, bar["timestamp"], "TAKE_PROFIT")
+            equity.append(cash + quantity * close)
+            benchmark.append(initial_cash * close / first_open)
+        if quantity > 0:
+            close_position(float(df.iloc[-1]["close"]), df.iloc[-1]["timestamp"], "BACKTEST_END")
+            equity[-1] = cash
+        wins = [trade for trade in trades if trade["pnl"] > 0]
+        losses = [trade for trade in trades if trade["pnl"] <= 0]
+        gross_profit = sum(trade["pnl"] for trade in wins)
+        gross_loss = abs(sum(trade["pnl"] for trade in losses))
+        peak, drawdown = initial_cash, 0.0
+        for value in equity:
+            peak = max(peak, value)
+            drawdown = max(drawdown, (peak - value) / peak)
+        return {"initial_cash": initial_cash, "final_equity": cash,
+            "net_profit": cash - initial_cash, "return_pct": (cash / initial_cash - 1) * 100,
+            "win_rate": len(wins) / len(trades) * 100 if trades else 0.0,
+            "profit_factor": gross_profit / gross_loss if gross_loss else None,
+            "max_drawdown": drawdown * 100, "total_trades": len(trades),
+            "equity_curve": equity, "benchmark_curve": benchmark, "trades": trades,
+            "total_fees": total_fees, "evaluation": "exploratory_same_sample",
+            "assumptions": ["Signals use prior closed candles and execute at next open.",
+                "5 bps fee and 1 bp adverse slippage per side; stop wins ambiguous candles.",
+                "Exploratory sample; use independent holdouts to assess a market edge."]}
 
 
 # =====================================================================
 # RISK MANAGEMENT & PORTFOLIO ENGINE
 # =====================================================================
 class AdvancedRiskManager:
-    """Institutional Risk Management engine with Kelly sizing & volatility filters."""
+    """Stop-distance risk budgets with cost and portfolio allocation caps."""
 
     def __init__(self):
         self.risk_per_trade_pct = 0.02
         self.max_open_positions = 5
 
     def calculate_position_size(self, capital: float, entry_price: float, 
-                                stop_loss: Optional[float], confidence: float = 0.7) -> float:
-        if entry_price <= 0:
+                                stop_loss: Optional[float], confidence: float = 0.7,
+                                cash: Optional[float] = None, fee_fraction: float = 0.0005,
+                                slippage_fraction: float = 0.0001) -> float:
+        if stop_loss is None or not math.isfinite(confidence) or confidence <= 0:
             return 0.0
-        if stop_loss and stop_loss < entry_price:
-            risk_per_share = entry_price - stop_loss
-            risk_dollar = capital * self.risk_per_trade_pct * min(1.5, max(0.5, confidence))
-            shares = risk_dollar / risk_per_share
-        else:
-            shares = (capital * 0.05) / entry_price
-
-        max_shares = (capital * 0.20) / entry_price
-        return max(0.0001, min(shares, max_shares))
+        try:
+            budget = min(capital * 0.20, capital if cash is None else cash)
+            return risk_sized_quantity(capital, budget, entry_price, stop_loss,
+                self.risk_per_trade_pct * min(1.0, confidence), fee_fraction, slippage_fraction)
+        except ValueError:
+            return 0.0
 
 
 DEFAULT_REGIME_WEIGHTS = {
@@ -1171,7 +1152,8 @@ class SelfImprovementEngine:
         closed = int(sum(s["trades"] for s in self.strategy_stats.values()))
         wins = int(sum(s["wins"] for s in self.strategy_stats.values()))
         pnl = sum(s["pnl"] for s in self.strategy_stats.values())
-        return f"Closed {closed} | Wins {wins} | Performance {self.performance_score:.1%} | Learned P&L ${pnl:+,.2f} | Tweaks {self.adaptations}"
+        score = f"Learning score {self.performance_score:.1%}" if closed >= 5 else "Learning score: awaiting 5 exits"
+        return f"Closed {closed} | Wins {wins} | {score} | Paper P&L ${pnl:+,.2f} | Tweaks {self.adaptations}"
 
     def load(self):
         try:
@@ -1218,14 +1200,20 @@ class TradingGuard:
         self.max_drawdown_pct = 0.12
         self.halted = False
         self.halt_reason = ""
+        self.day_key: Optional[str] = None
+        self.day_start_equity: Optional[float] = None
 
-    def evaluate(self, metrics: Dict[str, Any]) -> Optional[str]:
+    def evaluate(self, metrics: Dict[str, Any], day_key: Optional[str] = None) -> Optional[str]:
+        today = day_key or datetime.now(timezone.utc).date().isoformat()
+        equity = metrics.get("equity", 0)
+        if today != self.day_key and math.isfinite(equity) and equity > 0:
+            self.day_key, self.day_start_equity = today, equity
         if self.halted:
             return self.halt_reason
-        start = metrics.get("equity", 0) - metrics.get("total_pnl", 0)
-        if start > 0 and metrics.get("total_pnl", 0) / start <= -self.max_daily_loss_pct:
+        start = self.day_start_equity
+        if start and (equity - start) / start <= -self.max_daily_loss_pct:
             self.halted = True
-            self.halt_reason = f"Daily loss limit ({self.max_daily_loss_pct:.0%}) hit"
+            self.halt_reason = f"UTC daily loss limit ({self.max_daily_loss_pct:.0%}) hit"
             return self.halt_reason
         if metrics.get("max_drawdown_pct", 0) / 100.0 >= self.max_drawdown_pct:
             self.halted = True
@@ -1253,6 +1241,8 @@ class ProfessionalAccount:
         self.slippage_bps = 1.0
         self.trailing_stop_enabled = True
         self.trailing_stop_pct = 0.02
+        self.default_stop_loss_pct = 0.03
+        self.default_take_profit_pct = 0.06
 
         self._lock = threading.Lock()
         self.equity_curve.append(initial_capital)
@@ -1269,6 +1259,15 @@ class ProfessionalAccount:
     def execute_trade(self, symbol: str, action: str, quantity: float, price: float,
                       strategy: str = "manual", stop_loss: Optional[float] = None,
                       take_profit: Optional[float] = None, reason: str = "") -> Dict[str, Any]:
+        if action.upper() not in {"BUY", "SELL"}:
+            return {"status": "rejected", "reason": "Use BUY or SELL."}
+        if not all(math.isfinite(v) and v > 0 for v in (quantity, price)):
+            return {"status": "rejected", "reason": "Price and quantity must be finite and positive."}
+        if action.upper() == "BUY" and (
+            (stop_loss is not None and (not math.isfinite(stop_loss) or not 0 < stop_loss < price))
+            or (take_profit is not None and (not math.isfinite(take_profit) or take_profit <= price))
+        ):
+            return {"status": "rejected", "reason": "Stop must be below entry; target must be above entry."}
         with self._lock:
             if action.upper() == "BUY":
                 return self._buy(symbol, quantity, price, strategy, stop_loss, take_profit, reason)
@@ -1288,8 +1287,10 @@ class ProfessionalAccount:
 
         self.cash -= total_cost
 
-        if not stop_loss: stop_loss = round(fill_price * 0.97, 2)
-        if not take_profit: take_profit = round(fill_price * 1.06, 2)
+        if stop_loss is None:
+            stop_loss = fill_price * (1 - self.default_stop_loss_pct)
+        if take_profit is None:
+            take_profit = fill_price * (1 + self.default_take_profit_pct)
 
         if symbol in self.positions:
             pos = self.positions[symbol]
@@ -1297,6 +1298,7 @@ class ProfessionalAccount:
             new_avg = (pos["avg_price"] * pos["quantity"] + fill_price * quantity) / new_qty
             pos["quantity"] = new_qty
             pos["avg_price"] = new_avg
+            pos["entry_fees"] = pos.get("entry_fees", 0.0) + comm
             pos["peak_price"] = max(pos.get("peak_price", new_avg), fill_price)
             pos["stop_loss"] = stop_loss
             pos["take_profit"] = take_profit
@@ -1311,6 +1313,7 @@ class ProfessionalAccount:
                 "take_profit": take_profit,
                 "trailing_stop": self.trailing_stop_enabled,
                 "strategy": strategy,
+                "entry_fees": comm,
             }
 
         trade = {
@@ -1332,6 +1335,7 @@ class ProfessionalAccount:
             return {"status": "rejected", "reason": f"No open position in {symbol}"}
 
         pos = self.positions[symbol]
+        strategy = pos.get("strategy", strategy)
         avg_price = pos["avg_price"]
         sell_qty = min(quantity, pos["quantity"])
 
@@ -1341,10 +1345,12 @@ class ProfessionalAccount:
         comm = revenue * self.commission_pct
         net_revenue = revenue - comm
 
-        net_pnl = (fill_price - avg_price) * sell_qty - comm
+        entry_fee_share = pos.get("entry_fees", 0.0) * sell_qty / pos["quantity"]
+        net_pnl = (fill_price - avg_price) * sell_qty - comm - entry_fee_share
 
         self.cash += net_revenue
         pos["quantity"] -= sell_qty
+        pos["entry_fees"] = max(0.0, pos.get("entry_fees", 0.0) - entry_fee_share)
 
         if pos["quantity"] < 1e-7:
             del self.positions[symbol]
@@ -1357,7 +1363,7 @@ class ProfessionalAccount:
             "price": fill_price,
             "commission": comm,
             "pnl": net_pnl,
-            "pnl_pct": (fill_price - avg_price) / avg_price * 100.0 if avg_price else 0.0,
+            "pnl_pct": net_pnl / (avg_price * sell_qty + entry_fee_share) * 100 if avg_price * sell_qty else 0.0,
             "strategy": strategy,
             "reason": reason or strategy,
             "status": "filled"
@@ -1366,11 +1372,13 @@ class ProfessionalAccount:
         return {"status": "filled", "trade": trade}
 
     def close_single_position(self, symbol: str, current_price: float, reason: str = "MANUAL_CLOSE") -> Optional[Dict[str, Any]]:
+        if not math.isfinite(current_price) or current_price <= 0:
+            return {"status": "rejected", "reason": "A valid price is required to close a paper position."}
         with self._lock:
             if symbol not in self.positions:
                 return None
             qty = self.positions[symbol]["quantity"]
-            return self._sell(symbol, qty, current_price, "manual", reason)
+            return self._sell(symbol, qty, current_price, self.positions[symbol].get("strategy", "manual"), reason)
 
     def check_risk_triggers(self, current_prices: Dict[str, float]) -> List[Dict[str, Any]]:
         closed_trades = []
@@ -1471,13 +1479,22 @@ class ProfessionalAccount:
 # MODERN TRADING INTERFACE (CUSTOMTKINTER DESKTOP)
 # =====================================================================
 class ModernTradingInterface:
-    """Revolutionary CustomTkinter Algorithmic Trading Workstation."""
+    """Paper trading workstation with explicit evidence and source status."""
 
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("LOKI PRO - Professional Trading Terminal")
-        self.root.geometry("1920x1080")
-        self.root.minsize(1600, 900)
+        screen_width, screen_height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        dpi_scale = self.root._get_window_scaling()
+        display_scale = max(0.75, min(dpi_scale, (screen_width - 60) / 1180,
+                                     (screen_height - 80) / 740))
+        # Respect high DPI where it fits; keep the complete terminal within a small screen.
+        ctk.set_widget_scaling(display_scale / dpi_scale)
+        ctk.set_window_scaling(display_scale / dpi_scale)
+        width = min(1600, int((screen_width - 60) / display_scale))
+        height = min(960, int((screen_height - 80) / display_scale))
+        self.root.geometry(f"{width}x{height}")
+        self.root.minsize(1180, 740)
         self.root.configure(fg_color=COLORS["bg_dark"])
         
         # Set customtkinter theme
@@ -1502,6 +1519,7 @@ class ModernTradingInterface:
         self.risk_manager = AdvancedRiskManager()
         self.learner = SelfImprovementEngine()
         self.guard = TradingGuard()
+        self.copilot = LokiCopilot()
 
         self.strategies = {
             "ml_ensemble": MLEnsembleStrategy(),
@@ -1518,18 +1536,30 @@ class ModernTradingInterface:
         self.audio_alerts_enabled = True
         self.selected_symbol = "BTC/USD"
         self.selected_strategy_var = tk.StringVar(value="josh")  # Josh's Strategy is default
+        self.active_strategy = "josh"
+        self.active_timeframe = "5m"
         self.current_prices: Dict[str, float] = self.market_sim.prices.copy()
         
         # Data Mode: simulated or real
         self.data_mode = "simulated"  # "simulated" or "real"
-        self.data_mode_var = tk.StringVar(value="simulated")
+        self.data_mode_var = tk.StringVar(value="SIM")
         self.ccxt_exchange = None
         self.real_market_data = RealMarketData()
         
         # Trading Mode: paper or live
         self.trading_mode = "paper"  # "paper" or "live"
-        self.trading_mode_var = tk.StringVar(value="paper")
+        self.trading_mode_var = tk.StringVar(value="PAPER")
         self.alpaca_client = None
+        self._real_bars: Dict[str, List[Dict[str, Any]]] = {}
+        self._real_bar_keys: Dict[str, str] = {}
+        self._bars_updated_at: Dict[str, float] = {}
+        self._quote_updated_at: Dict[str, float] = {}
+        self._last_real_poll = 0.0
+        self.latest_signal: Optional[Dict[str, Any]] = None
+        self.latest_backtest: Optional[Dict[str, Any]] = None
+        self._research_busy = False
+        self._data_generation = 0
+        self._data_lock = threading.RLock()
 
         # UI & Throttling
         self._last_chart_draw_time = 0.0
@@ -1563,6 +1593,9 @@ class ModernTradingInterface:
 
         # Register window close handler
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
+        self.root.bind("<Control-f>", lambda event: self.search_entry.focus_set())
+        self.root.bind("<Control-l>", lambda event: self._focus_copilot())
+        self.root.bind("<Escape>", lambda event: self._pause_pilot())
 
     # -----------------------------------------------------------------
     # SOUND EFFECTS (NATIVE WINDOWS AUDIO)
@@ -1593,11 +1626,11 @@ class ModernTradingInterface:
     # LAYOUT CONFIGURATION
     # -----------------------------------------------------------------
     def _create_layout(self):
-        self.root.grid_columnconfigure(0, weight=0, minsize=320)  # Watchlist
+        self.root.grid_columnconfigure(0, weight=0, minsize=245)  # Watchlist
         self.root.grid_columnconfigure(1, weight=1)              # Chart Center
-        self.root.grid_columnconfigure(2, weight=0, minsize=360)  # AI & Trading Deck
+        self.root.grid_columnconfigure(2, weight=0, minsize=315)  # AI & Trading Deck
         self.root.grid_rowconfigure(1, weight=1)                 # Main row
-        self.root.grid_rowconfigure(2, weight=0, minsize=320)    # Operations Deck
+        self.root.grid_rowconfigure(2, weight=0, minsize=270)    # Operations Deck
 
         self._build_header()
         self._build_watchlist_panel()
@@ -1609,173 +1642,61 @@ class ModernTradingInterface:
     # HEADER BAR
     # -----------------------------------------------------------------
     def _build_header(self):
-        header = ctk.CTkFrame(self.root, height=80, corner_radius=0, fg_color=COLORS["card_bg"])
-        header.grid(row=0, column=0, columnspan=3, sticky="new", padx=0, pady=0)
-        header.grid_propagate(False)
+        header = ctk.CTkFrame(self.root, corner_radius=0, fg_color=COLORS["card_bg"])
+        header.grid(row=0, column=0, columnspan=3, sticky="ew")
+        header.grid_columnconfigure(1, weight=1)
 
-        # Brand Section
-        brand_box = ctk.CTkFrame(header, fg_color="transparent")
-        brand_box.pack(side="left", padx=20, pady=12)
+        ctk.CTkLabel(header, text="LOKI / PAPER TERMINAL", font=ctk.CTkFont(size=20, weight="bold"),
+                     text_color=COLORS["accent_cyan"]).grid(row=0, column=0, sticky="w", padx=18, pady=(10, 3))
+        pills = ctk.CTkFrame(header, fg_color="transparent")
+        pills.grid(row=0, column=1, sticky="w", padx=10, pady=(10, 3))
+        self.data_source_pill = ctk.CTkLabel(pills, text="SIMULATED DATA", corner_radius=6,
+            fg_color="#332408", text_color=COLORS["warning"], padx=10, pady=4,
+            font=ctk.CTkFont(size=12, weight="bold"))
+        self.data_source_pill.pack(side="left", padx=4)
+        self.trading_mode_pill = ctk.CTkLabel(pills, text="PAPER ONLY", corner_radius=6,
+            fg_color="#064E3B", text_color=COLORS["success"], padx=10, pady=4,
+            font=ctk.CTkFont(size=12, weight="bold"))
+        self.trading_mode_pill.pack(side="left", padx=4)
+        self.status_badge = ctk.CTkLabel(pills, text="STANDBY", corner_radius=6,
+            text_color=COLORS["warning"], padx=10, font=ctk.CTkFont(size=12, weight="bold"))
+        self.status_badge.pack(side="left", padx=4)
+        ctk.CTkButton(header, text="HALT + CLOSE PAPER", command=self._emergency_halt,
+            fg_color=COLORS["danger_dim"], hover_color=COLORS["danger"], width=165,
+            height=32).grid(row=0, column=2, padx=18, pady=(10, 3))
 
-        title = ctk.CTkLabel(
-            brand_box,
-            text="LOKI PRO",
-            font=ctk.CTkFont(size=28, weight="bold"),
-            text_color=COLORS["accent_cyan"]
-        )
-        title.pack(side="left")
+        stats = ctk.CTkFrame(header, fg_color=COLORS["card_alt"], corner_radius=8)
+        stats.grid(row=1, column=0, columnspan=3, sticky="ew", padx=18, pady=5)
+        stats.grid_columnconfigure(2, weight=1)
+        self.hdr_equity_lbl = ctk.CTkLabel(stats, text="Paper equity: $25,000.00",
+            font=ctk.CTkFont(size=15, weight="bold"))
+        self.hdr_equity_lbl.grid(row=0, column=0, sticky="w", padx=12, pady=4)
+        self.hdr_pnl_lbl = ctk.CTkLabel(stats, text="Paper P&L: $0.00",
+            font=ctk.CTkFont(size=14), text_color=COLORS["text_primary"])
+        self.hdr_pnl_lbl.grid(row=0, column=1, sticky="w", padx=16, pady=4)
+        self.hdr_winrate_lbl = ctk.CTkLabel(stats, text="Win rate: awaiting closed paper trades",
+            font=ctk.CTkFont(size=12), text_color=COLORS["text_secondary"])
+        self.hdr_winrate_lbl.grid(row=0, column=2, sticky="e", padx=12, pady=4)
 
-        pill = ctk.CTkLabel(
-            brand_box,
-            text="v7.0",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            fg_color=COLORS["accent_purple"],
-            text_color="white",
-            corner_radius=8,
-            padx=10, pady=4
-        )
-        pill.pack(side="left", padx=10)
-
-        # Status Pills
-        pills_box = ctk.CTkFrame(header, fg_color="transparent")
-        pills_box.pack(side="left", padx=20, pady=12)
-
-        sim_pill = ctk.CTkLabel(
-            pills_box,
-            text="SIMULATED",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color=COLORS["warning_dim"],
-            text_color=COLORS["warning"],
-            corner_radius=8,
-            padx=12, pady=6
-        )
-        sim_pill.pack(side="left", padx=6)
-
-        self.trading_mode_pill = ctk.CTkLabel(
-            pills_box,
-            text="PAPER",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            fg_color=COLORS["success_dim"],
-            text_color=COLORS["success"],
-            corner_radius=8,
-            padx=12, pady=6
-        )
-        self.trading_mode_pill.pack(side="left", padx=6)
-
-        # Status Badge
-        self.status_badge = ctk.CTkLabel(
-            header,
-            text="● STANDBY",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=COLORS["warning"],
-            fg_color=COLORS["warning_dim"],
-            corner_radius=10,
-            padx=16, pady=8
-        )
-        self.status_badge.pack(side="left", padx=20)
-
-        # Ticker Stats (Enhanced)
-        stats_frame = ctk.CTkFrame(header, fg_color=COLORS["card_alt"], corner_radius=12)
-        stats_frame.pack(side="left", padx=20, pady=12)
-
-        self.hdr_equity_lbl = ctk.CTkLabel(stats_frame, text="$25,000.00", font=ctk.CTkFont(size=16, weight="bold"), text_color=COLORS["text_primary"])
-        self.hdr_equity_lbl.pack(side="left", padx=16)
-
-        divider = ctk.CTkLabel(stats_frame, text="|", font=ctk.CTkFont(size=16), text_color=COLORS["text_muted"])
-        divider.pack(side="left", padx=8)
-
-        self.hdr_pnl_lbl = ctk.CTkLabel(stats_frame, text="+$0.00", font=ctk.CTkFont(size=16, weight="bold"), text_color=COLORS["success"])
-        self.hdr_pnl_lbl.pack(side="left", padx=16)
-
-        divider2 = ctk.CTkLabel(stats_frame, text="|", font=ctk.CTkFont(size=16), text_color=COLORS["text_muted"])
-        divider2.pack(side="left", padx=8)
-
-        self.hdr_winrate_lbl = ctk.CTkLabel(stats_frame, text="0.0%", font=ctk.CTkFont(size=14), text_color=COLORS["text_secondary"])
-        self.hdr_winrate_lbl.pack(side="left", padx=16)
-
-        # Right Controls
         controls = ctk.CTkFrame(header, fg_color="transparent")
-        controls.pack(side="right", padx=20, pady=12)
-
-        # Data Mode Toggle
-        ctk.CTkLabel(controls, text="Data:", font=ctk.CTkFont(size=12, weight="bold"), text_color=COLORS["text_secondary"]).pack(side="left", padx=(0, 6))
-        self.data_mode_seg = ctk.CTkSegmentedButton(
-            controls,
-            values=["SIM", "REAL"],
-            variable=self.data_mode_var,
-            selected_color=COLORS["accent_cyan"],
-            unselected_color=COLORS["card_alt"],
-            height=38,
-            font=ctk.CTkFont(size=11, weight="bold"),
-            command=self._on_data_mode_change
-        )
-        self.data_mode_seg.pack(side="left", padx=8)
-
-        # Trading Mode Toggle
-        ctk.CTkLabel(controls, text="Trade:", font=ctk.CTkFont(size=12, weight="bold"), text_color=COLORS["text_secondary"]).pack(side="left", padx=(12, 6))
-        self.trading_mode_seg = ctk.CTkSegmentedButton(
-            controls,
-            values=["PAPER", "LIVE"],
-            variable=self.trading_mode_var,
-            selected_color=COLORS["success"],
-            unselected_color=COLORS["card_alt"],
-            height=38,
-            font=ctk.CTkFont(size=11, weight="bold"),
-            command=self._on_trading_mode_change
-        )
-        self.trading_mode_seg.pack(side="left", padx=8)
-
-        # Strategy Selector
-        ctk.CTkLabel(controls, text="Strategy:", font=ctk.CTkFont(size=12, weight="bold"), text_color=COLORS["text_secondary"]).pack(side="left", padx=(12, 6))
-        self.strategy_selector = ctk.CTkComboBox(
-            controls,
-            values=["josh", "ml_ensemble", "momentum", "mean_reversion", "breakout", "volatility_surface"],
-            variable=self.selected_strategy_var,
-            width=160,
-            height=38,
-            font=ctk.CTkFont(size=12),
-            command=self._on_strategy_change
-        )
-        self.strategy_selector.pack(side="left", padx=8)
-
-        # Start Button
-        self.start_btn = ctk.CTkButton(
-            controls,
-            text="▶ START",
-            command=self._toggle_bot,
-            fg_color=COLORS["success"],
-            hover_color=COLORS["success_dim"],
-            font=ctk.CTkFont(size=14, weight="bold"),
-            width=130, height=40,
-            corner_radius=10
-        )
-        self.start_btn.pack(side="left", padx=12)
-
-        # Emergency Button
-        self.emergency_btn = ctk.CTkButton(
-            controls,
-            text="⛔ HALT",
-            command=self._emergency_halt,
-            fg_color=COLORS["danger"],
-            hover_color=COLORS["danger_dim"],
-            font=ctk.CTkFont(size=14, weight="bold"),
-            width=130, height=40,
-            corner_radius=10
-        )
-        self.emergency_btn.pack(side="left", padx=8)
-
-        self.emergency_btn = ctk.CTkButton(
-            controls,
-            text="⛔ LIQUIDATE ALL",
-            command=self._emergency_halt,
-            fg_color=COLORS["danger"],
-            hover_color=COLORS["danger_dim"],
-            font=ctk.CTkFont(size=13, weight="bold"),
-            width=140, height=36
-        )
-        self.emergency_btn.pack(side="left", padx=4)
-
-
+        controls.grid(row=2, column=0, columnspan=3, sticky="ew", padx=18, pady=(1, 8))
+        ctk.CTkLabel(controls, text="Data", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 6))
+        self.data_mode_seg = ctk.CTkSegmentedButton(controls, values=["SIM", "REAL"],
+            variable=self.data_mode_var, command=self._on_data_mode_change, height=32,
+            selected_color=COLORS["accent_blue"])
+        self.data_mode_seg.pack(side="left", padx=(0, 16))
+        ctk.CTkLabel(controls, text="Strategy", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 6))
+        self.strategy_selector = ctk.CTkComboBox(controls, values=list(self.strategies),
+            variable=self.selected_strategy_var, command=self._on_strategy_change, width=150,
+            height=32, state="readonly")
+        self.strategy_selector.pack(side="left", padx=(0, 16))
+        self.start_btn = ctk.CTkButton(controls, text="START PAPER PILOT", command=self._toggle_bot,
+            fg_color="#087F5B", hover_color="#059669", width=155, height=32)
+        self.start_btn.pack(side="left", padx=(0, 10))
+        ctk.CTkButton(controls, text="Talk to Loki", command=self._focus_copilot,
+            fg_color=COLORS["accent_blue"], width=110, height=32).pack(side="left", padx=4)
+        ctk.CTkLabel(controls, text="Esc: pause  |  Ctrl+F: find  |  Ctrl+L: chat",
+            font=ctk.CTkFont(size=11), text_color=COLORS["text_secondary"]).pack(side="right", padx=4)
 
     # -----------------------------------------------------------------
     # LEFT PANEL: WATCHLIST
@@ -1861,28 +1782,31 @@ class ModernTradingInterface:
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color=COLORS["text_primary"]
         )
-        self.chart_title.pack(side="left")
+        self.chart_title.pack(anchor="w")
+
+        chart_controls = ctk.CTkFrame(top_bar, fg_color="transparent")
+        chart_controls.pack(fill="x", pady=(3, 0))
 
         # Timeframe pills
         self.tf_var = tk.StringVar(value="5m")
         tf_box = ctk.CTkSegmentedButton(
-            top_bar,
+            chart_controls,
             values=["1m", "5m", "15m", "1h"],
             variable=self.tf_var,
             selected_color=COLORS["accent_cyan"],
             height=26,
             command=self._on_timeframe_change
         )
-        tf_box.pack(side="left", padx=20)
+        tf_box.pack(side="left", padx=(0, 8))
 
         # Overlays
         self.show_ema_var = tk.BooleanVar(value=True)
         self.show_bb_var = tk.BooleanVar(value=True)
         self.show_rsi_var = tk.BooleanVar(value=True)
 
-        ctk.CTkCheckBox(top_bar, text="RSI (14)", variable=self.show_rsi_var, font=ctk.CTkFont(size=11), width=75, command=self._force_chart_redraw).pack(side="right", padx=6)
-        ctk.CTkCheckBox(top_bar, text="Bollinger Bands", variable=self.show_bb_var, font=ctk.CTkFont(size=11), width=110, command=self._force_chart_redraw).pack(side="right", padx=6)
-        ctk.CTkCheckBox(top_bar, text="EMA 9/21/50", variable=self.show_ema_var, font=ctk.CTkFont(size=11), width=95, command=self._force_chart_redraw).pack(side="right", padx=6)
+        ctk.CTkCheckBox(chart_controls, text="RSI", variable=self.show_rsi_var, font=ctk.CTkFont(size=11), width=50, command=self._force_chart_redraw).pack(side="left", padx=5)
+        ctk.CTkCheckBox(chart_controls, text="Bands", variable=self.show_bb_var, font=ctk.CTkFont(size=11), width=65, command=self._force_chart_redraw).pack(side="left", padx=5)
+        ctk.CTkCheckBox(chart_controls, text="EMA", variable=self.show_ema_var, font=ctk.CTkFont(size=11), width=55, command=self._force_chart_redraw).pack(side="left", padx=5)
 
         # Chart Frame
         chart_container = ctk.CTkFrame(panel, fg_color="#0D121F", corner_radius=6)
@@ -1892,7 +1816,7 @@ class ModernTradingInterface:
 
         # Figure with 3 subplots: Price, RSI, Volume
         self.fig = Figure(figsize=(8, 5.0), dpi=100, facecolor="#0D121F")
-        self.fig.subplots_adjust(left=0.08, right=0.96, top=0.95, bottom=0.10, hspace=0.12)
+        self.fig.subplots_adjust(left=0.14, right=0.97, top=0.95, bottom=0.10, hspace=0.12)
         gs = self.fig.add_gridspec(3, 1, height_ratios=[3.0, 1.2, 0.8])
         self.ax_price = self.fig.add_subplot(gs[0])
         self.ax_rsi = self.fig.add_subplot(gs[1], sharex=self.ax_price)
@@ -1923,13 +1847,13 @@ class ModernTradingInterface:
             text="Scans every symbol and places paper trades when conviction is high. Learning from closed P&L.",
             font=ctk.CTkFont(size=10),
             text_color=COLORS["text_secondary"],
-            wraplength=310,
+            wraplength=245,
             justify="left"
         ).pack(anchor="w", padx=14, pady=(0, 8))
 
         self.ai_pilot_btn = ctk.CTkButton(
             pilot_card,
-            text="LET AI TRADE BY ITSELF",
+            text="START PAPER PILOT",
             command=self._toggle_bot,
             fg_color=COLORS["success"],
             hover_color="#059669",
@@ -1941,7 +1865,7 @@ class ModernTradingInterface:
         # Train AI Button
         self.ai_train_btn = ctk.CTkButton(
             pilot_card,
-            text="🎓 TRAIN AI ON DATA",
+            text="COMPARE STRATEGIES",
             command=self._train_ai,
             fg_color=COLORS["accent_purple"],
             hover_color="#7C3AED",
@@ -1955,7 +1879,7 @@ class ModernTradingInterface:
             text="Idle — press the button to start autonomous paper trading.",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color=COLORS["warning"],
-            wraplength=310,
+            wraplength=245,
             justify="left"
         )
         self.ai_pilot_status.pack(anchor="w", padx=14, pady=(0, 4))
@@ -1965,7 +1889,7 @@ class ModernTradingInterface:
             text=self.learner.summary_line(),
             font=ctk.CTkFont(size=10),
             text_color=COLORS["text_secondary"],
-            wraplength=310,
+            wraplength=245,
             justify="left"
         )
         self.ai_learn_lbl.pack(anchor="w", padx=14, pady=(0, 4))
@@ -1976,7 +1900,7 @@ class ModernTradingInterface:
 
         self.ai_perf_score_lbl = ctk.CTkLabel(
             perf_card,
-            text="Performance Score: 50%",
+            text="Paper learning score: awaiting outcomes",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=COLORS["accent_cyan"]
         )
@@ -1998,23 +1922,23 @@ class ModernTradingInterface:
 
         self.signal_strength_bar = ctk.CTkProgressBar(signal_card, height=12, progress_color=COLORS["success"])
         self.signal_strength_bar.pack(fill="x", padx=10, pady=(0, 2))
-        self.signal_strength_bar.set(0.7)
+        self.signal_strength_bar.set(0.0)
 
         self.signal_strength_lbl = ctk.CTkLabel(
             signal_card,
-            text="Current: 70% (Strong)",
+            text="Awaiting a signal; scores are not win probabilities",
             font=ctk.CTkFont(size=10),
             text_color=COLORS["text_secondary"]
         )
         self.signal_strength_lbl.pack(anchor="w", padx=10, pady=(0, 8))
-        self.ai_perf_bar.set(0.5)
+        self.ai_perf_bar.set(0.0)
 
         self.ai_note_lbl = ctk.CTkLabel(
             pilot_card,
             text=self.learner.last_note,
             font=ctk.CTkFont(size=10),
             text_color=COLORS["accent_cyan"],
-            wraplength=310,
+            wraplength=245,
             justify="left"
         )
         self.ai_note_lbl.pack(anchor="w", padx=14, pady=(0, 12))
@@ -2039,12 +1963,12 @@ class ModernTradingInterface:
         cf_row = ctk.CTkFrame(radar_card, fg_color="transparent")
         cf_row.pack(fill="x", padx=14, pady=(8, 2))
         ctk.CTkLabel(cf_row, text="AI Conviction Score:", font=ctk.CTkFont(size=11)).pack(side="left")
-        self.ai_conf_num = ctk.CTkLabel(cf_row, text="50%", font=ctk.CTkFont(size=11, weight="bold"), text_color=COLORS["accent_cyan"])
+        self.ai_conf_num = ctk.CTkLabel(cf_row, text="—", font=ctk.CTkFont(size=11, weight="bold"), text_color=COLORS["accent_cyan"])
         self.ai_conf_num.pack(side="right")
 
         self.ai_conf_bar = ctk.CTkProgressBar(radar_card, height=10, progress_color=COLORS["accent_blue"])
         self.ai_conf_bar.pack(fill="x", padx=14, pady=(2, 6))
-        self.ai_conf_bar.set(0.50)
+        self.ai_conf_bar.set(0.0)
 
         # Factor breakdown
         self.factors_box = ctk.CTkFrame(radar_card, fg_color="#141B2D", corner_radius=6)
@@ -2064,7 +1988,7 @@ class ModernTradingInterface:
             font=ctk.CTkFont(size=10),
             text_color=COLORS["text_secondary"],
             justify="left",
-            wraplength=310
+            wraplength=245
         )
         self.ai_reason_txt.pack(fill="x", padx=14, pady=(2, 12))
 
@@ -2082,10 +2006,9 @@ class ModernTradingInterface:
 
         risk_row = ctk.CTkFrame(order_card, fg_color="transparent")
         risk_row.pack(fill="x", padx=14, pady=6)
-        ctk.CTkButton(risk_row, text="1% Risk", width=65, height=24, fg_color="#1E293B", command=lambda: self._calc_risk_qty(0.01)).pack(side="left", padx=2)
-        ctk.CTkButton(risk_row, text="2% Risk", width=65, height=24, fg_color="#1E293B", command=lambda: self._calc_risk_qty(0.02)).pack(side="left", padx=2)
-        ctk.CTkButton(risk_row, text="5% Risk", width=65, height=24, fg_color="#1E293B", command=lambda: self._calc_risk_qty(0.05)).pack(side="left", padx=2)
-        ctk.CTkButton(risk_row, text="Max", width=60, height=24, fg_color="#1E293B", command=lambda: self._calc_risk_qty(0.15)).pack(side="left", padx=2)
+        ctk.CTkButton(risk_row, text="0.5% risk", width=72, height=28, fg_color="#1E293B", command=lambda: self._calc_risk_qty(0.005)).pack(side="left", padx=2)
+        ctk.CTkButton(risk_row, text="1% risk", width=68, height=28, fg_color="#1E293B", command=lambda: self._calc_risk_qty(0.01)).pack(side="left", padx=2)
+        ctk.CTkButton(risk_row, text="2% risk", width=68, height=28, fg_color="#1E293B", command=lambda: self._calc_risk_qty(0.02)).pack(side="left", padx=2)
 
         sl_tp_row = ctk.CTkFrame(order_card, fg_color="transparent")
         sl_tp_row.pack(fill="x", padx=14, pady=4)
@@ -2111,7 +2034,7 @@ class ModernTradingInterface:
             self.rr_preview_box,
             text="Risk: $0.00  |  Reward: $0.00  |  R:R: 1:2.0",
             font=ctk.CTkFont(size=10, weight="bold"),
-            text_color=COLORS["accent_cyan"]
+            text_color=COLORS["accent_cyan"], wraplength=280
         )
         self.rr_preview_lbl.pack(padx=8, pady=6)
 
@@ -2136,24 +2059,27 @@ class ModernTradingInterface:
     # BOTTOM OPERATIONS DECK (TABBED)
     # -----------------------------------------------------------------
     def _build_bottom_operations_deck(self):
-        deck = ctk.CTkFrame(self.root, height=320, corner_radius=0, fg_color=COLORS["card_bg"])
+        deck = ctk.CTkFrame(self.root, height=270, corner_radius=0, fg_color=COLORS["card_bg"])
         deck.grid(row=2, column=0, columnspan=3, sticky="nsew", padx=6, pady=(3, 6))
         deck.grid_propagate(False)
 
         tabview = ctk.CTkTabview(deck, fg_color="transparent")
+        self.operations_tabs = tabview
         tabview.pack(fill="both", expand=True, padx=8, pady=(0, 6))
 
         tab_pos = tabview.add("Active Positions")
-        tab_scanner = tabview.add("AI Scanner Leaderboard")
-        tab_backtest = tabview.add("⚡ Quant Backtester")
-        tab_orders = tabview.add("Order History")
-        tab_analytics = tabview.add("Institutional Analytics")
-        tab_settings = tabview.add("Bot & Risk Settings")
-        tab_logs = tabview.add("Audit Logs")
+        tab_scanner = tabview.add("Scanner")
+        tab_backtest = tabview.add("Backtest")
+        tab_chat = tabview.add("Talk to Loki")
+        tab_orders = tabview.add("Orders")
+        tab_analytics = tabview.add("Analytics")
+        tab_settings = tabview.add("Risk Settings")
+        tab_logs = tabview.add("Audit Log")
 
         self._build_positions_tab(tab_pos)
         self._build_scanner_tab(tab_scanner)
         self._build_backtest_tab(tab_backtest)
+        self._build_copilot_tab(tab_chat)
         self._build_orders_tab(tab_orders)
         self._build_analytics_tab(tab_analytics)
         self._build_settings_tab(tab_settings)
@@ -2195,7 +2121,7 @@ class ModernTradingInterface:
 
     def _build_scanner_tab(self, parent):
         """Real-time Multi-Asset Scanner Leaderboard."""
-        cols = ("Symbol", "Category", "Live Price", "24h Chg", "Market Regime", "AI Conviction", "Signal", "Action")
+        cols = ("Symbol", "Category", "Source Price", "Window Chg", "Market Regime", "Signal Score", "Signal", "Readiness")
         self.scanner_tree = ttk.Treeview(parent, columns=cols, show="headings", style="Loki.Treeview", selectmode="browse")
 
         for c in cols:
@@ -2217,25 +2143,28 @@ class ModernTradingInterface:
         top_ctrls.pack(fill="x", padx=10, pady=4)
 
         ctk.CTkLabel(top_ctrls, text="Asset:", font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
-        self.bt_asset_combo = ctk.CTkComboBox(top_ctrls, values=list(self.market_sim.all_symbols.keys()), width=120)
+        self.bt_asset_combo = ctk.CTkComboBox(top_ctrls, values=list(self.market_sim.all_symbols.keys()), width=120, state="readonly")
         self.bt_asset_combo.set(self.selected_symbol)
         self.bt_asset_combo.pack(side="left", padx=4)
 
         ctk.CTkLabel(top_ctrls, text="Strategy:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10, 4))
-        self.bt_strat_combo = ctk.CTkComboBox(top_ctrls, values=list(self.strategies.keys()), width=150)
+        self.bt_strat_combo = ctk.CTkComboBox(top_ctrls, values=list(self.strategies.keys()), width=150, state="readonly")
         self.bt_strat_combo.set("ml_ensemble")
         self.bt_strat_combo.pack(side="left", padx=4)
 
         ctk.CTkButton(
-            top_ctrls, text="⚡ RUN QUANT BACKTEST", command=self._run_quant_backtest,
+            top_ctrls, text="Explore selected strategy", command=self._run_quant_backtest,
             fg_color=COLORS["accent_blue"], hover_color="#2563EB", font=ctk.CTkFont(size=12, weight="bold"), width=180
         ).pack(side="left", padx=15)
+        self.oos_btn = ctk.CTkButton(top_ctrls, text="OOS trend validation", command=self._run_oos_validation,
+            fg_color="#6843A8", hover_color="#7C3AED", width=165)
+        self.oos_btn.pack(side="left", padx=4)
 
         self.bt_result_lbl = ctk.CTkLabel(
-            top_ctrls, text="Select an asset & strategy, then click 'Run Quant Backtest'.",
-            font=ctk.CTkFont(size=11), text_color=COLORS["accent_cyan"]
+            parent, text="Explore the selected strategy, or validate the separate trend model with walk-forward holdouts and cost stress. Synthetic data cannot establish market profitability.",
+            font=ctk.CTkFont(size=11), text_color=COLORS["accent_cyan"], wraplength=1080, justify="left"
         )
-        self.bt_result_lbl.pack(side="left", padx=10)
+        self.bt_result_lbl.pack(anchor="w", padx=12, pady=3)
 
         # Backtest Plot Canvas
         bt_canvas_box = ctk.CTkFrame(parent, fg_color="#0D121F")
@@ -2278,7 +2207,7 @@ class ModernTradingInterface:
         self.orders_tree.tag_configure("red", foreground=COLORS["danger"])
 
     def _build_analytics_tab(self, parent):
-        grid = ctk.CTkFrame(parent, fg_color="transparent")
+        grid = ctk.CTkScrollableFrame(parent, fg_color="transparent")
         grid.pack(fill="both", expand=True, padx=20, pady=10)
 
         for col in range(4):
@@ -2290,7 +2219,7 @@ class ModernTradingInterface:
         
         ctk.CTkLabel(
             profit_card,
-            text="💰 REAL-TIME PROFIT CALCULATOR",
+            text="PAPER ACCOUNT / OBSERVED OUTCOMES",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color=COLORS["accent_cyan"]
         ).pack(anchor="w", padx=14, pady=(10, 4))
@@ -2311,11 +2240,11 @@ class ModernTradingInterface:
             ("Return On Capital", "return_pct", "0.00%"),
             ("Session Sharpe", "sharpe", "0.00"),
             ("Max Portfolio Drawdown", "drawdown", "0.00%"),
-            ("Win Rate %", "win_rate", "0.0%"),
-            ("Profit Factor", "profit_factor", "1.00"),
+            ("Observed Win Rate", "win_rate", "Awaiting closed trades"),
+            ("Profit Factor", "profit_factor", "—"),
             ("Avg Win", "avg_win", "$0.00"),
             ("Avg Loss", "avg_loss", "$0.00"),
-            ("Avg R:Multiple", "avg_r_multiple", "0.00"),
+            ("Avg win / avg loss", "avg_r_multiple", "—"),
         ]
 
         for i, (title, key, default) in enumerate(metrics_def):
@@ -2373,7 +2302,7 @@ class ModernTradingInterface:
         self.cfg_learn_var = tk.BooleanVar(value=True)
         ctk.CTkCheckBox(r_grid, text="Self-learn from closed trades", variable=self.cfg_learn_var).grid(row=3, column=0, columnspan=2, padx=6, pady=8, sticky="w")
 
-        ctk.CTkLabel(r_grid, text="Daily loss halt (%):").grid(row=4, column=0, padx=6, pady=4, sticky="w")
+        ctk.CTkLabel(r_grid, text="UTC daily loss halt (%):").grid(row=4, column=0, padx=6, pady=4, sticky="w")
         self.cfg_daily_loss = ctk.CTkEntry(r_grid, width=90)
         self.cfg_daily_loss.insert(0, "4.0")
         self.cfg_daily_loss.grid(row=4, column=1, padx=6, pady=4)
@@ -2390,7 +2319,7 @@ class ModernTradingInterface:
 
         ctk.CTkLabel(
             card_risk,
-            text="This app uses a simulated market. Risk limits only pause the paper bot — they are not a live broker kill-switch.",
+            text="Paper execution only. REAL data covers BTC, ETH and SOL from Binance (USDT quote). Signal scores are indicator agreement, not probabilities of profit. Compare strategies on research data before assessing independent results.",
             font=ctk.CTkFont(size=11),
             text_color=COLORS["warning"],
             wraplength=720,
@@ -2408,6 +2337,145 @@ class ModernTradingInterface:
         btn_bar.pack(side="right", fill="y", padx=6, pady=6)
         ctk.CTkButton(btn_bar, text="Clear", width=70, command=lambda: self.log_textbox.delete("1.0", "end")).pack(pady=4)
 
+    def _build_copilot_tab(self, parent):
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(1, weight=1)
+        prompts = ctk.CTkFrame(parent, fg_color="transparent")
+        prompts.grid(row=0, column=0, sticky="ew", padx=8, pady=3)
+        for label, prompt in (("Account overview", "How is my portfolio doing?"),
+                              ("Explain signal", "Explain the current strategy and signal"),
+                              ("Risk check", "Review my risk controls"),
+                              ("70% goal", "Can you guarantee a 70% win rate?")):
+            ctk.CTkButton(prompts, text=label, width=130, height=28,
+                fg_color=COLORS["card_alt"], command=lambda p=prompt: self._ask_copilot(p)
+            ).pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(prompts, text="Local assistant · reads this session · no trade execution",
+            font=ctk.CTkFont(size=11), text_color=COLORS["text_secondary"]
+        ).pack(side="right", padx=4)
+        self.copilot_transcript = ctk.CTkTextbox(parent, wrap="word", state="disabled",
+            font=ctk.CTkFont(size=13), fg_color="#0D121F")
+        self.copilot_transcript.grid(row=1, column=0, sticky="nsew", padx=8, pady=3)
+        composer = ctk.CTkFrame(parent, fg_color="transparent")
+        composer.grid(row=2, column=0, sticky="ew", padx=8, pady=4)
+        composer.grid_columnconfigure(0, weight=1)
+        self.copilot_entry = ctk.CTkEntry(composer, height=34,
+            placeholder_text="Ask about positions, signals, evidence or risk…")
+        self.copilot_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.copilot_entry.bind("<Return>", lambda event: self._ask_copilot())
+        ctk.CTkButton(composer, text="Ask Loki", width=110, height=34,
+            command=self._ask_copilot).grid(row=0, column=1)
+        self._append_copilot("Loki", "Ask me about your paper account, risk, or selected strategy. "
+            "I use the current session snapshot. I cannot place trades or guarantee returns.")
+
+    def _append_copilot(self, speaker: str, text: str):
+        self.copilot_transcript.configure(state="normal")
+        self.copilot_transcript.insert("end", f"{speaker}: {text}\n\n")
+        # Keep a long-running session responsive without storing an unbounded transcript.
+        if int(self.copilot_transcript.index("end").split(".")[0]) > 1200:
+            self.copilot_transcript.delete("1.0", "200.0")
+        self.copilot_transcript.see("end")
+        self.copilot_transcript.configure(state="disabled")
+
+    def _focus_copilot(self):
+        self.operations_tabs.set("Talk to Loki")
+        self.copilot_entry.focus_set()
+
+    def _ask_copilot(self, prompt: Optional[str] = None):
+        message = (prompt if prompt is not None else self.copilot_entry.get()).strip()
+        if not message:
+            return
+        self.copilot_entry.delete(0, "end")
+        self._focus_copilot()
+        self._append_copilot("You", message[:4000])
+        with self.account._lock:
+            positions = {symbol: dict(position) for symbol, position in self.account.positions.items()}
+        context = {
+            "metrics": self.account.get_metrics(self.current_prices),
+            "positions": positions, "prices": self.current_prices.copy(),
+            "symbol": self.selected_symbol, "strategy": self.active_strategy,
+            "signal": self.latest_signal, "data_source": self.data_mode,
+            "trading_mode": "paper", "is_running": self.is_running,
+            "as_of": (datetime.fromtimestamp(self._quote_updated_at[self.selected_symbol]).isoformat()
+                      if self.data_mode == "real" and self.selected_symbol in self._quote_updated_at
+                      else datetime.now().isoformat() if self.data_mode == "simulated" else "No source timestamp"),
+            "data_fresh": self._has_fresh_data(self.selected_symbol),
+            "quote_age_seconds": (max(0, time.time() - self._quote_updated_at[self.selected_symbol])
+                if self.data_mode == "real" and self.selected_symbol in self._quote_updated_at else None),
+            "risk": {"halted": self.guard.halted, "halt_reason": self.guard.halt_reason,
+                     "max_daily_loss_pct": self.guard.max_daily_loss_pct,
+                     "max_drawdown_pct": self.guard.max_drawdown_pct},
+            "validation": self.latest_backtest,
+        }
+        try:
+            reply = self.copilot.respond(message[:4000], context)
+            self._append_copilot("Loki", reply.text)
+        except Exception:
+            logger.exception("Copilot response failed")
+            self._append_copilot("Loki", "I could not read the session snapshot. Try again in a moment.")
+
+    def _pause_pilot(self):
+        self.is_running = False
+        self._sync_pilot_buttons()
+        self._log("Paper pilot paused; protective exits remain active.", "BOT")
+
+    def _get_active_bars(self, symbol: str, limit: int = 150):
+        if self.data_mode == "simulated":
+            return self.market_sim.get_ohlcv(symbol, limit)
+        if self._real_bar_keys.get(symbol) != self.active_timeframe:
+            return []
+        return list(self._real_bars.get(symbol, []))[-limit:]
+
+    def _can_enter(self, symbol: str) -> bool:
+        if self.guard.halted or self.trading_mode != "paper":
+            return False
+        return self._has_fresh_data(symbol)
+
+    def _has_fresh_data(self, symbol: str) -> bool:
+        if self.data_mode == "simulated":
+            return True
+        now = time.time()
+        interval = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}[self.active_timeframe]
+        with self._data_lock:
+            price = self.current_prices.get(symbol)
+            bars = self._real_bars.get(symbol, [])
+            return (symbol in self.real_market_data.symbols
+                    and price is not None and math.isfinite(price) and price > 0
+                    and quote_is_fresh(self._quote_updated_at.get(symbol), now)
+                    and quote_is_fresh(self._bars_updated_at.get(symbol), now, max_age=180)
+                    and self._real_bar_keys.get(symbol) == self.active_timeframe
+                    and bool(bars) and candle_is_current(bars[-1].get("timestamp"), now, interval))
+
+    def _poll_real_market(self):
+        """Worker-only I/O; publish only into the same locked source generation."""
+        if time.time() - self._last_real_poll < 5:
+            return
+        self._last_real_poll = time.time()
+        generation, timeframe = self._data_generation, self.active_timeframe
+        interval = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}[timeframe]
+        for symbol in self.real_market_data.symbols:
+            with self._data_lock:
+                if self.data_mode != "real" or generation != self._data_generation:
+                    return
+            price = self.real_market_data.fetch_ticker(symbol)
+            with self._data_lock:
+                if self.data_mode != "real" or generation != self._data_generation:
+                    return
+                if price and math.isfinite(price) and price > 0:
+                    self.current_prices = {**self.current_prices, symbol: price}
+                    self._quote_updated_at[symbol] = time.time()
+                need_bars = (self._real_bar_keys.get(symbol) != timeframe
+                    or time.time() - self._bars_updated_at.get(symbol, 0) > 60)
+            if need_bars:
+                bars = self.real_market_data.fetch_ohlcv(symbol, timeframe, 250)
+                with self._data_lock:
+                    if (self.data_mode != "real" or generation != self._data_generation
+                            or timeframe != self.active_timeframe):
+                        return
+                    if bars and candle_is_current(bars[-1].get("timestamp"), time.time(), interval):
+                        self._real_bars[symbol] = bars
+                        self._real_bar_keys[symbol] = timeframe
+                        self._bars_updated_at[symbol] = time.time()
+
     # -----------------------------------------------------------------
     # CONTINUOUS FEED & AUTONOMOUS MULTI-ASSET SCANNER
     # -----------------------------------------------------------------
@@ -2416,24 +2484,21 @@ class ModernTradingInterface:
             scan_tick_counter = 0
             while not self._shutdown.is_set():
                 try:
+                    with self._data_lock:
+                        generation, mode = self._data_generation, self.data_mode
                     # 1. Price Tick (Real or Simulated)
-                    if self.data_mode == "real" and self.real_market_data.connected:
-                        # Fetch real prices
+                    if mode == "real":
+                        if self.real_market_data.connected:
+                            self._poll_real_market()
                         new_prices = self.current_prices.copy()
-                        for sym in ["BTC/USD", "ETH/USD", "SOL/USD"]:
-                            price = self.real_market_data.fetch_ticker(sym)
-                            if price:
-                                new_prices[sym] = price
-                                # Update simulator to match
-                                self.market_sim.prices[sym] = price
                     else:
                         # Simulated prices
                         new_prices = self.market_sim.tick()
                     
-                    self.current_prices = new_prices
-
-                    # 2. Continuous SL/TP/Trailing Stop watchdog
-                    closed_trades = self.account.check_risk_triggers(new_prices)
+                    applied = self._apply_feed_prices(new_prices, generation, mode)
+                    if applied is None:
+                        continue
+                    closed_trades, halt = applied
                     for tr in closed_trades:
                         sound = "tp" if tr.get("pnl", 0) > 0 else "sl"
                         self._play_chime(sound)
@@ -2443,15 +2508,10 @@ class ModernTradingInterface:
                             "symbol": tr["symbol"], "action": "SELL", "price": tr["price"], "time": tr["timestamp"]
                         })
 
-                    metrics = self.account.get_metrics(new_prices)
-                    halt = self.guard.evaluate(metrics)
                     if halt and self.is_running:
                         self.is_running = False
                         self._log(f"AI PILOT HALTED: {halt}", "ALERT")
                         self.root.after(0, self._sync_pilot_buttons)
-
-                    # 3. Update Equity
-                    self.account.update_equity_curve(new_prices)
 
                     # 4. Multi-Asset Autonomous Scanner every 4 ticks (2 seconds)
                     scan_tick_counter += 1
@@ -2465,20 +2525,39 @@ class ModernTradingInterface:
                 except Exception as ex:
                     logger.error(f"Feed loop error: {ex}", exc_info=True)
 
-                time.sleep(0.5)
+                self._shutdown.wait(0.5)
 
         threading.Thread(target=feed_loop, daemon=True).start()
 
+    def _apply_feed_prices(self, prices, generation, mode):
+        """Reject a feed result from a source that changed during its I/O."""
+        with self._data_lock:
+            if generation != self._data_generation or mode != self.data_mode:
+                return None
+            self.current_prices = prices
+            protective = prices if mode == "simulated" else {
+                symbol: price for symbol, price in prices.items()
+                if quote_is_fresh(self._quote_updated_at.get(symbol), time.time())}
+            closed = self.account.check_risk_triggers(protective)
+            halt = self.guard.evaluate(self.account.get_metrics(prices))
+            self.account.update_equity_curve(prices)
+            return closed, halt
+
     def _run_multi_asset_scanner(self):
         """Scans all assets across crypto, stocks, and indices simultaneously."""
-        strat_key = self.selected_strategy_var.get()
+        strat_key = self.active_strategy
+        snapshot = (self._data_generation, strat_key, self.active_timeframe)
         strat_obj = self.strategies.get(strat_key, self.strategies["ml_ensemble"])
         scanner_results = []
         min_conf = self.learner.min_confidence
         weights = self.learner.regime_weights if strat_key == "ml_ensemble" else None
 
         for sym, d in self.market_sim.all_symbols.items():
-            ohlcv = self.market_sim.get_ohlcv(sym, 60)
+            if self.data_mode == "real" and not self._has_fresh_data(sym):
+                continue
+            ohlcv = self._get_active_bars(sym, 150)
+            if self.data_mode == "real":
+                ohlcv = ohlcv[:-1]  # The exchange's current candle is still forming.
             if len(ohlcv) < 30:
                 continue
             df = pd.DataFrame(ohlcv)
@@ -2487,8 +2566,13 @@ class ModernTradingInterface:
             else:
                 sig = strat_obj.generate_signal(df)
 
-            curr_p = self.current_prices.get(sym, d["base"])
-            chg = self.market_sim.get_change_pct(sym)
+            with self._data_lock:
+                if snapshot != (self._data_generation, self.active_strategy, self.active_timeframe):
+                    continue
+                curr_p = self.current_prices.get(sym)
+                if curr_p is None or not math.isfinite(curr_p) or curr_p <= 0:
+                    continue
+            chg = (curr_p / ohlcv[0]["close"] - 1) * 100 if ohlcv[0]["close"] else 0
             regime = sig.get("regime", "neutral") if sig else "ranging"
             conf = sig.get("confidence", 0.0) if sig else 0.0
             action = sig.get("action", "HOLD") if sig else "HOLD"
@@ -2498,40 +2582,52 @@ class ModernTradingInterface:
                 "change": chg, "regime": regime, "confidence": conf, "action": action, "sig": sig
             })
 
-            if self.is_running and self.multi_asset_scan_enabled and not self.guard.halted:
-                if action == "BUY" and sym not in self.account.positions and conf >= min_conf:
-                    if len(self.account.positions) < self.risk_manager.max_open_positions:
-                        eq = self.account.get_equity(self.current_prices)
-                        qty = self.risk_manager.calculate_position_size(eq, curr_p, sig.get("stop_loss"), conf)
-                        res = self.account.execute_trade(
-                            sym, "BUY", qty, curr_p, sig["strategy"],
-                            sig.get("stop_loss"), sig.get("take_profit"), sig.get("reason", "")
-                        )
-                        if res["status"] == "filled":
-                            self._play_chime("buy")
+            with self._data_lock:
+                scan_symbol = self.multi_asset_scan_enabled or sym == self.selected_symbol
+                same_snapshot = snapshot == (self._data_generation, self.active_strategy, self.active_timeframe)
+                if self.is_running and scan_symbol and same_snapshot and self._can_enter(sym):
+                    if action == "BUY" and sym not in self.account.positions and conf >= min_conf:
+                        if len(self.account.positions) < self.risk_manager.max_open_positions:
+                            eq = self.account.get_equity(self.current_prices)
+                            stop = sig.get("stop_loss")
+                            if stop is None:
+                                stop = curr_p * (1 - self.account.default_stop_loss_pct)
+                            qty = self.risk_manager.calculate_position_size(eq, curr_p, stop, conf,
+                                cash=self.account.cash, fee_fraction=self.account.commission_pct,
+                                slippage_fraction=self.account.slippage_bps / 10000)
+                            if qty <= 0:
+                                continue
+                            res = self.account.execute_trade(
+                                sym, "BUY", qty, curr_p, sig["strategy"],
+                                stop, sig.get("take_profit"), sig.get("reason", "")
+                            )
+                            if res["status"] == "filled":
+                                self._play_chime("buy")
+                                tr = res["trade"]
+                                self._log(f"AI BUY: {sym} x {qty:.4f} @ ${tr['price']:,.2f} | Conf: {conf:.0%}", "BOT")
+                                self.trade_markers.append({
+                                    "symbol": sym, "action": "BUY", "price": tr["price"], "time": tr["timestamp"]
+                                })
+                    elif action == "SELL" and sym in self.account.positions and conf >= min_conf:
+                        res = self.account.close_single_position(sym, curr_p, reason=f"AI_EXIT {sig.get('reason', '')}")
+                        if res and res.get("status") == "filled":
+                            self._play_chime("sell")
                             tr = res["trade"]
-                            self._log(f"AI BUY: {sym} x {qty:.4f} @ ${tr['price']:,.2f} | Conf: {conf:.0%}", "BOT")
+                            self.learner.record_closed_trade(tr.get("strategy", "unknown"), tr.get("pnl", 0.0), conf, sig.get("reason", ""))
+                            self._log(f"AI SELL: {sym} @ ${tr['price']:,.2f} | PnL ${tr.get('pnl' ,0):+,.2f}", "BOT")
                             self.trade_markers.append({
-                                "symbol": sym, "action": "BUY", "price": tr["price"], "time": tr["timestamp"]
+                                "symbol": sym, "action": "SELL", "price": tr["price"], "time": tr["timestamp"]
                             })
-                elif action == "SELL" and sym in self.account.positions and conf >= min_conf:
-                    res = self.account.close_single_position(sym, curr_p, reason=f"AI_EXIT {sig.get('reason', '')}")
-                    if res and res.get("status") == "filled":
-                        self._play_chime("sell")
-                        tr = res["trade"]
-                        self.learner.record_closed_trade(tr.get("strategy", "unknown"), tr.get("pnl", 0.0), conf, sig.get("reason", ""))
-                        self._log(f"AI SELL: {sym} @ ${tr['price']:,.2f} | PnL ${tr.get('pnl' ,0):+,.2f}", "BOT")
-                        self.trade_markers.append({
-                            "symbol": sym, "action": "SELL", "price": tr["price"], "time": tr["timestamp"]
-                        })
 
         # Update scanner leaderboard on main thread
-        self.root.after(0, lambda r=scanner_results: self._refresh_scanner_tree(r))
+        self.root.after(0, lambda r=scanner_results, key=snapshot: self._publish_scanner_results(r, key))
 
-        # Update active symbol AI radar
-        active_sig = next((x["sig"] for x in scanner_results if x["symbol"] == self.selected_symbol), None)
-        if active_sig:
-            self.root.after(0, lambda s=active_sig: self._update_ai_radar(s))
+    def _publish_scanner_results(self, results, snapshot):
+        if snapshot != (self._data_generation, self.active_strategy, self.active_timeframe):
+            return
+        self._refresh_scanner_tree(results)
+        active = next((row["sig"] for row in results if row["symbol"] == self.selected_symbol), None)
+        self._update_ai_radar(active or {})
 
     # -----------------------------------------------------------------
     # UI RENDERING & REFRESH (MAIN THREAD)
@@ -2547,27 +2643,39 @@ class ModernTradingInterface:
         now = time.time()
         metrics = self.account.get_metrics(self.current_prices)
 
-        self.hdr_equity_lbl.configure(text=f"Equity: ${metrics['equity']:,.2f}")
+        self.hdr_equity_lbl.configure(text=f"Paper equity: ${metrics['equity']:,.2f}")
         pnl_col = COLORS["success"] if metrics["total_pnl"] >= 0 else COLORS["danger"]
         self.hdr_pnl_lbl.configure(
-            text=f"P&L: ${metrics['total_pnl']:+,.2f} ({metrics['total_return_pct']:+.2f}%)",
+            text=f"Paper P&L: ${metrics['total_pnl']:+,.2f} ({metrics['total_return_pct']:+.2f}%)",
             text_color=pnl_col
         )
-        self.hdr_winrate_lbl.configure(text=f"Win Rate: {metrics['win_rate']:.1f}% ({metrics['winning_trades']}/{metrics['winning_trades'] + metrics['losing_trades']})")
+        self.hdr_winrate_lbl.configure(text=performance_evidence(
+            metrics['winning_trades'], metrics['winning_trades'] + metrics['losing_trades']))
+        if self.data_mode == "simulated":
+            source, source_color = "SIMULATED DATA", COLORS["warning"]
+        elif self._has_fresh_data(self.selected_symbol):
+            age = max(0, int(now - self._quote_updated_at.get(self.selected_symbol, now)))
+            source, source_color = f"BINANCE / USDT · fetched {age}s ago", COLORS["success"]
+        else:
+            source, source_color = "REAL DATA: UNAVAILABLE / STALE", COLORS["danger"]
+        self.data_source_pill.configure(text=source, text_color=source_color)
+        self.btn_buy.configure(state="normal" if self._can_enter(self.selected_symbol) else "disabled")
 
         # Watchlist Prices & Pulse
         for sym, w in self.watchlist_widgets.items():
             curr = self.current_prices.get(sym, 0.0)
             chg = self.market_sim.get_change_pct(sym)
             col = COLORS["success"] if chg >= 0 else COLORS["danger"]
-            w["price_lbl"].configure(text=f"${curr:,.2f}" if curr >= 10 else f"${curr:,.4f}")
-            w["change_lbl"].configure(text=f"{chg:+.2f}%", text_color=col)
+            available = self.data_mode == "simulated" or sym in self.current_prices
+            w["price_lbl"].configure(text=(f"${curr:,.2f}" if curr >= 10 else f"${curr:,.4f}") if available else "Unavailable")
+            w["change_lbl"].configure(text=f"{chg:+.2f}%" if self.data_mode == "simulated" else "USDT quote" if available else "No real feed", text_color=col)
 
         # Chart Title
         curr_sel = self.current_prices.get(self.selected_symbol, 0.0)
         sel_chg = self.market_sim.get_change_pct(self.selected_symbol)
         chg_sign = "+" if sel_chg >= 0 else ""
-        self.chart_title.configure(text=f"{self.selected_symbol}   ${curr_sel:,.2f}  ({chg_sign}{sel_chg:.2f}%)")
+        source_note = f"SIM · {chg_sign}{sel_chg:.2f}% session" if self.data_mode == "simulated" else "BINANCE / USDT"
+        self.chart_title.configure(text=f"{self.selected_symbol}   ${curr_sel:,.2f}  / {source_note}")
 
         # Throttled Chart Draw
         if now - self._last_chart_draw_time >= 1.5:
@@ -2583,23 +2691,24 @@ class ModernTradingInterface:
             self.ai_learn_lbl.configure(text=self.learner.summary_line())
             self.ai_note_lbl.configure(text=self.learner.last_note)
             if hasattr(self, "ai_perf_score_lbl"):
-                self.ai_perf_score_lbl.configure(text=f"Performance Score: {self.learner.performance_score:.1%}")
-                self.ai_perf_bar.set(self.learner.performance_score)
+                samples = self.learner.total_trades
+                self.ai_perf_score_lbl.configure(text=(f"Paper learning score: {self.learner.performance_score:.1%} ({samples} exits)"
+                    if samples >= 5 else f"Learning score: needs 5 exits ({samples}/5)"))
+                self.ai_perf_bar.set(self.learner.performance_score if samples >= 5 else 0)
                 perf_color = COLORS["success"] if self.learner.performance_score >= 0.6 else (COLORS["warning"] if self.learner.performance_score >= 0.4 else COLORS["danger"])
                 self.ai_perf_bar.configure(progress_color=perf_color)
 
     def _draw_chart(self):
         try:
-            # Get data based on data mode
-            if self.data_mode == "real" and self.real_market_data.connected:
-                bars = self.real_market_data.fetch_ohlcv(self.selected_symbol, '1h', 100)
-                if not bars or len(bars) < 15:
-                    # Fallback to simulated if real data fails
-                    bars = self.market_sim.get_ohlcv(self.selected_symbol, 70)
-            else:
-                bars = self.market_sim.get_ohlcv(self.selected_symbol, 70)
-            
-            if len(bars) < 15: return
+            bars = self._get_active_bars(self.selected_symbol, 100)
+            if len(bars) < 15:
+                for axis in (self.ax_price, self.ax_rsi, self.ax_vol):
+                    axis.clear()
+                    axis.set_facecolor("#0D121F")
+                self.ax_price.text(0.5, 0.5, "No candles from the selected source.\nReal data supports BTC, ETH and SOL only.",
+                    ha="center", va="center", color=COLORS["text_secondary"], transform=self.ax_price.transAxes)
+                self.canvas.draw_idle()
+                return
 
             df = pd.DataFrame(bars)
             times = df['timestamp']
@@ -2620,9 +2729,9 @@ class ModernTradingInterface:
             # Calculate bar width based on data
             if len(times) > 1:
                 time_range = (times.iloc[-1] - times.iloc[0]).total_seconds()
-                bar_width = time_range / len(times) * 0.5
+                bar_width = time_range / len(times) * 0.5 / 86400.0
             else:
-                bar_width = 3600  # 1 hour default
+                bar_width = 3600 / 86400.0  # Matplotlib dates are measured in days.
 
             # Draw professional candlesticks with bodies and wicks
             for i in range(len(df)):
@@ -2698,19 +2807,19 @@ class ModernTradingInterface:
                 self.ax_rsi.axhline(70, color=COLORS["danger"], linestyle="--", linewidth=2.0, alpha=0.9)
                 self.ax_rsi.axhline(30, color=COLORS["success"], linestyle="--", linewidth=2.0, alpha=0.9)
                 self.ax_rsi.set_ylim(10, 90)
-                self.ax_rsi.set_ylabel("RSI", color=COLORS["text_secondary"], fontsize=11, fontweight="bold")
+                self.ax_rsi.set_ylabel("RSI", color=COLORS["text_secondary"], fontsize=8, fontweight="bold")
                 self.ax_rsi.fill_between(times, rsi, 70, where=(rsi >= 70), color=COLORS["danger"], alpha=0.3)
                 self.ax_rsi.fill_between(times, rsi, 30, where=(rsi <= 30), color=COLORS["success"], alpha=0.3)
 
             # 3. Volume Subplot
             vol_colors = [COLORS["success"] if up else COLORS["danger"] for up in up_mask]
             self.ax_vol.bar(times, vols, color=vol_colors, alpha=0.7, width=bar_width, edgecolor="none")
-            self.ax_vol.set_ylabel("Vol", color=COLORS["text_secondary"], fontsize=11, fontweight="bold")
+            self.ax_vol.set_ylabel("Vol", color=COLORS["text_secondary"], fontsize=8, fontweight="bold")
 
             for ax in [self.ax_price, self.ax_rsi, self.ax_vol]:
                 ax.set_facecolor(COLORS["card_bg"])
                 ax.grid(True, linestyle=":", alpha=0.25, color=COLORS["card_border"])
-                ax.tick_params(colors=COLORS["text_secondary"], labelsize=11)
+                ax.tick_params(colors=COLORS["text_secondary"], labelsize=8)
                 for sp in ax.spines.values(): sp.set_color(COLORS["card_border"])
 
             self.ax_vol.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
@@ -2766,7 +2875,7 @@ class ModernTradingInterface:
                 r["symbol"], r["category"].upper(), f"${r['price']:,.2f}",
                 f"{r['change']:+.2f}%", r["regime"].upper(),
                 f"{r['confidence']:.0%}" if r["action"] != "HOLD" else "—",
-                r["action"], "TRADE" if r["action"] != "HOLD" else "—"
+                r["action"], "PAPER ELIGIBLE" if r["action"] == "BUY" and self._can_enter(r["symbol"]) and r["confidence"] >= self.learner.min_confidence else "WAIT"
             ), tags=(tag,))
 
     def _refresh_analytics_tab(self, m: Dict[str, Any]):
@@ -2778,15 +2887,18 @@ class ModernTradingInterface:
         lbls["return_pct"].configure(text=f"{m['total_return_pct']:+.2f}%", text_color=pnl_col)
         lbls["sharpe"].configure(text=f"{m['sharpe']:.2f}")
         lbls["drawdown"].configure(text=f"{m['max_drawdown_pct']:.2f}%", text_color=COLORS["danger"] if m["max_drawdown_pct"] > 5 else COLORS["text_primary"])
-        lbls["win_rate"].configure(text=f"{m['win_rate']:.1f}%")
-        lbls["profit_factor"].configure(text=f"{m['profit_factor']:.2f}")
+        closed = m['winning_trades'] + m['losing_trades']
+        lbls["win_rate"].configure(text=f"{m['win_rate']:.1f}% ({closed} exits)" if closed else "Awaiting exits")
+        factor = (f"{m['profit_factor']:.2f}" if m['losing_trades'] else "∞ (no losses)" if m['winning_trades'] else "—")
+        lbls["profit_factor"].configure(text=factor)
         lbls["avg_win"].configure(text=f"${m.get('avg_win', 0):,.2f}", text_color=COLORS["success"])
         lbls["avg_loss"].configure(text=f"${m.get('avg_loss', 0):,.2f}", text_color=COLORS["danger"])
         lbls["avg_r_multiple"].configure(text=f"{m.get('avg_r_multiple', 0):.2f}")
 
     def _update_ai_radar(self, sig: Dict[str, Any]):
+        self.latest_signal = dict(sig) if sig else None
         action = sig.get("action", "NEUTRAL")
-        conf = sig.get("confidence", 0.5)
+        conf = max(0.0, min(1.0, float(sig.get("confidence", 0.0))))
 
         if action == "BUY":
             col = COLORS["success"]
@@ -2802,10 +2914,10 @@ class ModernTradingInterface:
             text = "NEUTRAL / SCANNING"
 
         self.ai_action_lbl.configure(text=text, text_color=col, fg_color=bg)
-        self.ai_conf_num.configure(text=f"{conf:.0%}")
+        self.ai_conf_num.configure(text=f"{conf:.0%}" if sig else "—")
         self.ai_conf_bar.set(conf)
         self.ai_conf_bar.configure(progress_color=col)
-        self.ai_reason_txt.configure(text=sig.get("reason", "Autonomous multi-factor confluence confirmed."))
+        self.ai_reason_txt.configure(text=sig.get("reason", "No qualifying signal for the selected source and strategy."))
         
         # Update signal strength meter
         self.signal_strength_bar.set(conf)
@@ -2822,7 +2934,7 @@ class ModernTradingInterface:
             strength_text = "Weak"
             strength_color = COLORS["danger"]
         
-        self.signal_strength_lbl.configure(text=f"Current: {conf:.0%} ({strength_text})", text_color=strength_color)
+        self.signal_strength_lbl.configure(text=f"Score: {conf:.0%} ({strength_text}) · not a win probability" if sig else "Awaiting a qualifying signal", text_color=strength_color)
         self.signal_strength_bar.configure(progress_color=strength_color)
 
         # Factors
@@ -2858,16 +2970,18 @@ class ModernTradingInterface:
     def _run_quant_backtest(self):
         asset = self.bt_asset_combo.get()
         strat = self.bt_strat_combo.get()
-        bars = self.market_sim.get_ohlcv(asset, 150)
+        bars = self._get_active_bars(asset, 240)
 
         if len(bars) < 40:
             messagebox.showwarning("Data Limit", "Collecting more historical bars for backtest...")
             return
 
         res = QuantBacktester.run_backtest(bars, strategy_name=strat, initial_cash=25000.0)
+        self.latest_backtest = {**res, "data_source": self.data_mode, "symbol": asset,
+                                "strategy": strat, "evaluation": "exploratory_same_sample"}
 
         self.bt_result_lbl.configure(
-            text=f"Return: {res['return_pct']:+.2f}% | Win Rate: {res['win_rate']:.1f}% | Profit Factor: {res['profit_factor']:.2f} | Max DD: {res['max_drawdown']:.2f}% | Trades: {res['total_trades']}",
+            text=f"EXPLORATORY / {self.data_mode.upper()} · {asset} / {strat} | Return {res['return_pct']:+.2f}% | Wins {res['win_rate']:.1f}% | Max DD {res['max_drawdown']:.2f}% | {res['total_trades']} exits · not held out",
             text_color=COLORS["success"] if res["return_pct"] >= 0 else COLORS["danger"]
         )
 
@@ -2884,13 +2998,61 @@ class ModernTradingInterface:
         self.bt_ax.tick_params(colors="#94A3B8", labelsize=8)
 
         self.bt_canvas.draw()
-        self._log(f"Backtest executed for {asset} ({strat}): Net Return {res['return_pct']:+.2f}%, PF: {res['profit_factor']:.2f}", "QUANT")
+        self._log(f"Backtest executed for {asset} ({strat}): Net Return {res['return_pct']:+.2f}%, PF: {res['profit_factor']}", "QUANT")
+
+    def _run_oos_validation(self):
+        asset, source = self.bt_asset_combo.get(), self.data_mode
+        bars = self._get_active_bars(asset, 250)
+        if source == "real":
+            bars = bars[:-1]
+        if len(bars) < 161:
+            messagebox.showinfo("More data needed", "OOS trend validation needs at least 161 candles from the selected source.")
+            return
+        timeframe = self.active_timeframe
+        self.oos_btn.configure(state="disabled", text="VALIDATING…")
+        self.bt_result_lbl.configure(text="Running chronological walk-forward trend selection, next-open execution and cost stress…")
+
+        def run():
+            try:
+                differences = sorted((bars[index]["timestamp"] - bars[index - 1]["timestamp"]).total_seconds()
+                                     for index in range(1, len(bars)))
+                interval_seconds = differences[len(differences) // 2]
+                report = evaluate_strategy(bars, {"initial_capital": 25000.0,
+                    "periods_per_year": max(1, round(365 * 24 * 3600 / interval_seconds))})
+                report["assumptions"].append(f"Annualization uses the observed median candle interval: {interval_seconds:g} seconds.")
+                report["data_source"], report["symbol"] = source, asset
+                self.root.after(0, lambda: self._display_oos_report(report))
+            except Exception as error:
+                self.root.after(0, lambda message=str(error): self.bt_result_lbl.configure(text=f"Validation failed: {message}"))
+            finally:
+                self.root.after(0, lambda: self.oos_btn.configure(state="normal", text="OOS trend validation"))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _display_oos_report(self, report: Dict[str, Any]):
+        self.latest_backtest = report
+        result = report["summary"]
+        reasons = "; ".join(report["rejection_reasons"][:2]) or "Paper research candidate only; future returns remain unknown."
+        self.bt_result_lbl.configure(text=(
+            f"OOS TREND / {report['data_source'].upper()} · {report['symbol']} | "
+            f"Return {result['total_return']:+.2%} vs benchmark {report['benchmark']['total_return']:+.2%} | "
+            f"DD {result['max_drawdown']:.2%} | {result['total_trades']} exits | {report['status']}\n{reasons}"),
+            text_color=COLORS["accent_cyan"])
+        self.bt_ax.clear()
+        points = report["equity_curve"]
+        self.bt_ax.plot([point["equity"] for point in points], color=COLORS["accent_cyan"], label="OOS trend")
+        self.bt_ax.plot([point["benchmark_equity"] for point in points], color="#A1AEC3", linestyle="--", label="Buy & hold")
+        self.bt_ax.legend(facecolor="#141B2D", labelcolor="white", fontsize=8)
+        self.bt_ax.set_facecolor("#0D121F")
+        self.bt_ax.tick_params(colors="#A1AEC3", labelsize=8)
+        self.bt_canvas.draw_idle()
+        self._log(f"OOS trend report for {report['symbol']}: {report['status']}; return {result['total_return']:+.2%}", "RESEARCH")
 
     # -----------------------------------------------------------------
     # USER INTERACTIONS & CONTROLS
     # -----------------------------------------------------------------
     def _select_symbol(self, symbol: str):
         self.selected_symbol = symbol
+        self._update_ai_radar({})
         self._force_chart_redraw()
         for s, w in self.watchlist_widgets.items():
             w["card"].configure(fg_color=COLORS["card_border"] if s == symbol else COLORS["card_alt"])
@@ -2918,10 +3080,15 @@ class ModernTradingInterface:
         curr = self.current_prices.get(self.selected_symbol, 0.0)
         if curr <= 0: return
         eq = self.account.get_equity(self.current_prices)
-        alloc = eq * risk_fraction
-        qty = alloc / curr
+        try:
+            stop = float(self.sl_entry.get().strip()) if self.sl_entry.get().strip() else curr * (1 - self.account.default_stop_loss_pct)
+            qty = risk_sized_quantity(eq, self.account.cash, curr, stop, risk_fraction,
+                self.account.commission_pct, self.account.slippage_bps / 10000)
+        except ValueError as error:
+            messagebox.showerror("Risk sizing", str(error))
+            return
         self.qty_entry.delete(0, "end")
-        self.qty_entry.insert(0, f"{qty:.4f}")
+        self.qty_entry.insert(0, f"{math.floor(qty * 10000) / 10000:.4f}")
         self._update_risk_reward_preview()
 
     def _update_risk_reward_preview(self):
@@ -2933,16 +3100,21 @@ class ModernTradingInterface:
             sl_txt = self.sl_entry.get().strip()
             tp_txt = self.tp_entry.get().strip()
 
-            sl = float(sl_txt) if sl_txt else curr * 0.97
-            tp = float(tp_txt) if tp_txt else curr * 1.06
+            sl = float(sl_txt) if sl_txt else curr * (1 - self.account.default_stop_loss_pct)
+            tp = float(tp_txt) if tp_txt else curr * (1 + self.account.default_take_profit_pct)
+            if not all(math.isfinite(value) for value in (curr, qty, sl, tp)) or not 0 < sl < curr < tp:
+                self.rr_preview_lbl.configure(text="Use a stop below entry and a target above entry.", text_color=COLORS["danger"])
+                return
 
-            risk_dol = abs(curr - sl) * qty
-            reward_dol = abs(tp - curr) * qty
+            fee, slip = self.account.commission_pct, self.account.slippage_bps / 10000
+            entry_cost = curr * (1 + slip) * (1 + fee) * qty
+            risk_dol = entry_cost - sl * (1 - slip) * (1 - fee) * qty
+            reward_dol = tp * (1 - slip) * (1 - fee) * qty - entry_cost
             rr = (reward_dol / risk_dol) if risk_dol > 0 else 0.0
 
             col = COLORS["success"] if rr >= 1.5 else (COLORS["warning"] if rr >= 1.0 else COLORS["danger"])
             self.rr_preview_lbl.configure(
-                text=f"Risk: -${risk_dol:.2f}  |  Reward: +${reward_dol:.2f}  |  R:R: 1:{rr:.2f}",
+                text=f"Est. risk: ${risk_dol:.2f} | Reward: ${reward_dol:.2f}\nR:R 1:{rr:.2f} · incl. costs; gaps may exceed stop",
                 text_color=col
             )
         except Exception:
@@ -2968,6 +3140,12 @@ class ModernTradingInterface:
             )
 
     def _on_timeframe_change(self, value: str):
+        if self.data_mode == "simulated" and value != "5m":
+            self.tf_var.set("5m")
+            messagebox.showinfo("Synthetic candle interval", "The simulator uses five-minute historical candles. Select REAL data to use other candle intervals.")
+            return
+        self.active_timeframe = value
+        self._update_ai_radar({})
         mapping = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
         self.market_sim.set_bar_seconds(mapping.get(value, 300))
         self._log(f"Chart/bar interval set to {value}. New candles will form at that pace.", "UI")
@@ -2991,15 +3169,15 @@ class ModernTradingInterface:
             badge_col = COLORS["success"]
             badge_bg = COLORS["success_dim"]
         else:
-            label = "LET AI TRADE BY ITSELF"
+            label = "START PAPER PILOT"
             color = COLORS["success"]
             hover = "#059669"
             status = "Idle — press the button to start autonomous paper trading."
-            badge = "● STANDBY (FEED LIVE)"
+            badge = "● STANDBY"
             badge_col = COLORS["warning"]
             badge_bg = "#332408"
 
-        self.start_btn.configure(text="PAUSE AI" if self.is_running else "LET AI TRADE", fg_color=color, hover_color=hover)
+        self.start_btn.configure(text="PAUSE PAPER PILOT" if self.is_running else "START PAPER PILOT", fg_color=color, hover_color=hover)
         if hasattr(self, "ai_pilot_btn"):
             self.ai_pilot_btn.configure(text=label, fg_color=color, hover_color=hover)
             self.ai_pilot_status.configure(
@@ -3040,94 +3218,79 @@ class ModernTradingInterface:
         self._sync_pilot_buttons()
 
     def _train_ai(self):
-        """Train AI on historical data from all symbols - targets 80%+ reliability."""
-        self._log("Starting AI training on historical data...", "TRAINING")
+        """Compare exploratory strategies without altering measured learner outcomes."""
+        if self._research_busy:
+            return
+        asset = self.selected_symbol
+        bars = self._get_active_bars(asset, 240)
+        source = self.data_mode
+        if len(bars) < 40:
+            messagebox.showinfo("Research data", "At least 40 candles from the selected source are needed.")
+            return
+        self._research_busy = True
+        self.ai_train_btn.configure(state="disabled", text="COMPARING…")
+        self._log(f"Comparing strategies on {source} candles for {asset}. Learner outcomes remain separate.", "RESEARCH")
 
-        total_trades = 0
-        total_wins = 0
-        total_pnl = 0.0
+        def compare():
+            try:
+                results = [(name, QuantBacktester.run_backtest(bars, strategy_name=name))
+                           for name in self.strategies]
+                results.sort(key=lambda row: row[1].get("return_pct", -float("inf")), reverse=True)
+                lines = [f"{name}: {result['return_pct']:+.2f}% | {result['total_trades']} exits | "
+                         f"DD {result['max_drawdown']:.2f}%" for name, result in results]
+                text = (f"{asset} / {source.upper()} / {len(bars)} candles\n\n" + "\n".join(lines)
+                        + "\n\nExploratory results reuse the same sample. They do not prove future profitability "
+                        "or train the learner. Use OOS trend validation for a separate held-out assessment.")
+                self.root.after(0, lambda: messagebox.showinfo("Strategy comparison", text))
+            except Exception as error:
+                self._log(f"Strategy comparison failed: {error}", "ERROR")
+            finally:
+                self.root.after(0, self._finish_research)
+        threading.Thread(target=compare, daemon=True).start()
 
-        # Train on all strategies
-        strategy_names = ["josh", "ml_ensemble", "momentum", "mean_reversion", "breakout", "volatility_surface"]
-
-        for sym in self.market_sim.all_symbols.keys():
-            bars = self.market_sim.get_ohlcv(sym, 150)
-            if len(bars) < 40:
-                continue
-
-            for strat_name in strategy_names:
-                # Run backtest
-                res = QuantBacktester.run_backtest(bars, strategy_name=strat_name, initial_cash=25000.0)
-
-                # Simulate learning from backtest results
-                simulated_trades = res.get("total_trades", 0)
-                simulated_wins = int(simulated_trades * (res.get("win_rate", 0) / 100))
-                simulated_pnl = res.get("net_profit", 0)
-
-                # Add to learner stats (simulated)
-                st = self.learner._stat(strat_name)
-                st["trades"] += simulated_trades
-                st["wins"] += simulated_wins
-                st["pnl"] += simulated_pnl
-                st["confidence_sum"] += simulated_trades * 0.75  # Assume 75% confidence for backtest
-
-                total_trades += simulated_trades
-                total_wins += simulated_wins
-                total_pnl += simulated_pnl
-
-        # Update learner totals
-        self.learner.total_trades += total_trades
-        self.learner.total_wins += total_wins
-        self.learner.total_pnl += total_pnl
-        self.learner._update_performance_score()
-        
-        # Boost performance score if it's decent (simulated training gives it a head start)
-        if self.learner.performance_score > 0.5:
-            self.learner.performance_score = min(0.85, self.learner.performance_score + 0.15)
-        
-        self.learner.save()
-
-        self._log(
-            f"AI Training Complete: {total_trades} simulated trades, "
-            f"{total_wins} wins, ${total_pnl:+,.2f} P&L, "
-            f"Performance Score: {self.learner.performance_score:.1%}",
-            "TRAINING"
-        )
-
-        messagebox.showinfo(
-            "AI Training Complete",
-            f"Trained on {len(self.market_sim.all_symbols)} symbols × {len(strategy_names)} strategies\n\n"
-            f"Simulated Trades: {total_trades}\n"
-            f"Simulated Wins: {total_wins}\n"
-            f"Simulated P&L: ${total_pnl:+,.2f}\n"
-            f"Performance Score: {self.learner.performance_score:.1%}\n\n"
-            f"AI is now better prepared for auto-trading!"
-        )
+    def _finish_research(self):
+        self._research_busy = False
+        self.ai_train_btn.configure(state="normal", text="COMPARE STRATEGIES")
 
     def _emergency_halt(self):
-        if messagebox.askyesno("LIQUIDATE ALL", "LIQUIDATE ALL OPEN POSITIONS and halt auto-trading immediately?"):
+        if messagebox.askyesno("Close paper positions", "Halt the paper pilot and close all paper positions at the last available prices? Stale or missing quotes may prevent a close."):
             self.is_running = False
             self.guard.halted = True
             self.guard.halt_reason = "Manual liquidate-all"
             self._sync_pilot_buttons()
 
             symbols = list(self.account.positions.keys())
+            closed = 0
             for s in symbols:
                 curr = self.current_prices.get(s, 0.0)
-                self.account.close_single_position(s, curr, reason="EMERGENCY_HALT")
-                self._log(f"EMERGENCY LIQUIDATED: {s} @ ${curr:,.2f}", "ALERT")
+                if self.data_mode == "real" and not quote_is_fresh(self._quote_updated_at.get(s), time.time()):
+                    self._log(f"Paper close skipped for {s}: quote unavailable or stale.", "ALERT")
+                    continue
+                result = self.account.close_single_position(s, curr, reason="EMERGENCY_HALT")
+                if result and result.get("status") == "filled":
+                    closed += 1
+                    trade = result["trade"]
+                    self.learner.record_closed_trade(trade.get("strategy", "manual"), trade.get("pnl", 0), 0.5, "EMERGENCY_HALT")
+                    self._log(f"PAPER POSITION CLOSED: {s} @ ${curr:,.2f}", "ALERT")
 
             self._play_chime("sl")
             self._force_chart_redraw()
-            messagebox.showinfo("Liquidated", f"Closed {len(symbols)} position(s). Trading is halted.")
+            messagebox.showinfo("Paper pilot halted", f"Closed {closed} position(s). {len(self.account.positions)} remain open. Paper trading is halted.")
 
     def _manual_execute(self, action: str):
         try:
             sym = self.selected_symbol
             qty = float(self.qty_entry.get().strip())
             curr = self.current_prices.get(sym, 0.0)
+            if self.data_mode == "real" and not quote_is_fresh(self._quote_updated_at.get(sym), time.time()):
+                messagebox.showwarning("Price unavailable", "Wait for a fresh quote from the selected source.")
+                return
 
-            if qty <= 0 or curr <= 0:
+            if action == "BUY" and not self._can_enter(sym):
+                messagebox.showwarning("Paper entry blocked", "The risk guard or selected data source is not ready. Use fresh quotes and review the risk status.")
+                return
+
+            if not all(math.isfinite(value) and value > 0 for value in (qty, curr)):
                 messagebox.showerror("Invalid Input", "Please enter a valid positive quantity.")
                 return
 
@@ -3141,6 +3304,8 @@ class ModernTradingInterface:
 
             if res["status"] == "filled":
                 tr = res["trade"]
+                if action == "SELL":
+                    self.learner.record_closed_trade(tr.get("strategy", "manual"), tr.get("pnl", 0), 0.5, "MANUAL_ORDER")
                 self._play_chime("buy" if action == "BUY" else "sell")
                 self._log(f"MANUAL ORDER: {action} {sym} x {qty:.4f} @ ${tr['price']:,.2f}", "MANUAL")
                 self.trade_markers.append({
@@ -3162,6 +3327,9 @@ class ModernTradingInterface:
 
         sym = self.pos_tree.item(sel[0])["values"][0]
         curr = self.current_prices.get(sym, 0.0)
+        if self.data_mode == "real" and not quote_is_fresh(self._quote_updated_at.get(sym), time.time()):
+            messagebox.showwarning("Price unavailable", "Wait for a fresh quote from the selected source.")
+            return
 
         res = self.account.close_single_position(sym, curr, reason="MANUAL_UI_CLOSE")
         if res and res["status"] == "filled":
@@ -3173,58 +3341,52 @@ class ModernTradingInterface:
             messagebox.showinfo("Position Closed", f"Position in {sym} closed at ${tr['price']:,.2f} (P&L: ${tr['pnl']:+,.2f})")
 
     def _on_strategy_change(self, new_val: str):
+        self.active_strategy = new_val
+        self._update_ai_radar({})
         self._log(f"Active strategy set to: {new_val}", "STRATEGY")
 
     def _on_trading_mode_change(self, value: str):
-        """Handle trading mode switch between paper and live."""
+        """This execution path is paper-only until a real broker is implemented."""
+        self.trading_mode = "paper"
+        self.trading_mode_var.set("PAPER")
+        self.trading_mode_pill.configure(text="PAPER ONLY")
         if value == "LIVE":
-            if not messagebox.askyesno(
-                "Switch to Live Trading",
-                "⚠️ WARNING: Live trading uses REAL money!\n\n"
-                "Are you sure you want to switch to live trading?\n\n"
-                "This will connect to your Alpaca account and execute real trades.\n"
-                "Make sure your API keys are configured in .env.alpaca"
-            ):
-                self.trading_mode_var.set("PAPER")
-                return
-            
-            self.trading_mode = "live"
-            self.trading_mode_pill.configure(text="LIVE TRADING", fg_color="#7F1D1D", text_color=COLORS["danger"])
-            self._log("Switched to LIVE TRADING mode - REAL MONEY will be used!", "ALERT")
-            # TODO: Initialize Alpaca client here
-        else:
-            self.trading_mode = "paper"
-            self.trading_mode_pill.configure(text="PAPER TRADING", fg_color="#064E3B", text_color=COLORS["success"])
-            self._log("Switched to PAPER TRADING mode - Simulated trading only", "INFO")
+            messagebox.showinfo("Paper terminal", "This desktop account simulates fills. Live broker execution is not implemented here.")
 
     def _on_data_mode_change(self, value: str):
-        """Handle data mode switch between simulated and real."""
-        if value == "REAL":
-            if not CCXT_AVAILABLE:
-                messagebox.showerror(
-                    "CCXT Not Available",
-                    "CCXT library is not installed.\n\n"
-                    "Please run: pip install ccxt"
-                )
-                self.data_mode_var.set("SIM")
+        desired = "real" if value == "REAL" else "simulated"
+        if desired == self.data_mode:
+            return
+        if self.account.positions:
+            self.data_mode_var.set("REAL" if self.data_mode == "real" else "SIM")
+            messagebox.showinfo("Open paper positions", "Close open paper positions before changing price sources, so entries and exits use the same source.")
+            return
+        if desired == "real" and (not CCXT_AVAILABLE or not self.real_market_data.connect()):
+            self.data_mode_var.set("SIM")
+            messagebox.showerror("Real data unavailable", "A CCXT connection is required for Binance crypto data. The simulator remains selected.")
+            return
+        self._pause_pilot()
+        with self._data_lock:
+            if self.account.positions:
+                self.data_mode_var.set("REAL" if self.data_mode == "real" else "SIM")
+                messagebox.showinfo("Open paper positions", "A paper position opened during the source change. Close positions first.")
                 return
-            
-            if not self.real_market_data.connect():
-                messagebox.showerror(
-                    "Connection Failed",
-                    "Failed to connect to exchange.\n\n"
-                    "Please check your internet connection."
-                )
-                self.data_mode_var.set("SIM")
-                return
-            
-            self.data_mode = "real"
-            self._log("Switched to REAL market data - Using live prices from Binance!", "INFO")
-            self._force_chart_redraw()
-        else:
-            self.data_mode = "simulated"
-            self._log("Switched to SIMULATED market data - Using simulated prices", "INFO")
-            self._force_chart_redraw()
+            self._data_generation += 1
+            self.data_mode = desired
+            self.latest_backtest = None
+            self._last_real_poll = 0
+            self._real_bars.clear()
+            self._real_bar_keys.clear()
+            self._bars_updated_at.clear()
+            self._quote_updated_at.clear()
+            self.current_prices = {} if desired == "real" else self.market_sim.prices.copy()
+            if desired == "simulated":
+                self.active_timeframe = "5m"
+                self.tf_var.set("5m")
+                self.market_sim.set_bar_seconds(300)
+        self._update_ai_radar({})
+        self._force_chart_redraw()
+        self._log(f"Source changed to {desired.upper()}; pilot paused. Real feed supports BTC/ETH/SOL quoted in USDT.", "DATA")
 
     def _export_trades(self):
         """Export all trade history to CSV file."""
@@ -3277,19 +3439,34 @@ class ModernTradingInterface:
 
     def _save_settings(self):
         try:
-            self.risk_manager.risk_per_trade_pct = float(self.cfg_risk_pct.get()) / 100.0
-            self.account.trailing_stop_pct = float(self.cfg_trail_pct.get()) / 100.0
-            self.audio_alerts_enabled = self.cfg_audio_var.get()
-            self.multi_asset_scan_enabled = self.cfg_multiscan_var.get()
-            self.learner.enabled = self.cfg_learn_var.get()
-            self.guard.max_daily_loss_pct = float(self.cfg_daily_loss.get()) / 100.0
-            self.guard.max_drawdown_pct = float(self.cfg_max_dd.get()) / 100.0
-            self.learner.min_confidence = float(self.cfg_min_conf.get()) / 100.0
-            self.learner.save()
-            self._log("Settings applied.", "SETTINGS")
-            messagebox.showinfo("Saved", "Risk and AI settings applied.")
-        except ValueError:
-            messagebox.showerror("Error", "Invalid numeric settings value.")
+            settings = validate_risk_settings({
+                "risk_per_trade_pct": self.cfg_risk_pct.get(),
+                "stop_loss_pct": self.cfg_sl_pct.get(),
+                "take_profit_pct": self.cfg_tp_pct.get(),
+                "trailing_stop_pct": self.cfg_trail_pct.get(),
+                "daily_loss_pct": self.cfg_daily_loss.get(),
+                "max_drawdown_pct": self.cfg_max_dd.get(),
+                "min_confidence": self.cfg_min_conf.get(),
+            })
+        except ValueError as error:
+            messagebox.showerror("Invalid risk setting", str(error))
+            return
+        self.risk_manager.risk_per_trade_pct = settings["risk_per_trade_pct"]
+        self.account.default_stop_loss_pct = settings["stop_loss_pct"]
+        self.account.default_take_profit_pct = settings["take_profit_pct"]
+        self.account.trailing_stop_pct = settings["trailing_stop_pct"]
+        self.guard.max_daily_loss_pct = settings["daily_loss_pct"]
+        self.guard.max_drawdown_pct = settings["max_drawdown_pct"]
+        self.learner.min_confidence = settings["min_confidence"]
+        self.audio_alerts_enabled = self.cfg_audio_var.get()
+        self.multi_asset_scan_enabled = self.cfg_multiscan_var.get()
+        self.learner.enabled = self.cfg_learn_var.get()
+        self.learner.save()
+        self._save_session_state()
+        self._sync_pilot_buttons()
+        self._update_risk_reward_preview()
+        self._log("Validated settings applied. Defaults affect new orders.", "SETTINGS")
+        messagebox.showinfo("Settings applied", "Risk settings saved. Stop and target defaults apply to new orders.")
 
     def _on_tk_exception(self, exc_type, exc_value, exc_tb):
         """Route uncaught Tk callback exceptions into the in-app log instead of stderr."""
@@ -3340,6 +3517,7 @@ class ModernTradingInterface:
                             "stop_loss": pos.get("stop_loss"),
                             "take_profit": pos.get("take_profit"),
                             "strategy": pos.get("strategy", "manual"),
+                            "entry_fees": pos.get("entry_fees", 0.0),
                             "trailing_stop": pos.get("trailing_stop", True),
                             "entry_time": pos.get("entry_time").isoformat() if isinstance(pos.get("entry_time"), datetime) else None,
                         }
@@ -3353,12 +3531,16 @@ class ModernTradingInterface:
                 "risk_settings": {
                     "risk_per_trade_pct": self.risk_manager.risk_per_trade_pct,
                     "trailing_stop_pct": self.account.trailing_stop_pct,
+                    "default_stop_loss_pct": self.account.default_stop_loss_pct,
+                    "default_take_profit_pct": self.account.default_take_profit_pct,
                 },
                 "guard": {
                     "max_daily_loss_pct": self.guard.max_daily_loss_pct,
                     "max_drawdown_pct": self.guard.max_drawdown_pct,
                     "halted": self.guard.halted,
                     "halt_reason": self.guard.halt_reason,
+                    "day_key": self.guard.day_key,
+                    "day_start_equity": self.guard.day_start_equity,
                 },
                 "learner": {
                     "total_trades": self.learner.total_trades,
@@ -3391,12 +3573,13 @@ class ModernTradingInterface:
             state = json.loads(self.state_path.read_text(encoding="utf-8"))
 
             # Restore UI state
-            if "selected_symbol" in state:
+            if state.get("selected_symbol") in self.market_sim.all_symbols:
                 self.selected_symbol = state["selected_symbol"]
                 self._log(f"Restored selected symbol: {self.selected_symbol}", "SYSTEM")
 
-            if "selected_strategy" in state:
+            if state.get("selected_strategy") in self.strategies:
                 self.selected_strategy_var.set(state["selected_strategy"])
+                self.active_strategy = state["selected_strategy"]
                 self._log(f"Restored strategy: {state['selected_strategy']}", "SYSTEM")
 
             if "audio_enabled" in state:
@@ -3405,17 +3588,14 @@ class ModernTradingInterface:
             if "multi_scan_enabled" in state:
                 self.multi_asset_scan_enabled = state["multi_scan_enabled"]
 
-            if "data_mode" in state:
-                self.data_mode = state["data_mode"]
-
-            if "trading_mode" in state:
-                self.trading_mode = state["trading_mode"]
-                if self.trading_mode == "live":
-                    self.trading_mode_var.set("LIVE")
-                    self.trading_mode_pill.configure(text="LIVE TRADING", fg_color="#7F1D1D", text_color=COLORS["danger"])
-                else:
-                    self.trading_mode_var.set("PAPER")
-                    self.trading_mode_pill.configure(text="PAPER TRADING", fg_color="#064E3B", text_color=COLORS["success"])
+            self.data_mode = "real" if state.get("data_mode") == "real" else "simulated"
+            self.data_mode_var.set("REAL" if self.data_mode == "real" else "SIM")
+            if self.data_mode == "real":
+                self.current_prices = {}
+                self.real_market_data.connect()
+            self.trading_mode = "paper"
+            self.trading_mode_var.set("PAPER")
+            self.trading_mode_pill.configure(text="PAPER ONLY")
 
             # Restore account state
             if "account" in state:
@@ -3441,12 +3621,16 @@ class ModernTradingInterface:
                 rs = state["risk_settings"]
                 self.risk_manager.risk_per_trade_pct = rs.get("risk_per_trade_pct", 0.02)
                 self.account.trailing_stop_pct = rs.get("trailing_stop_pct", 0.02)
+                self.account.default_stop_loss_pct = rs.get("default_stop_loss_pct", 0.03)
+                self.account.default_take_profit_pct = rs.get("default_take_profit_pct", 0.06)
 
             # Restore guard state
             if "guard" in state:
                 g = state["guard"]
                 self.guard.max_daily_loss_pct = g.get("max_daily_loss_pct", 0.04)
                 self.guard.max_drawdown_pct = g.get("max_drawdown_pct", 0.12)
+                self.guard.day_key = g.get("day_key")
+                self.guard.day_start_equity = g.get("day_start_equity")
                 if g.get("halted"):
                     self.guard.halted = True
                     self.guard.halt_reason = g.get("halt_reason", "Unknown")
@@ -3462,6 +3646,19 @@ class ModernTradingInterface:
                 self.learner._update_performance_score()
 
             self._log(f"Session restored from {state.get('timestamp', 'unknown')}", "SYSTEM")
+            self.cfg_audio_var.set(self.audio_alerts_enabled)
+            self.cfg_multiscan_var.set(self.multi_asset_scan_enabled)
+            self.cfg_learn_var.set(self.learner.enabled)
+            for entry, value in ((self.cfg_risk_pct, self.risk_manager.risk_per_trade_pct),
+                                 (self.cfg_sl_pct, self.account.default_stop_loss_pct),
+                                 (self.cfg_tp_pct, self.account.default_take_profit_pct),
+                                 (self.cfg_trail_pct, self.account.trailing_stop_pct),
+                                 (self.cfg_daily_loss, self.guard.max_daily_loss_pct),
+                                 (self.cfg_max_dd, self.guard.max_drawdown_pct),
+                                 (self.cfg_min_conf, self.learner.min_confidence)):
+                entry.delete(0, "end")
+                entry.insert(0, f"{value * 100:g}")
+            self._sync_pilot_buttons()
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode session state (corrupted): {e}")

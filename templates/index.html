@@ -1,24 +1,68 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Loki Trading Platform</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
+  <title>Loki · Research workspace</title>
+  <link rel="stylesheet" href="/static/css/style.css"><script src="/static/js/workspace.js" defer></script>
 </head>
 <body>
-  <main class="container">
-    <h1>Loki Trading Platform</h1>
-    <p class="lead">Lightweight frontend for the Loki Trading Platform.</p>
-    <p>Version: {{ version }}</p>
-    <p>Visit the API health endpoint: <a href="/health">/health</a></p>
-    <section class="links">
-      <a class="card" href="/health">Health</a>
-      <a class="card" href="https://github.com/eleven-official/tradingbot">Source on GitHub</a>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Loki home"><span class="brand-mark">L</span> LOKI<span class="version">{{ version }}</span></a>
+    <p class="eyebrow nav-label">WORKSPACE</p>
+    <nav aria-label="Workspace sections"><a class="active" href="#overview"><span>◈</span> Overview</a><a href="#strategy-lab"><span>⌁</span> Strategy lab</a><a href="#risk-studio"><span>◇</span> Risk studio</a><a href="#copilot"><span>✧</span> Talk to Loki</a></nav>
+    <div class="sidebar-bottom"><span class="status-dot"></span> Research mode<p>No broker connected<br>No orders submitted</p><a href="https://github.com/eleven-official/tradingbot">View source ↗</a></div>
+  </aside>
+  <main id="overview">
+    <header class="topbar"><span>Trading intelligence / <strong>Workspace</strong></span><span class="pill">RESEARCH ONLY</span></header>
+    <section class="hero"><div><p class="eyebrow">LESS GUESSWORK. MORE EVIDENCE.</p><h1>Know your edge.</h1><p class="muted">Test the strategy. Understand the risk.<br>Make every decision easier to explain.</p></div><a class="button primary" href="#strategy-lab">Start a research run <span>↗</span></a></section>
+    <div class="metrics" aria-live="polite">
+      <article class="metric"><p>Out-of-sample return</p><strong id="return-metric">—</strong><small>After estimated trading costs</small></article>
+      <article class="metric"><p>Maximum drawdown</p><strong id="drawdown-metric">—</strong><small>Includes the initial equity peak</small></article>
+      <article class="metric"><p>Closed-trade win rate</p><strong id="winrate-metric">—</strong><small id="trades-metric">Run research to measure</small></article>
+      <article class="metric"><p>Research verdict</p><strong id="verdict-metric" class="small-value">Awaiting data</strong><small>Evidence, never a profit guarantee</small></article>
+    </div>
+    <section class="panel chart-panel">
+      <div class="section-title"><div><p class="eyebrow">PERFORMANCE EXPLORER</p><h2>Let the results speak.</h2></div><div class="legend"><span class="legend-key"></span> Strategy <span class="legend-key baseline"></span> Buy &amp; hold</div></div>
+      <div id="chart-empty" class="empty-state"><span>⌁</span><h3>Your next insight starts with data.</h3><p>Import OHLCV history below to compare the strategy<br>with a passive benchmark across unseen periods.</p></div>
+      <canvas id="equity-chart" hidden role="img" aria-label="Out-of-sample strategy and buy-and-hold equity comparison"></canvas><p id="chart-caption" class="caption">No sample profits or simulated account balances are displayed.</p>
     </section>
+    <section id="strategy-lab" class="panel anchor-section">
+      <div class="section-title"><div><p class="eyebrow">01 / STRATEGY LAB</p><h2>A harder test for your strategy.</h2></div><span class="tag">Walk-forward evaluation</span></div>
+      <p class="muted">An adaptive trend strategy selects parameters on earlier bars and tests on later bars. Entries use the next bar’s open, with volatility sizing, a trailing stop, and explicit costs.</p>
+      <form id="research-form">
+        <label class="upload-zone" for="data-file"><span class="upload-icon">↑</span><strong id="file-label">Choose historical OHLCV data</strong><span>CSV · timestamp, open, high, low, close, volume</span><input id="data-file" type="file" accept=".csv,text/csv" required></label>
+        <div class="form-grid">
+          <label>Starting capital<input name="initial_capital" type="number" min="1" max="1000000000" value="10000" required></label>
+          <label>Fee / side (bps)<input name="fee_bps" type="number" min="0" max="500" step="0.1" value="10" required></label>
+          <label>Slippage / side (bps)<input name="slippage_bps" type="number" min="0" max="500" step="0.1" value="5" required></label>
+          <label>Bars / year<select name="periods_per_year"><option value="365">Crypto · daily (365)</option><option value="252">Equities · daily (252)</option><option value="8760">Crypto · hourly (8,760)</option><option value="105120">Crypto · 5 minutes (105,120)</option></select></label>
+        </div>
+        <div class="form-footer"><p class="caption">161–5,000 ordered bars · ISO 8601 timestamps with timezone · one asset per file</p><button class="button primary" id="run-research" type="submit">Evaluate strategy ↗</button></div>
+      </form><p id="research-message" class="form-message" role="status"></p>
+      <div id="research-details" hidden>
+        <div class="report-grid"><div><h3>Evidence &amp; limitations</h3><ul id="evidence-list"></ul></div><div><h3>Execution cost stress</h3><div id="stress-table"></div></div></div>
+        <details><summary>Inspect test windows and selected parameters</summary><div class="table-scroll"><table><thead><tr><th>Test start</th><th>Test end</th><th>Parameters</th><th>Net return</th></tr></thead><tbody id="fold-table"></tbody></table></div></details>
+        <div class="report-footer"><p id="report-statistics" class="caption"></p><button class="button secondary" type="button" id="download-report">Export report ↓</button></div>
+      </div>
+    </section>
+    <div class="studio-grid">
+      <section id="risk-studio" class="panel anchor-section"><p class="eyebrow">02 / RISK STUDIO</p><h2>Size the risk first.</h2><p class="muted">Preview a cash-funded long position. Costs are included in the planned loss at your stop.</p>
+        <form id="risk-form"><div class="form-grid two-col">
+          <label>Account equity<input name="equity" type="number" min="1" value="10000" required></label><label>Entry price<input name="entry" type="number" min="0.00000001" step="any" value="100" required></label>
+          <label>Stop price<input name="stop" type="number" min="0.00000001" step="any" value="95" required></label><label>Risk budget (%)<input name="risk_pct" type="number" min="0.01" max="5" step="0.01" value="0.5" required></label>
+          <label>Exposure cap (%)<input name="max_exposure_pct" type="number" min="0.01" max="100" step="0.01" value="20" required></label><label>Fee / side (bps)<input name="fee_bps" type="number" min="0" max="1000" step="0.1" value="10" required></label>
+          <label>Slippage / side (bps)<input name="slippage_bps" type="number" min="0" max="1000" step="0.1" value="5" required></label>
+        </div><button class="button secondary" type="submit">Calculate position →</button></form>
+        <div id="risk-result" class="risk-result" role="status">Set an entry and stop to preview your position.</div><p class="caption">Stops can slip or gap. Existing positions and exchange lot sizes require separate checks. All amounts use the currency of your inputs.</p>
+      </section>
+      <section id="copilot" class="panel copilot-panel anchor-section">
+        <div class="section-title"><div><p class="eyebrow">03 / TALK TO LOKI</p><h2>A clearer second opinion.</h2></div><span class="copilot-mark">✧</span></div><p class="muted">Ask about your latest research, position sizing, or the evidence needed before paper trading.</p>
+        <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-label="Conversation with Loki"><div class="chat-message assistant"><span>LOKI</span><p>I can explain your research and risk in plain language. Import a dataset to give us something concrete to discuss.</p></div></div>
+        <div id="chat-prompts" class="chat-prompts"><button type="button" data-prompt="Explain the strategy">Explain the strategy</button><button type="button" data-prompt="Can you guarantee a 70% win rate?">About the 70% target</button><button type="button" data-prompt="What should I test next?">What to test next</button></div>
+        <form id="chat-form" class="chat-form"><label class="sr-only" for="chat-input">Message Loki</label><input id="chat-input" maxlength="2000" placeholder="Ask Loki a question…" required autocomplete="off"><button class="button primary" type="submit" aria-label="Send message">↑</button></form><p class="caption">Read-only local explanations · no external AI service · no trade execution</p>
+      </section>
+    </div>
+    <footer>Loki Research Workspace <span>Testable ideas. Visible assumptions. No guaranteed returns.</span></footer>
   </main>
-  <footer>
-    <small>Deployed from eleven-official/tradingbot</small>
-  </footer>
 </body>
 </html>
