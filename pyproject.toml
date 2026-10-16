@@ -13,6 +13,15 @@ authors = [
     {name = "Loki Trading Systems", email = "support@lokitrading.ai"}
 ]
 keywords = ["trading", "algorithmic-trading", "machine-learning", "finance", "quantitative-finance"]
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "jinja2>=3.1.2",
+    "aiofiles>=23.1.0",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0.0",
+    "structlog>=24.1.0",
+]
 
 [project.urls]
 Homepage = "https://lokitrading.ai"
