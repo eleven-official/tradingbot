@@ -66,6 +66,53 @@ class StrategyCouncilTests(unittest.TestCase):
         self.assertIn("do not prove", catalyst["reason"])
 
 
+    def test_missing_market_context_cannot_be_reported_as_aligned(self):
+        report = build_strategy_council(
+            strategy="Trend strategy", signal="BUY", sentiment=None, regime=None,
+        )
+        self.assertEqual(report["decision"], "REVIEW")
+        self.assertEqual(report["members"][3]["stance"], "NEEDS_EVIDENCE")
+        self.assertIn("unavailable", report["members"][3]["reason"])
+
+    def test_neutral_sentiment_and_missing_trend_raise_evidence_gaps(self):
+        report = build_strategy_council(
+            strategy="Trend strategy", signal="SELL", sentiment="Neutral",
+            regime="RANGE", trend_composite=float("nan"),
+        )
+        self.assertEqual(report["decision"], "REVIEW")
+        skeptic = report["members"][3]["reason"]
+        self.assertIn("Sentiment is neutral", skeptic)
+        self.assertIn("Market trend evidence is unavailable", skeptic)
+
+    def test_market_watcher_includes_named_trend_components(self):
+        report = build_strategy_council(
+            strategy="Trend strategy", signal="HOLD", sentiment="Bullish",
+            regime="TRENDING", trend_composite=0.4,
+            trend_components={"ema_alignment": 0.8, "breadth": -0.2},
+            conditions=["above VWAP"],
+        )
+        evidence = report["members"][1]["evidence"]
+        self.assertTrue(any("ema_alignment: +0.80" in item for item in evidence))
+        self.assertTrue(any("breadth: -0.20" in item for item in evidence))
+
+    def test_optional_collection_inputs_accept_none_and_single_strings(self):
+        report = build_strategy_council(
+            strategy="Trend strategy", signal="HOLD", sentiment="Neutral",
+            regime="RANGE", conditions="inside opening range", recent_blockers=None,
+        )
+        self.assertEqual(report["decision"], "WAIT")
+        self.assertIn("inside opening range", report["members"][1]["evidence"])
+
+    def test_blocker_string_is_preserved_as_one_reason(self):
+        report = build_strategy_council(
+            strategy="Trend strategy", signal="BUY", sentiment="Bullish",
+            regime="TRENDING", trend_composite=0.7,
+            recent_blockers="Risk gate blocked candidate",
+        )
+        self.assertEqual(report["decision"], "REVIEW")
+        self.assertIn("Risk gate blocked candidate", report["members"][3]["reason"])
+
+
 if __name__ == "__main__":
     unittest.main()
 
