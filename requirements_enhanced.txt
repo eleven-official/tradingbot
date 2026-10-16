@@ -3,7 +3,7 @@
 
 # UI Framework
 customtkinter>=5.2.0
-tkinter  # Built-in, but listed for reference
+# tkinter is provided by the system Python distribution, not PyPI.
 
 # Data Analysis & Visualization
 pandas>=2.0.0
