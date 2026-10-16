@@ -8,6 +8,7 @@
   let dataName = "Mixed regimes · demo";
   let evaluation = null;
   let latestPaper = null;
+  let latestAgentPaper = null;
 
   const money = (value, digits = 2) => new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
   const percent = (value) => `${value >= 0 ? "+" : "−"}${Math.abs(value * 100).toFixed(2)}%`;
@@ -186,7 +187,7 @@
     setText("metricWinRate", holdout.tradeCount ? `${(holdout.winRate * 100).toFixed(1)}% profitable trades` : "No trades in untouched period");
     setText("metricCosts", money(holdout.totalCosts));
     setText("metricReturnNote", `Buy & hold: ${percent(holdout.benchmark.returnPct)} · after costs`);
-    setText("strategyStatus", `Frozen rules · ${holdout.tradeCount} test trades`);
+    setText("strategyStatus", result.agentVersion ? `AI paper agent · ${holdout.strategyName}` : `Frozen rules · ${holdout.tradeCount} test trades`);
     $("resultsPanel").hidden = false;
     setText("resultReturn", percent(holdout.returnPct));
     setText("resultBaseline", percent(holdout.benchmark.returnPct));
@@ -232,7 +233,7 @@
       evaluation = LAB.evaluate(bars, costOptions());
       const holdout = evaluation.holdout;
       const runId = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-      const rows = holdout.trades.map((trade) => ({ ...trade, runId, runAt: new Date().toISOString(), source: dataSource, dataset: dataName }));
+      const rows = holdout.trades.map((trade) => ({ ...trade, runId, runAt: new Date().toISOString(), source: dataSource, dataset: dataName, actor: "fixed-rules" }));
       const next = readJournal().concat(rows);
       if (!saveJournal(next)) return;
       latestPaper = { equity: holdout.finalEquity, pnl: holdout.totalNetPnl, count: rows.length, source: dataName, at: new Date().toISOString() };
@@ -243,6 +244,104 @@
       setText("journalSource", `${dataName} · ${dateLabel(evaluation.splitDate)} to ${dateLabel(evaluation.endDate)}`);
       goTo("journal");
     } catch (error) { setText("journalSource", error.message || "Paper replay could not run."); }
+  }
+
+  function renderAgentCandidates(state) {
+    const root = $("agentCandidateList");
+    if (!root) return;
+    root.replaceChildren();
+    const label = document.createElement("span");
+    label.className = "eyebrow";
+    label.textContent = "TRAINING-ONLY CANDIDATE REVIEW";
+    root.append(label);
+    const decision = document.createElement("p");
+    decision.textContent = state?.selectionReason || "No selection yet. The holdout stays hidden from the selector.";
+    root.append(decision);
+    if (!state?.candidates?.length) return;
+    const table = document.createElement("div");
+    table.className = "agentCandidateTable";
+    for (const candidate of state.candidates) {
+      const row = document.createElement("div");
+      row.className = "agentCandidateRow";
+      const name = document.createElement("b");
+      name.textContent = candidate.name;
+      const stats = document.createElement("span");
+      stats.textContent = `Train ${percent(candidate.trainingReturnPct)} · DD ${percent(-candidate.trainingDrawdown)} · ${candidate.trainingTrades} trades · expectancy ${money(candidate.trainingExpectancy)}`;
+      const status = document.createElement("em");
+      status.textContent = candidate.strategyId === state.selectedStrategyId ? "SELECTED" : candidate.eligible ? "QUALIFIED" : "NO PASS";
+      status.classList.toggle("selected", candidate.strategyId === state.selectedStrategyId);
+      row.append(name, stats, status);
+      table.append(row);
+    }
+    root.append(table);
+  }
+
+  function updateAgentPaper(state) {
+    if (!state) {
+      setText("agentEquity", money(10000));
+      setText("agentPnl", money(0));
+      setText("agentTrades", "0");
+      setText("agentChoice", "Waiting");
+      setText("agentRule", "Training data only");
+      setText("agentPaperStatus", "Waiting for an agent replay.");
+      renderAgentCandidates(null);
+      return;
+    }
+    setText("agentEquity", money(state.equity));
+    setText("agentPnl", money(state.pnl));
+    $("agentPnl").classList.toggle("positive", state.pnl > 0);
+    $("agentPnl").classList.toggle("negative", state.pnl < 0);
+    setText("agentTrades", String(state.count));
+    setText("agentChoice", state.selectedStrategyName);
+    setText("agentRule", `Agent v${state.agentVersion} · ${state.source}`);
+    setText("agentPaperStatus", `${state.dataset} · holdout ${dateLabel(state.splitDate)}–${dateLabel(state.endDate)} · ${state.count} simulated trades`);
+    renderAgentCandidates(state);
+  }
+
+  function runAgentPaper() {
+    try {
+      const started = performance.now();
+      const result = LAB.agentEvaluate(bars, costOptions());
+      const holdout = result.holdout;
+      const runAt = new Date().toISOString();
+      const runId = `agent-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      const rows = holdout.trades.map((trade) => ({
+        ...trade,
+        runId,
+        runAt,
+        source: dataSource,
+        dataset: dataName,
+        actor: "ai-agent",
+        agentVersion: result.agentVersion,
+        selectedStrategyId: result.selectedStrategyId,
+        selectionReason: result.selectionReason,
+      }));
+      if (!saveJournal(readJournal().concat(rows))) return;
+      latestAgentPaper = {
+        equity: holdout.finalEquity,
+        pnl: holdout.totalNetPnl,
+        count: rows.length,
+        source: dataSource,
+        dataset: dataName,
+        splitDate: result.splitDate,
+        endDate: result.endDate,
+        selectedStrategyId: result.selectedStrategyId,
+        selectedStrategyName: result.selectedStrategyName,
+        selectionReason: result.selectionReason,
+        agentVersion: result.agentVersion,
+        candidates: result.candidates,
+        at: runAt,
+      };
+      try { localStorage.setItem("loki-ai-paper-v1", JSON.stringify(latestAgentPaper)); }
+      catch (_) { setText("agentPaperStatus", "The agent ran, but browser storage could not save its decision."); }
+      updateAgentPaper(latestAgentPaper);
+      updateOverview(result);
+      updateCouncil(result);
+      setText("runStatus", `Agent replay complete · ${bars.length} bars · ${Math.round(performance.now() - started)} ms`);
+      goTo("paper");
+    } catch (error) {
+      setText("agentPaperStatus", error.message || "The paper agent could not complete this replay.");
+    }
   }
 
   function updatePaper(state) {
@@ -261,7 +360,7 @@
     if (!rows.length) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 6;
+      td.colSpan = 7;
       td.className = "emptyTable";
       td.textContent = "No paper trades yet. Run a replay to create your first journal entry.";
       tr.append(td);
@@ -272,13 +371,15 @@
       const dates = document.createElement("td");
       dates.textContent = `${dateLabel(trade.entryDate)} → ${dateLabel(trade.exitDate)}`;
       const side = document.createElement("td");
-      const pill = document.createElement("span"); pill.className = "sidePill"; pill.textContent = "LONG"; side.append(pill);
+      const pill = document.createElement("span"); pill.className = "sidePill"; pill.textContent = trade.actor === "ai-agent" ? "AI · LONG" : "RULES · LONG"; side.append(pill);
+      const strategy = document.createElement("td");
+      strategy.textContent = `${trade.strategyName || "Trend continuation"} · ${trade.actor === "ai-agent" ? "AGENT" : "FROZEN"}`;
       const prices = document.createElement("td");
       prices.textContent = `${money(trade.entryPrice, 3)} → ${money(trade.exitPrice, 3)}`;
       const reason = document.createElement("td"); reason.textContent = trade.exitReason;
       const costs = document.createElement("td"); costs.textContent = money(trade.costs);
       const pnl = document.createElement("td"); pnl.textContent = money(trade.netPnl); pnl.className = trade.netPnl > 0 ? "pnlPositive" : trade.netPnl < 0 ? "pnlNegative" : "";
-      tr.append(dates, side, prices, reason, costs, pnl);
+      tr.append(dates, side, strategy, prices, reason, costs, pnl);
       body.append(tr);
     }
     const net = rows.reduce((sum, row) => sum + Number(row.netPnl || 0), 0);
@@ -307,6 +408,12 @@
     const gross = h.totalNetPnl + h.totalCosts;
     setText("councilRisk", `${h.tradeCount} holdout trades. Peak-to-trough drawdown was ${percent(-h.maxDrawdown)} after costs. The model charged ${money(h.totalCosts)}; estimated pre-cost trade P&L was ${money(gross)}.`);
     setText("councilSkeptic", dataSource === "synthetic demo" ? `The chosen ${regime.label} path is synthetic. The holdout has ${h.tradeCount} trades; costs and random seed are fixed. This is not external market evidence.` : `The held-out segment contains ${h.tradeCount} trades. Verify timestamp, split and market coverage; one symbol and sample cannot establish robustness.`);
+    if (result.agentVersion) {
+      setText("councilChair", `Agent ${result.selectedStrategyName} was selected using the earlier training segment only. On the untouched holdout it returned ${percent(h.returnPct)} versus ${percent(h.benchmark.returnPct)} for the matched baseline; this is a paper result, not a live recommendation.`);
+      setText("chairVerdict", result.selectedStrategyId === "cash" ? "Agent waited in cash" : h.tradeCount < 5 ? "Hold: test sample is too thin" : "Review before another test");
+      setText("chairNext", `Review the candidate scores and journal. Keep the holdout spent; use new later data for the next frozen evaluation.`);
+      return;
+    }
     const compare = h.returnPct > h.benchmark.returnPct ? "above" : h.returnPct < h.benchmark.returnPct ? "below" : "equal to";
     setText("councilChair", `The frozen strategy came in ${compare} the matched-allocation baseline on this holdout (${percent(h.returnPct)} versus ${percent(h.benchmark.returnPct)}). That result is a clue for further checking, not a reason to deploy.`);
     setText("chairVerdict", h.tradeCount < 10 ? "Hold: sample is too thin" : "Keep the rules frozen");
@@ -320,11 +427,12 @@
   [$("feeBps"), $("spreadBps"), $("slippageBps")].forEach((input) => input.addEventListener("input", updateCostSummary));
   $("runBacktest").addEventListener("click", runReplay);
   $("runPaper").addEventListener("click", runPaper);
+  $("runAgentPaper").addEventListener("click", runAgentPaper);
   $("workspaceOpen").addEventListener("click", openWorkspace);
   $("profileSettings").addEventListener("click", editProfile);
   $("switchProfile").addEventListener("click", editProfile);
   $("clearJournal").addEventListener("click", () => {
-    try { localStorage.removeItem(JOURNAL_KEY); localStorage.removeItem("loki-paper-state-v1"); latestPaper = null; setText("paperEquity", "$10,000"); setText("paperPnl", "$0.00"); setText("paperTrades", "0"); renderJournal(); }
+    try { localStorage.removeItem(JOURNAL_KEY); localStorage.removeItem("loki-paper-state-v1"); localStorage.removeItem("loki-ai-paper-v1"); latestPaper = null; latestAgentPaper = null; updatePaper({ equity: 10000, pnl: 0, count: 0 }); updateAgentPaper(null); renderJournal(); }
     catch (_) { setText("journalSource", "Browser storage could not be cleared. Try again."); }
   });
   window.addEventListener("loki:profile", updateProfile);
@@ -335,6 +443,10 @@
     latestPaper = JSON.parse(localStorage.getItem("loki-paper-state-v1") || "null");
     updatePaper(latestPaper);
   } catch (_) { latestPaper = null; }
+  try {
+    latestAgentPaper = JSON.parse(localStorage.getItem("loki-ai-paper-v1") || "null");
+    updateAgentPaper(latestAgentPaper);
+  } catch (_) { latestAgentPaper = null; updateAgentPaper(null); }
   if (profile()) {
     const saved = profile();
     setText("welcomeTitle", `Welcome back, ${saved.nickname}.`);
