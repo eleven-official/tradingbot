@@ -2,6 +2,7 @@ name: Research workspace regression checks
 
 on:
   push:
+    branches: [main, develop]
   pull_request:
   workflow_dispatch:
 
