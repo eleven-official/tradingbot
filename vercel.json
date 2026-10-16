@@ -1,21 +1,9 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
   "functions": {
     "main.py": {
-      "runtime": "python3.12"
+      "maxDuration": 60
     }
-  },
-  "routes": [
-    {
-      "src": "/favicon\\.png",
-      "dest": "main.py"
-    },
-    {
-      "src": "/favicon\\.ico",
-      "dest": "main.py"
-    },
-    {
-      "src": "^/(.*)$",
-      "dest": "main.py"
-    }
-  ]
+  }
 }
