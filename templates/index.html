@@ -3,92 +3,135 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#080d14" />
-  <meta name="description" content="A calmer, rules-first trading workspace." />
-  <title>Loki — Trading workspace</title>
+  <meta name="theme-color" content="#080b12" />
+  <meta name="description" content="Loki is a rules-first strategy research and paper trading workspace." />
+  <title>Loki — Strategy workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/style.css" />
   <script defer src="/static/js/profile.js"></script>
+  <script defer src="/static/js/strategy-lab.js"></script>
+  <script defer src="/static/js/workspace.js"></script>
 </head>
 <body>
-  <main class="shell">
+  <div class="ambient ambientOne" aria-hidden="true"></div>
+  <div class="ambient ambientTwo" aria-hidden="true"></div>
+  <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Loki home">
-        <span class="brandMark" aria-hidden="true">L</span>
-        <span>LOKI<span class="brandSub">TRADING SYSTEMS</span></span>
-      </a>
-      <div class="modeTag"><span class="modeDot"></span> RESEARCH WORKSPACE</div>
+      <a class="brand" href="/" aria-label="Loki home"><span class="brandMark">L</span><span class="brandName">LOKI<span>STRATEGY WORKSPACE</span></span></a>
+      <div class="topStatus"><span class="statusPulse"></span> RESEARCH MODE <span class="topDivider"></span> <span>PUBLIC PREVIEW</span></div>
+      <a class="serviceLink" href="/health" target="_blank" rel="noreferrer">Service status <span aria-hidden="true">↗</span></a>
     </header>
 
-    <section class="hero" aria-labelledby="heroTitle">
-      <div class="heroCopy">
-        <p class="eyebrow"><span>01</span> THINK IN SYSTEMS</p>
-        <h1 id="heroTitle">Trade with<br /><span>clearer rules.</span></h1>
-        <p class="lead">A focused space for market research, disciplined strategy testing, and thoughtful decisions.</p>
-        <div class="heroLinks">
-          <a class="button buttonPrimary" href="/health">Check service <span aria-hidden="true">↗</span></a>
-          <a class="textLink" href="https://github.com/eleven-official/tradingbot">Explore the project <span aria-hidden="true">→</span></a>
+    <main>
+      <section class="profileWall" id="profileWall" aria-label="Personal workspace">
+        <div class="welcomeIntro">
+          <p class="eyebrow">A BETTER PROCESS FOR EVERY DECISION</p>
+          <h1>Make the rules<br /><em>earn your trust.</em></h1>
+          <p class="welcomeLead">Explore a trading strategy, test it across different market regimes, then review every paper trade with costs included.</p>
+          <div class="principles"><span><b>01</b> Define</span><i></i><span><b>02</b> Replay</span><i></i><span><b>03</b> Review</span></div>
+          <div class="welcomeChart" aria-hidden="true">
+            <div class="chartGlow"></div><span class="chartAxis axisTop">RESEARCH SIGNAL</span><span class="chartAxis axisBottom">PAST DATA · NOT A FORECAST</span>
+            <svg viewBox="0 0 700 200" preserveAspectRatio="none"><path class="gridLine" d="M0 45H700M0 100H700M0 155H700"/><path class="chartFill" d="M0 148 C55 137 65 99 111 118 S178 145 220 101 S282 84 328 113 S385 129 429 74 S500 94 541 50 S606 86 650 35 S674 44 700 18 V200H0Z"/><path class="chartStroke" d="M0 148 C55 137 65 99 111 118 S178 145 220 101 S282 84 328 113 S385 129 429 74 S500 94 541 50 S606 86 650 35 S674 44 700 18"/><circle cx="650" cy="35" r="4"/></svg>
+          </div>
         </div>
-        <div class="noteLine"><span class="noteIcon" aria-hidden="true">✳</span> Backtests are research tools. Past results do not predict future performance.</div>
-      </div>
+        <section class="profileCard" aria-labelledby="profileHeading">
+          <div id="onboarding">
+            <div class="cardTopline"><span class="eyebrow">YOUR PERSONAL WORKSPACE</span><span class="stepCount">01 / 01</span></div>
+            <div class="formMark" aria-hidden="true">✳</div>
+            <h2 id="profileHeading">First, make it yours.</h2>
+            <p class="cardIntro">Choose how Loki greets you. Your nickname and email stay in this browser.</p>
+            <form id="profileForm" novalidate>
+              <label class="field"><span>Nickname</span><input id="profileNickname" name="nickname" type="text" maxlength="32" autocomplete="nickname" required placeholder="How should we address you?" /></label>
+              <label class="field"><span>Email</span><input id="profileEmail" name="email" type="email" maxlength="254" autocomplete="email" required placeholder="you@example.com" /></label>
+              <p class="formError" id="profileError" role="alert" aria-live="polite"></p>
+              <button class="button buttonPrimary saveButton" type="submit">Create my workspace <span>→</span></button>
+            </form>
+            <p class="privacyNote"><span>⌑</span> Saved only on this device. It does not send your details to the server.</p>
+          </div>
+          <div id="welcome" hidden>
+            <div class="cardTopline"><span class="eyebrow">YOUR PERSONAL WORKSPACE</span><span class="savedMark"><i></i> SAVED HERE</span></div>
+            <div class="formMark" aria-hidden="true">✳</div>
+            <p class="eyebrow welcomeEyebrow">GOOD TO HAVE YOU HERE</p>
+            <h2 id="welcomeTitle">Welcome back.</h2>
+            <p class="cardIntro" id="welcomeDetail">Your workspace is ready on this device.</p>
+            <button class="button buttonPrimary saveButton" type="button" id="workspaceOpen">Open workspace <span>→</span></button>
+            <div class="welcomeActions"><button class="button buttonSecondary" type="button" id="profileEdit">Edit profile</button><button class="button buttonQuiet" type="button" id="profileForget">Forget profile</button></div>
+            <p class="privacyNote"><span>⌑</span> Your details stay in this browser.</p>
+          </div>
+        </section>
+      </section>
 
-      <div class="heroVisual" aria-hidden="true">
-        <div class="visualGlow"></div>
-        <div class="chartLabel"><span>PROCESS OVER PREDICTION</span><span>—</span></div>
-        <svg class="chart" viewBox="0 0 540 250" role="presentation">
-          <defs>
-            <linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0" stop-color="#b9f27c" stop-opacity=".24" />
-              <stop offset="1" stop-color="#b9f27c" stop-opacity="0" />
-            </linearGradient>
-          </defs>
-          <path class="chartArea" d="M0 204 C34 186 46 193 75 169 S123 157 148 171 S191 161 219 132 S267 149 290 118 S332 102 355 117 S402 93 428 76 S474 92 493 55 S524 44 540 20 V250 H0 Z" />
-          <path class="chartLine" d="M0 204 C34 186 46 193 75 169 S123 157 148 171 S191 161 219 132 S267 149 290 118 S332 102 355 117 S402 93 428 76 S474 92 493 55 S524 44 540 20" />
-          <circle cx="493" cy="55" r="5" class="chartPoint" />
-          <path class="chartGrid" d="M0 60H540M0 120H540M0 180H540" />
-        </svg>
-        <div class="visualCaption"><span>Observe</span><i></i><span>Test</span><i></i><span>Review</span></div>
-      </div>
+      <section class="workspace" id="workspaceApp" hidden>
+        <aside class="sidebar" aria-label="Workspace navigation">
+          <div class="sideBrand"><span class="brandMark">L</span><span>LOKI<span>RESEARCH DESK</span></span></div>
+          <p class="navCaption">WORKSPACE</p>
+          <nav class="sideNav">
+            <button class="navItem active" data-view="overview"><span class="navIcon">◫</span>Overview</button>
+            <button class="navItem" data-view="strategy"><span class="navIcon">⌁</span>Strategy lab</button>
+            <button class="navItem" data-view="paper"><span class="navIcon">◉</span>Paper mode <span class="navBadge">SAFE</span></button>
+            <button class="navItem" data-view="journal"><span class="navIcon">▤</span>Trade journal</button>
+            <button class="navItem" data-view="council"><span class="navIcon">✳</span>Strategy council</button>
+          </nav>
+          <div class="sidebarBottom"><div class="liveLock"><span>⌑</span><div><b>Live execution</b><small>Unavailable in public preview</small></div></div><div class="sidebarProfile"><span class="avatar" id="profileAvatar">L</span><span><b id="sidebarNickname">Your workspace</b><small>Local profile</small></span><button class="profileSettings" id="profileSettings" aria-label="Edit profile">···</button></div></div>
+        </aside>
 
-      <section class="profileCard" aria-labelledby="profileHeading">
-        <div id="onboarding">
-        <div class="cardTopline"><span class="eyebrow">YOUR WORKSPACE</span><span class="stepCount">01 / 01</span></div>
-        <h2 id="profileHeading">Make it yours.</h2>
-        <p class="cardIntro">Add a nickname and email for a personal welcome on this device.</p>
-        <form id="profileForm" novalidate>
-          <label class="field">
-            <span>Nickname</span>
-            <input id="profileNickname" name="nickname" type="text" maxlength="32" autocomplete="nickname" required placeholder="How should we address you?" />
-          </label>
-          <label class="field">
-            <span>Email</span>
-            <input id="profileEmail" name="email" type="email" maxlength="254" autocomplete="email" required placeholder="you@example.com" />
-          </label>
-          <p class="formError" id="profileError" role="alert" aria-live="polite"></p>
-          <button class="button buttonPrimary saveButton" type="submit">Save my profile <span aria-hidden="true">→</span></button>
-        </form>
-        <p class="privacyNote"><span aria-hidden="true">⌑</span> Saved in this browser only. This form does not send your details to the server. Clear them any time.</p>
-      </div>
+        <div class="workspaceMain">
+          <header class="workspaceTop"><div><span class="crumb">LOKI <b>/</b> <span id="pageCrumb">OVERVIEW</span></span><p id="welcomeGreeting">Good day. Ready to research?</p></div><div class="topRight"><span class="paperChip"><i></i> PAPER ONLY</span><button id="switchProfile" class="userChip" aria-label="Edit profile"><span class="avatar avatarSmall" id="topAvatar">L</span><span id="topNickname">Profile</span><span>⌄</span></button></div></header>
+          <nav class="mobileNav" aria-label="Workspace navigation"><button class="mobileNavItem active" data-view="overview">Home</button><button class="mobileNavItem" data-view="strategy">Strategy</button><button class="mobileNavItem" data-view="paper">Paper</button><button class="mobileNavItem" data-view="journal">Journal</button><button class="mobileNavItem" data-view="council">Council</button></nav>
 
-      <div id="welcome" hidden>
-        <div class="cardTopline"><span class="eyebrow">YOUR WORKSPACE</span><span class="savedMark"><span></span> SAVED ON THIS DEVICE</span></div>
-        <div class="welcomeIcon" aria-hidden="true">✳</div>
-        <p class="eyebrow welcomeEyebrow">GOOD TO HAVE YOU HERE</p>
-        <h2 id="welcomeTitle">Welcome back.</h2>
-        <p class="cardIntro" id="welcomeDetail">Your personal workspace is ready on this device.</p>
-        <div class="welcomeActions">
-          <button class="button buttonSecondary" type="button" id="profileEdit">Edit profile</button>
-          <button class="button buttonQuiet" type="button" id="profileForget">Forget profile</button>
-        </div>
-        <p class="privacyNote"><span aria-hidden="true">⌑</span> Your profile remains in this browser and is not sent to the server.</p>
+          <div class="viewStack">
+            <section class="view active" id="view-overview" data-page="overview">
+              <div class="pageHeading"><div><p class="eyebrow">YOUR RESEARCH DESK</p><h1 id="overviewTitle">Stay curious. Stay systematic.</h1><p>Test one frozen set of rules, account for trading costs, and inspect what happened.</p></div><button class="button buttonPrimary" data-go="strategy">Open strategy lab <span>→</span></button></div>
+              <div class="banner syntheticBanner"><span class="bannerIcon">⌁</span><div><b id="datasetTitle">Demo scenario · mixed regimes</b><small id="datasetDescription">Deterministic synthetic prices for interface and logic checks. Not real market history.</small></div><button data-go="strategy">Choose data <span>↗</span></button></div>
+              <div class="metricGrid">
+                <article class="metricCard"><span>HOLDOUT RETURN</span><strong id="metricReturn">—</strong><small id="metricReturnNote">Run a replay to calculate</small><span class="metricGlyph">↗</span></article>
+                <article class="metricCard"><span>MAX DRAWDOWN</span><strong id="metricDrawdown">—</strong><small>Peak-to-trough · after costs</small><span class="metricGlyph">⌄</span></article>
+                <article class="metricCard"><span>TEST TRADES</span><strong id="metricTrades">—</strong><small id="metricWinRate">No test-period trades yet</small><span class="metricGlyph">◎</span></article>
+                <article class="metricCard"><span>TRADING COSTS</span><strong id="metricCosts">—</strong><small>Fees, spread &amp; slippage</small><span class="metricGlyph">⌑</span></article>
+              </div>
+              <div class="overviewGrid">
+                <article class="panel performancePanel"><div class="panelHead"><div><span class="eyebrow">OUT-OF-SAMPLE VIEW</span><h2>Equity replay</h2></div><span class="chartLegend"><i></i> STRATEGY <b></b> BUY &amp; HOLD</span></div><div class="equityChart" id="equityChart"><div class="chartEmpty"><span>↗</span><b>Your first replay starts here</b><small>Choose a market scenario or upload historical OHLC data.</small></div></div><div class="axisLabels"><span id="chartStart">WAITING FOR A REPLAY</span><span id="chartEnd"></span></div></article>
+                <article class="panel quickPanel"><div class="panelHead"><div><span class="eyebrow">CURRENT TEST</span><h2 id="strategyStatus">Rules are frozen</h2></div><span class="readyDot"></span></div><div class="ruleSummary"><div><span>ENTRY</span><p>Price and 50-bar average above the 100-bar average.</p></div><div><span>EXIT</span><p>Close below the 50-bar average, or close 5% under entry.</p></div><div><span>FILL</span><p>Next bar open, with fees, spread and slippage.</p></div></div><button class="button buttonSecondary fullButton" data-go="strategy">Review research setup <span>→</span></button></article>
+              </div>
+              <div class="bottomGrid"><article class="panel bottomCard"><div class="panelHead"><div><span class="eyebrow">THE PROCESS</span><h2>Evidence before confidence.</h2></div></div><p class="mutedText">Keep the later period untouched while adjusting rules. Compare net expectancy, trade count, drawdown and a simple buy-and-hold baseline.</p><button class="inlineAction" data-go="council">See council review <span>→</span></button></article><article class="panel bottomCard riskCard"><span class="riskMark">!</span><div><b>Backtests do not prove profitability.</b><p>Scenarios are synthetic unless you upload market data. Real execution and future returns are not available in this public workspace.</p></div></article></div>
+            </section>
+
+            <section class="view" id="view-strategy" data-page="strategy">
+              <div class="pageHeading"><div><p class="eyebrow">STRATEGY LAB</p><h1>One rule set. Multiple markets.</h1><p>Inspect the entry and exit logic, set realistic costs, and keep the final segment untouched.</p></div><span class="frozenTag"><i></i> FROZEN · LOKI TREND 1.0</span></div>
+              <div class="labGrid"><div class="labMain">
+                <article class="panel strategyCard"><div class="strategyTitle"><span class="strategyGlyph">L1</span><div><span class="eyebrow">LONG-ONLY · NO LEVERAGE</span><h2>Trend continuation</h2></div><span class="frozenTag compact">RULES FROZEN</span></div><div class="strategyRules"><div><span class="ruleNumber">01</span><div><b>Market condition</b><p>Potential uptrend: close is above the 100-bar simple moving average, and the 50-bar average is above the 100-bar average.</p></div></div><div><span class="ruleNumber">02</span><div><b>Entry trigger</b><p>When flat, that condition is true at a bar close. Enter long at the next bar open.</p></div></div><div><span class="ruleNumber">03</span><div><b>Exit trigger</b><p>Exit at the next bar open after a close below the 50-bar average or a close 5% below entry. Close any remaining position at the final bar.</p></div></div></div><p class="assumptionNote"><span>i</span> The code uses only information available at each bar close. Next-bar fills reduce same-bar lookahead.</p></article>
+                <article class="panel dataCard"><div class="panelHead"><div><span class="eyebrow">PRICE HISTORY</span><h2>Pick a test dataset</h2></div><span class="demoTag" id="dataSourceTag">SYNTHETIC DEMO</span></div><div class="scenarioPicker" role="group" aria-label="Demo market scenario"><button class="scenarioButton active" data-scenario="mixed"><span>◈</span><b>Mixed regimes</b><small>Rise · fall · sideways</small></button><button class="scenarioButton" data-scenario="rising"><span>↗</span><b>Rising</b><small>Persistent uptrend</small></button><button class="scenarioButton" data-scenario="falling"><span>↘</span><b>Falling</b><small>Persistent downtrend</small></button><button class="scenarioButton" data-scenario="sideways"><span>↔</span><b>Sideways</b><small>Range-bound noise</small></button></div><div class="uploadDrop"><div><span class="uploadIcon">↑</span><div><b>Use your own historical data</b><small>CSV columns: date, open, high, low, close, volume · 200+ rows recommended</small></div></div><label class="button buttonSecondary uploadButton">Upload CSV<input type="file" id="csvUpload" accept=".csv,text/csv" /></label></div><p class="dataStatus" id="dataStatus" aria-live="polite">Demo data is locally generated and is not live market data.</p></article>
+              </div><aside class="labSide"><article class="panel costCard"><div class="panelHead"><div><span class="eyebrow">EXECUTION ASSUMPTIONS</span><h2>Model the friction.</h2></div></div><label class="costField"><span>Fee per side <b>basis points</b></span><input id="feeBps" type="number" value="6" min="0" max="100" step="0.5" /><small>Commission charged on each fill.</small></label><label class="costField"><span>Spread per side <b>basis points</b></span><input id="spreadBps" type="number" value="2" min="0" max="200" step="0.5" /><small>Price paid to cross the bid/ask.</small></label><label class="costField"><span>Slippage per side <b>basis points</b></span><input id="slippageBps" type="number" value="3" min="0" max="200" step="0.5" /><small>Extra adverse movement at fill.</small></label><div class="costTotal"><span>MODELED ROUND-TRIP COST</span><b id="roundTripCost">22 bps</b><small>Fees + spread + slippage, both sides.</small></div></article><article class="panel splitCard"><div class="panelHead"><div><span class="eyebrow">OUT-OF-SAMPLE CHECK</span><h2>Hold the ending out.</h2></div></div><label class="splitField"><span>Training period</span><select id="splitPercent"><option value="70">First 70% · test last 30%</option><option value="80">First 80% · test last 20%</option></select></label><p>Indicators warm up on earlier bars. The holdout starts flat; it does not trade before the split.</p><button id="runBacktest" class="button buttonPrimary fullButton">Run full replay <span>→</span></button><small class="lastRun" id="runStatus">No replay run yet.</small></article></aside></div>
+              <div id="resultsPanel" class="panel resultsPanel" hidden><div class="panelHead"><div><span class="eyebrow">REPLAY RESULTS</span><h2>Compare the untouched period.</h2></div><span class="resultCaveat">Research evidence · not a forecast</span></div><div class="resultGrid"><div><span>TEST RETURN</span><b id="resultReturn">—</b></div><div><span>BUY &amp; HOLD</span><b id="resultBaseline">—</b></div><div><span>EXPECTANCY</span><b id="resultExpectancy">—</b></div><div><span>MAX DRAWDOWN</span><b id="resultDrawdown">—</b></div><div><span>WIN RATE</span><b id="resultWinRate">—</b></div><div><span>TRADES</span><b id="resultTrades">—</b></div></div><p class="resultMessage" id="resultMessage"></p></div>
+            </section>
+
+            <section class="view" id="view-paper" data-page="paper">
+              <div class="pageHeading"><div><p class="eyebrow">PAPER MODE</p><h1>Practice the process.</h1><p>Replay the holdout segment with simulated fills. Nothing is sent to a broker.</p></div><span class="paperChip large"><i></i> SIMULATED ONLY</span></div>
+              <div class="paperBanner"><span class="bannerIcon">◉</span><div><b>Paper replay uses the frozen rules and your cost settings.</b><small>Use uploaded historical bars or the labeled demo scenarios. Results are stored only in this browser.</small></div></div>
+              <div class="paperControls panel"><div><span class="eyebrow">PAPER ACCOUNT</span><h2>$10,000 <small>virtual starting balance</small></h2><p>Position size: 25% of available equity · one position at a time · long-only</p></div><button class="button buttonPrimary" id="runPaper">Run holdout in paper mode <span>→</span></button></div>
+              <div class="paperStats metricGrid"><article class="metricCard"><span>VIRTUAL EQUITY</span><strong id="paperEquity">$10,000</strong><small>Changes after paper replay</small></article><article class="metricCard"><span>PAPER P&amp;L</span><strong id="paperPnl">$0.00</strong><small>Net of modeled costs</small></article><article class="metricCard"><span>RECORDED TRADES</span><strong id="paperTrades">0</strong><small>Saved in this browser only</small></article><article class="metricCard"><span>MODE</span><strong class="paperValue">PAPER</strong><small>Broker routing unavailable</small></article></div>
+              <div class="panel disabledLive"><span class="lockGlyph">⌑</span><div><span class="eyebrow">REAL MODE</span><h2>Live execution is not connected.</h2><p>This public research site has no broker credentials, account access, or order-routing endpoint. The private Loki runner is separate and should only be used with authentication and explicit safeguards.</p></div><span class="offlineTag">OFFLINE</span></div>
+            </section>
+
+            <section class="view" id="view-journal" data-page="journal">
+              <div class="pageHeading"><div><p class="eyebrow">TRADE JOURNAL</p><h1>Every trade gets a receipt.</h1><p>Inspect the signal, next-bar fill, exit rule, and costs for each paper position.</p></div><button class="button buttonSecondary" id="clearJournal">Clear local journal <span>⌫</span></button></div>
+              <div class="journalSummary metricGrid"><article class="metricCard"><span>TRADES LOGGED</span><strong id="journalCount">0</strong><small>Stored in this browser</small></article><article class="metricCard"><span>NET EXPECTANCY</span><strong id="journalExpectancy">—</strong><small>Average net P&amp;L per trade</small></article><article class="metricCard"><span>COSTS PAID</span><strong id="journalCosts">$0.00</strong><small>Fees, spread &amp; slippage</small></article><article class="metricCard"><span>RULE VERSION</span><strong class="versionValue">1.0</strong><small>Frozen for this replay</small></article></div>
+              <article class="panel journalPanel"><div class="panelHead"><div><span class="eyebrow">PAPER FILL LEDGER</span><h2>Position history</h2></div><span class="journalSource" id="journalSource">Waiting for paper replay</span></div><div class="tableScroll"><table class="tradeTable"><thead><tr><th>ENTRY · EXIT</th><th>SIDE</th><th>ENTRY → EXIT</th><th>EXIT RULE</th><th>COSTS</th><th>NET P&amp;L</th></tr></thead><tbody id="journalBody"><tr><td colspan="6" class="emptyTable">No paper trades yet. Run a replay to create your first journal entry.</td></tr></tbody></table></div><p class="tableNote">Fill prices include per-side spread and slippage. Fees are charged on both entry and exit notional. End-of-test positions are closed at the final bar.</p></article>
+            </section>
+
+            <section class="view" id="view-council" data-page="council">
+              <div class="pageHeading"><div><p class="eyebrow">STRATEGY COUNCIL</p><h1>Four roles. One evidence-led review.</h1><p>A structured review of the selected market data and latest replay. No live AI market feed.</p></div><span class="councilBadge"><i></i> REVIEWING RULE SET 1.0</span></div>
+              <div class="councilIntro"><span>✳</span><div><b>The council checks the evidence, it does not predict tomorrow.</b><p>Each voice tests a different failure mode. The chair summarizes the disagreement and the next useful check.</p></div></div>
+              <div class="councilGrid"><article class="panel voiceCard"><div class="voiceHead"><span class="voiceIcon tape">↗</span><div><span class="eyebrow">01 · TAPE READER</span><h2>What did price do?</h2></div><span class="voiceState">DATA</span></div><p id="councilTape">Waiting for a replay. The tape reader will describe the selected price path and trend filter.</p><div class="voiceFoot">INPUT <b>OHLC HISTORY + MOVING AVERAGES</b></div></article><article class="panel voiceCard"><div class="voiceHead"><span class="voiceIcon watcher">⌁</span><div><span class="eyebrow">02 · MARKET WATCHER</span><h2>Where is the risk?</h2></div><span class="voiceState">RISK</span></div><p id="councilRisk">The watcher checks drawdown, choppy conditions, trade count and whether costs overwhelm gross results.</p><div class="voiceFoot">INPUT <b>HOLDOUT + COST MODEL</b></div></article><article class="panel voiceCard"><div class="voiceHead"><span class="voiceIcon skeptic">?</span><div><span class="eyebrow">03 · SKEPTIC</span><h2>What could mislead us?</h2></div><span class="voiceState">CHALLENGE</span></div><p id="councilSkeptic">A profitable in-sample run is not enough. Ask whether the holdout is untouched and the dataset represents real conditions.</p><div class="voiceFoot">INPUT <b>DATA QUALITY + BASELINE</b></div></article><article class="panel chairCard"><div class="voiceHead"><span class="voiceIcon chair">✳</span><div><span class="eyebrow">04 · REVIEW CHAIR</span><h2>What is the next decision?</h2></div><span class="voiceState">SUMMARY</span></div><p id="councilChair">The chair waits for evidence, notes disagreements, and recommends the next test. No broker orders or live-market decisions are made here.</p><div class="chairConclusion"><span class="chairDot"></span><div><b id="chairVerdict">Not enough evidence yet</b><small id="chairNext">Run a replay, then review expectancy, drawdown, trade count and costs.</small></div></div><button class="inlineAction" data-go="strategy">Open the research setup <span>→</span></button></article></div>
+            </section>
+          </div>
+          <footer class="workspaceFooter"><span>LOKI RESEARCH WORKSPACE <b>·</b> VERSION {{ version }}</span><span>NOT FINANCIAL ADVICE <b>·</b> PAST RESULTS DO NOT PREDICT FUTURE PERFORMANCE</span></footer>
         </div>
       </section>
-    </section>
-
-    <footer class="footer">
-      <span>LOKI TRADING SYSTEMS <b>·</b> VERSION {{ version }}</span>
-      <span><a href="/health">SERVICE STATUS</a><b>·</b> RESEARCH, NOT A PROMISE</span>
-    </footer>
-  </main>
+    </main>
+  </div>
 </body>
 </html>
 
