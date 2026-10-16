@@ -88,6 +88,8 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertTrue((ROOT / "templates" / "index.html").is_file())
         self.assertTrue((ROOT / "static" / "css" / "style.css").is_file())
         self.assertTrue((ROOT / "static" / "js" / "profile.js").is_file())
+        self.assertTrue((ROOT / "static" / "js" / "strategy-lab.js").is_file())
+        self.assertTrue((ROOT / "static" / "js" / "workspace.js").is_file())
 
     def test_landing_page_has_required_labelled_personal_profile_fields(self):
         source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
@@ -101,6 +103,16 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("/static/js/profile.js", page.scripts)
         self.assertIn("/static/css/style.css", page.stylesheets)
         self.assertIn("does not send your details to the server", " ".join(page.text))
+
+    def test_workspace_has_navigable_research_views_and_no_github_promotion(self):
+        source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        for view in ("overview", "strategy", "paper", "journal", "council"):
+            self.assertIn(f'data-view="{view}"', source)
+            self.assertIn(f'id="view-{view}"', source)
+        self.assertIn('id="csvUpload"', source)
+        self.assertIn("REAL MODE", source)
+        self.assertIn("Live execution is not connected", source)
+        self.assertNotIn("github.com/eleven-official", source)
 
     def test_profile_code_persists_locally_without_sending_contact_details(self):
         source = (ROOT / "static" / "js" / "profile.js").read_text(encoding="utf-8")
