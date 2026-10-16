@@ -39,8 +39,8 @@
     const bars = [];
     let close = 100;
     for (let i = 0; i < count; i += 1) {
-      const phase = Math.floor((i / count) * 3);
-      const regime = kind === "mixed" ? phase : kind;
+      const phase = Math.min(2, Math.floor((i / count) * 3));
+      const regime = kind === "mixed" ? ["rising", "falling", "sideways"][phase] : kind;
       const drift = regime === "rising" ? 0.00135 : regime === "falling" ? -0.0012 : 0.00004;
       const noise = (random() + random() + random() - 1.5) * 0.014;
       const open = close * (1 + (random() - 0.5) * 0.004);
