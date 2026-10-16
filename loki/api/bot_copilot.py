@@ -20,6 +20,13 @@ def _fmt(value: Any, digits: int = 2) -> str:
         return "—"
 
 
+def _fmt_quantity(value: Any) -> str:
+    try:
+        return f"{float(value):,.8f}".rstrip("0").rstrip(".")
+    except (TypeError, ValueError):
+        return "—"
+
+
 def _decision_answer(context: dict[str, Any]) -> str:
     decision = _record(context.get("decision"))
     if not decision.get("action"):
@@ -62,10 +69,13 @@ def _risk_answer(context: dict[str, Any]) -> str:
     notional = plan.get("notional")
     profit = plan.get("projected_profit")
     return (
-        f"The current paper plan sizes {_fmt(quantity, 6)} units, with an estimated loss of "
-        f"{_fmt(loss)} quote units and reward/risk of {_fmt(ratio)}×. "
-        f"Notional is {_fmt(notional)}; projected target profit is {_fmt(profit)} before real-world costs. "
-        "Actual losses can exceed the estimate because of gaps, slippage and fees; this calculation does not place an order."
+        f"The current paper plan sizes {_fmt_quantity(quantity)} fractional paper units, "
+        f"with an estimated loss of {_fmt(loss)} quote units and reward/risk of "
+        f"{_fmt(ratio)}×. Notional is {_fmt(notional)}; projected target profit is "
+        f"{_fmt(profit)} before real-world costs. "
+        "Quantity is rounded down to eight decimals; venue lot sizes are not modeled. "
+        "Actual losses can exceed the estimate because of gaps, slippage and fees; "
+        "this calculation does not place an order."
     )
 
 

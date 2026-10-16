@@ -253,7 +253,7 @@ function renderDecision(data, input) {
   document.querySelector("#council-decision").innerHTML = `<div class="decision-row"><span class="decision-badge ${state}">${escapeHtml(data.action)} · PAPER</span><span class="decision-summary">${escapeHtml(data.rationale)}</span></div>`;
   document.querySelector("#gate-summary").innerHTML = `<span>${passed} of ${data.reviews.length} gates passed · each gate keeps veto authority</span><span class="gate-track">${data.reviews.map((review) => `<i class="${review.verdict.toLowerCase()}" title="${escapeHtml(review.agent)} · ${escapeHtml(review.verdict)}"></i>`).join("")}</span>`;
   document.querySelector("#plan-metrics").innerHTML = [
-    ["SIZE", number(data.plan.quantity, 0)],
+    ["SIZE · PAPER UNITS", number(data.plan.quantity, 8)],
     ["REWARD / RISK", `${number(data.plan.reward_risk_ratio)}×`],
     ["EST. LOSS", number(data.plan.estimated_loss)],
     ["TARGET PROFIT", number(data.plan.projected_profit)],
@@ -696,7 +696,7 @@ function renderJournal() {
     const councilDetails = (entry.councilReviews || []).length ? `<details class="journal-details"><summary>Council review · ${entry.councilReviews.length} gates</summary><ol class="review-list">${entry.councilReviews.map((review) => `<li class="${escapeHtml(String(review.verdict).toLowerCase())}"><b>${escapeHtml(review.agent)}</b><span>${escapeHtml(review.verdict)}</span><p>${escapeHtml(review.reason)}</p><p class="review-next-step"><b>Next step</b> · ${escapeHtml(review.next_step || "Review the flagged input.")}</p></li>`).join("")}</ol></details>` : "";
     return `<article class="journal-entry-card" data-journal-id="${escapeHtml(entry.id)}">
       <div class="journal-entry-head"><div><span class="journal-status ${entry.status}">${stateLabel}</span><h3>${escapeHtml(entry.symbol)} <small>${escapeHtml(entry.interval)}</small></h3></div><time>${escapeHtml(journalTime(entry.createdAt))}</time></div>
-      <div class="journal-entry-summary"><div><span>SETUP</span><strong>${escapeHtml(entry.setupName)}</strong></div><div><span>RULES MATCHED</span><strong>${number(entry.setupScore, 0)} / 100</strong></div><div><span>COUNCIL</span><strong>${escapeHtml(entry.action)} · ${entry.passedGates} / ${entry.gateCount} passed</strong></div><div><span>ENTRY / SIZE</span><strong>${price(entry.entryPrice)} · ${number(entry.quantity, 6)}</strong></div></div>
+      <div class="journal-entry-summary"><div><span>SETUP</span><strong>${escapeHtml(entry.setupName)}</strong></div><div><span>RULES MATCHED</span><strong>${number(entry.setupScore, 0)} / 100</strong></div><div><span>COUNCIL</span><strong>${escapeHtml(entry.action)} · ${entry.passedGates} / ${entry.gateCount} passed</strong></div><div><span>ENTRY / SIZE</span><strong>${price(entry.entryPrice)} · ${number(entry.quantity, 8)}</strong></div></div>
       <p class="journal-rationale">${escapeHtml(entry.rationale || "No council rationale recorded.")}</p>
       ${note}${setupDetails}${councilDetails}${outcome}
     </article>`;

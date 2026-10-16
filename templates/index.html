@@ -118,10 +118,10 @@
           <details class="advanced-inputs">
             <summary>Exposure &amp; market gates <span>Adjust thresholds</span></summary>
             <div class="input-grid two advanced-grid">
-              <label>Max notional <span class="input-wrap"><input name="max_notional_percent" type="number" value="10" min="0.01" max="100" step="0.1" required /><span class="input-suffix">%</span></span></label>
+              <label>Max notional <span class="input-wrap"><input name="max_notional_percent" type="number" value="10" min="0.01" max="100" step="any" required /><span class="input-suffix">%</span></span></label>
               <label>Current price <input name="current_price" type="number" min="0.000001" step="any" required /></label>
               <label>Trend <select name="trend" required><option value="" disabled selected>Select trend</option><option value="BULLISH">Bullish</option><option value="NEUTRAL">Neutral</option><option value="BEARISH">Bearish</option></select></label>
-              <label>Volatility <span class="input-wrap"><input name="volatility_percent" type="number" min="0" step="0.01" required /><span class="input-suffix">%</span></span></label>
+              <label>Volatility <span class="input-wrap"><input name="volatility_percent" type="number" min="0" step="any" required /><span class="input-suffix">%</span></span></label>
               <label>Volume vs baseline <span class="input-wrap"><input name="volume_ratio" type="number" min="0" step="0.01" required /><span class="input-suffix">×</span></span></label>
               <label>Bid / ask spread <span class="input-wrap"><input name="spread_percent" type="number" min="0" step="0.001" required /><span class="input-suffix">%</span></span></label>
               <label>Data age <span class="input-wrap"><input name="market_data_age_seconds" type="number" min="0" step="1" required /><span class="input-suffix">sec</span></span></label>
@@ -130,7 +130,7 @@
               <label>Max volatility <span class="input-wrap"><input name="max_volatility_percent" type="number" value="5" min="0" step="0.1" required /><span class="input-suffix">%</span></span></label>
               <label>Max spread <span class="input-wrap"><input name="max_spread_percent" type="number" value="0.5" min="0" step="0.05" required /><span class="input-suffix">%</span></span></label>
               <label>Minimum setup rules <span class="input-wrap"><input name="min_setup_score" type="number" value="80" min="0" max="100" step="5" required /><span class="input-suffix">/ 100</span></span></label>
-              <label>Minimum reward / risk <input name="minimum_reward_risk" type="number" value="1.5" min="0.01" step="0.1" required /></label>
+              <label>Minimum reward / risk <input name="minimum_reward_risk" type="number" value="1.5" min="0.01" step="any" required /></label>
               <label>Entry tolerance <span class="input-wrap"><input name="max_entry_deviation_percent" type="number" value="0.5" min="0" step="0.1" required /><span class="input-suffix">%</span></span></label>
               <label>Market session <select name="market_open" required><option value="" disabled selected>Select session</option><option value="true">Open</option><option value="false">Closed</option></select></label>
             </div>

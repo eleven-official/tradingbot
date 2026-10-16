@@ -36,7 +36,7 @@ def test_risk_answer_uses_the_calculated_plan():
         },
     })
 
-    assert "2.000000 units" in answer
+    assert "2 fractional paper units" in answer
     assert "20.00 quote units" in answer
     assert "2.00×" in answer
     assert "does not place an order" in answer

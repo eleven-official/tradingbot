@@ -111,6 +111,11 @@ def _next_step(review: AgentReview, request: CouncilRequest) -> str:
     return "Review the flagged input and run the council again after it changes."
 
 
+
+def _format_quantity(quantity: float) -> str:
+    return f"{quantity:.8f}".rstrip("0").rstrip(".")
+
+
 def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
     """Run six gates and return an explainable, paper-only decision.
 
@@ -236,7 +241,11 @@ def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
             AgentReview(
                 "Risk Sentinel",
                 "PASS",
-                f"Size {plan.quantity} whole units; estimated loss {plan.estimated_loss:.2f}, reward/risk {plan.reward_risk_ratio:.2f}×, notional {plan.notional:.2f}.",
+                f"Size {_format_quantity(plan.quantity)} fractional paper units; "
+                f"estimated loss {plan.estimated_loss:.2f}, reward/risk "
+                f"{plan.reward_risk_ratio:.2f}×, notional {plan.notional:.2f}. "
+                "Quantity is rounded down to eight decimals; "
+                "venue lot sizes are not modeled.",
             )
         )
 
