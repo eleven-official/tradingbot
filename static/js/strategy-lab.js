@@ -2,7 +2,7 @@
   "use strict";
 
   const RULE_VERSION = "1.1";
-  const AGENT_VERSION = "0.1";
+  const AGENT_VERSION = "0.2";
   const MIN_AGENT_TRAINING_TRADES = 5;
   const STRATEGIES = Object.freeze([
     Object.freeze({ id: "trend-50-100", name: "Trend continuation · 50/100", entry: "Close above SMA100 and SMA50 above SMA100.", exit: "Close below SMA50 or 5% close-based stop." }),
@@ -286,7 +286,9 @@
     const trained = STRATEGIES.map((strategy) => {
       const result = backtest(bars, { ...options, strategyId: strategy.id, fromIndex: WARMUP_BARS, toIndex: split });
       const score = result.returnPct - result.maxDrawdown * 0.75;
-      return { strategy, result, score, eligible: result.tradeCount >= MIN_AGENT_TRAINING_TRADES && result.returnPct > 0 && result.expectancy > 0 };
+      const beatsBaseline = result.returnPct > result.benchmark.returnPct;
+      const eligible = result.tradeCount >= MIN_AGENT_TRAINING_TRADES && result.returnPct > 0 && result.expectancy > 0 && beatsBaseline;
+      return { strategy, result, score, eligible, beatsBaseline };
     }).sort((a, b) => b.score - a.score);
 
     const selected = trained.find((candidate) => candidate.eligible) || null;
@@ -294,10 +296,12 @@
     const holdout = selected
       ? backtest(bars, { ...options, strategyId: selected.strategy.id, fromIndex: split, toIndex: bars.length })
       : emptyReplay(bars, split, bars.length, config);
-    const candidates = trained.map(({ strategy, result, score, eligible }) => ({
+    const candidates = trained.map(({ strategy, result, score, eligible, beatsBaseline }) => ({
       strategyId: strategy.id,
       name: strategy.name,
       trainingReturnPct: result.returnPct,
+      trainingBenchmarkReturnPct: result.benchmark.returnPct,
+      beatsTrainingBaseline: beatsBaseline,
       trainingDrawdown: result.maxDrawdown,
       trainingExpectancy: result.expectancy,
       trainingTrades: result.tradeCount,
@@ -305,8 +309,8 @@
       eligible,
     }));
     const selectionReason = selected
-      ? `Selected ${selected.strategy.name} using training-only net return minus a drawdown penalty; it had ${selected.result.tradeCount} training trades and ${selected.result.expectancy.toFixed(2)} average net P&L per trade. The chosen rule is now frozen for the untouched holdout.`
-      : `Stayed in cash: no candidate had at least ${MIN_AGENT_TRAINING_TRADES} training trades with positive after-cost return and expectancy. The holdout was not used to select a strategy.`;
+      ? `Selected ${selected.strategy.name} using training-only net return minus a drawdown penalty; it had ${selected.result.tradeCount} training trades, ${selected.result.expectancy.toFixed(2)} average net P&L per trade, and beat the matched cost-adjusted buy-and-hold baseline (${(selected.result.returnPct * 100).toFixed(2)}% vs ${(selected.result.benchmark.returnPct * 100).toFixed(2)}%). The rule is frozen for the untouched holdout.`
+      : `Stayed in cash: no candidate had at least ${MIN_AGENT_TRAINING_TRADES} training trades, positive after-cost return and expectancy, and a return above the matched cost-adjusted buy-and-hold baseline. The holdout was not used to select a strategy.`;
     return {
       agentVersion: AGENT_VERSION,
       selectionMetric: "training net return − 0.75 × max drawdown",
