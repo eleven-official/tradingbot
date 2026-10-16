@@ -2,23 +2,93 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Loki Trading Platform</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#080d14" />
+  <meta name="description" content="A calmer, rules-first trading workspace." />
+  <title>Loki — Trading workspace</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script defer src="/static/js/profile.js"></script>
 </head>
 <body>
-  <main class="container">
-    <h1>Loki Trading Platform</h1>
-    <p class="lead">Lightweight frontend for the Loki Trading Platform.</p>
-    <p>Version: {{ version }}</p>
-    <p>Visit the API health endpoint: <a href="/health">/health</a></p>
-    <section class="links">
-      <a class="card" href="/health">Health</a>
-      <a class="card" href="https://github.com/eleven-official/tradingbot">Source on GitHub</a>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Loki home">
+        <span class="brandMark" aria-hidden="true">L</span>
+        <span>LOKI<span class="brandSub">TRADING SYSTEMS</span></span>
+      </a>
+      <div class="modeTag"><span class="modeDot"></span> RESEARCH WORKSPACE</div>
+    </header>
+
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="heroCopy">
+        <p class="eyebrow"><span>01</span> THINK IN SYSTEMS</p>
+        <h1 id="heroTitle">Trade with<br /><span>clearer rules.</span></h1>
+        <p class="lead">A focused space for market research, disciplined strategy testing, and thoughtful decisions.</p>
+        <div class="heroLinks">
+          <a class="button buttonPrimary" href="/health">Check service <span aria-hidden="true">↗</span></a>
+          <a class="textLink" href="https://github.com/eleven-official/tradingbot">Explore the project <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="noteLine"><span class="noteIcon" aria-hidden="true">✳</span> Backtests are research tools. Past results do not predict future performance.</div>
+      </div>
+
+      <div class="heroVisual" aria-hidden="true">
+        <div class="visualGlow"></div>
+        <div class="chartLabel"><span>PROCESS OVER PREDICTION</span><span>—</span></div>
+        <svg class="chart" viewBox="0 0 540 250" role="presentation">
+          <defs>
+            <linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#b9f27c" stop-opacity=".24" />
+              <stop offset="1" stop-color="#b9f27c" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <path class="chartArea" d="M0 204 C34 186 46 193 75 169 S123 157 148 171 S191 161 219 132 S267 149 290 118 S332 102 355 117 S402 93 428 76 S474 92 493 55 S524 44 540 20 V250 H0 Z" />
+          <path class="chartLine" d="M0 204 C34 186 46 193 75 169 S123 157 148 171 S191 161 219 132 S267 149 290 118 S332 102 355 117 S402 93 428 76 S474 92 493 55 S524 44 540 20" />
+          <circle cx="493" cy="55" r="5" class="chartPoint" />
+          <path class="chartGrid" d="M0 60H540M0 120H540M0 180H540" />
+        </svg>
+        <div class="visualCaption"><span>Observe</span><i></i><span>Test</span><i></i><span>Review</span></div>
+      </div>
+
+      <section class="profileCard" aria-labelledby="profileHeading">
+        <div id="onboarding">
+        <div class="cardTopline"><span class="eyebrow">YOUR WORKSPACE</span><span class="stepCount">01 / 01</span></div>
+        <h2 id="profileHeading">Make it yours.</h2>
+        <p class="cardIntro">Add a nickname and email for a personal welcome on this device.</p>
+        <form id="profileForm" novalidate>
+          <label class="field">
+            <span>Nickname</span>
+            <input id="profileNickname" name="nickname" type="text" maxlength="32" autocomplete="nickname" required placeholder="How should we address you?" />
+          </label>
+          <label class="field">
+            <span>Email</span>
+            <input id="profileEmail" name="email" type="email" maxlength="254" autocomplete="email" required placeholder="you@example.com" />
+          </label>
+          <p class="formError" id="profileError" role="alert" aria-live="polite"></p>
+          <button class="button buttonPrimary saveButton" type="submit">Save my profile <span aria-hidden="true">→</span></button>
+        </form>
+        <p class="privacyNote"><span aria-hidden="true">⌑</span> Saved in this browser only. This form does not send your details to the server. Clear them any time.</p>
+      </div>
+
+      <div id="welcome" hidden>
+        <div class="cardTopline"><span class="eyebrow">YOUR WORKSPACE</span><span class="savedMark"><span></span> SAVED ON THIS DEVICE</span></div>
+        <div class="welcomeIcon" aria-hidden="true">✳</div>
+        <p class="eyebrow welcomeEyebrow">GOOD TO HAVE YOU HERE</p>
+        <h2 id="welcomeTitle">Welcome back.</h2>
+        <p class="cardIntro" id="welcomeDetail">Your personal workspace is ready on this device.</p>
+        <div class="welcomeActions">
+          <button class="button buttonSecondary" type="button" id="profileEdit">Edit profile</button>
+          <button class="button buttonQuiet" type="button" id="profileForget">Forget profile</button>
+        </div>
+        <p class="privacyNote"><span aria-hidden="true">⌑</span> Your profile remains in this browser and is not sent to the server.</p>
+        </div>
+      </section>
     </section>
+
+    <footer class="footer">
+      <span>LOKI TRADING SYSTEMS <b>·</b> VERSION {{ version }}</span>
+      <span><a href="/health">SERVICE STATUS</a><b>·</b> RESEARCH, NOT A PROMISE</span>
+    </footer>
   </main>
-  <footer>
-    <small>Deployed from eleven-official/tradingbot</small>
-  </footer>
 </body>
 </html>
+
