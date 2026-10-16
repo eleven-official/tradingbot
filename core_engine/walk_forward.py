@@ -50,15 +50,25 @@ class PurgedWalkForwardValidator:
         test_size: Optional[int] = None,
         gap: int = 1,
         min_train_size: int = 100,
-        min_positive_folds: int = 3,
+        min_positive_folds: Optional[int] = None,
         min_median_sharpe: float = 0.0,
     ) -> None:
+        min_positive_folds = min(3, n_splits) if min_positive_folds is None else min_positive_folds
+        integer_settings = (n_splits, gap, min_train_size, min_positive_folds)
+        if any(not isinstance(value, int) or isinstance(value, bool) for value in integer_settings):
+            raise ValueError("split counts and sizes must be integers")
+        if test_size is not None and (
+            not isinstance(test_size, int) or isinstance(test_size, bool) or test_size < 1
+        ):
+            raise ValueError("test_size must be a positive integer when provided")
         if n_splits < 2:
             raise ValueError("n_splits must be at least 2")
         if gap < 0 or min_train_size < 1:
             raise ValueError("gap must be non-negative and min_train_size positive")
         if min_positive_folds < 1 or min_positive_folds > n_splits:
             raise ValueError("min_positive_folds must be within the split count")
+        if not np.isfinite(min_median_sharpe):
+            raise ValueError("min_median_sharpe must be finite")
         self.n_splits = n_splits
         self.test_size = test_size
         self.gap = gap
@@ -100,6 +110,8 @@ class PurgedWalkForwardValidator:
         """
         if not isinstance(data, pd.DataFrame):
             raise TypeError("data must be a pandas DataFrame")
+        if not data.index.is_monotonic_increasing:
+            raise ValueError("data index must be sorted chronologically")
         folds = list(self.split(len(data)))
         results: List[Dict[str, Any]] = []
         for fold in folds:
