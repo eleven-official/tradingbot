@@ -20,6 +20,9 @@ Documentation = "https://docs.lokitrading.ai"
 Repository = "https://github.com/lokitrading/loki"
 Issues = "https://github.com/lokitrading/loki/issues"
 
+[tool.vercel]
+entrypoint = "main:app"
+
 [tool.setuptools]
 packages = ["loki"]
 
