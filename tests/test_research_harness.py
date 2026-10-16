@@ -64,6 +64,63 @@ class ResearchHarnessTests(unittest.TestCase):
             ResearchHarness.baseline_returns(pd.Series([100.0, 0.0, 101.0]))
 
 
+    def test_baseline_returns_match_close_to_close_changes(self):
+        prices = pd.Series([100.0, 110.0, 99.0])
+        returns = ResearchHarness.baseline_returns(prices)
+        np.testing.assert_allclose(returns.to_numpy(), [0.10, -0.10])
+
+    def test_summary_handles_flat_series_without_infinite_ratios(self):
+        metrics = ResearchHarness.summary(pd.Series([0.0, 0.0, 0.0]))
+        self.assertEqual(metrics["total_return"], 0.0)
+        self.assertEqual(metrics["sharpe_ratio"], 0.0)
+        self.assertEqual(metrics["sortino_ratio"], 0.0)
+        self.assertEqual(metrics["max_drawdown"], 0.0)
+        self.assertTrue(all(math.isfinite(value) for value in metrics.values()))
+
+    def test_summary_rejects_empty_and_non_finite_return_series(self):
+        for returns in (pd.Series(dtype=float), pd.Series([float("inf")])):
+            with self.subTest(returns=returns.tolist()):
+                with self.assertRaisesRegex(ValueError, "finite observations"):
+                    ResearchHarness.summary(returns)
+
+    def test_harness_requires_a_dataset_identity(self):
+        for data_id in ("", "  "):
+            with self.subTest(data_id=data_id):
+                with self.assertRaisesRegex(ValueError, "data_id is required"):
+                    ResearchHarness(data_id)
+
+    def test_cost_stress_rejects_empty_non_positive_and_non_finite_scenarios(self):
+        harness = ResearchHarness("sample-data-v1")
+        for multipliers in ((), (0.0,), (-1.0,), (float("nan"),)):
+            with self.subTest(multipliers=multipliers):
+                with self.assertRaisesRegex(ValueError, "finite and positive"):
+                    harness.run_cost_stress(lambda multiplier, seed: {}, multipliers)
+
+    def test_baseline_comparison_rejects_disjoint_observation_windows(self):
+        left = pd.Series([0.01], index=["day-1"])
+        right = pd.Series([0.02], index=["day-2"])
+        with self.assertRaisesRegex(ValueError, "no aligned observations"):
+            ResearchHarness.compare_to_baseline(left, right)
+
+    def test_walk_forward_configuration_rejects_invalid_sizes(self):
+        invalid = (
+            {"n_splits": 1}, {"n_splits": 2.5}, {"test_size": 0},
+            {"gap": -1}, {"min_positive_folds": 0},
+            {"min_median_sharpe": float("nan")},
+        )
+        for kwargs in invalid:
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(ValueError):
+                    PurgedWalkForwardValidator(**kwargs)
+
+    def test_walk_forward_rejects_unsorted_input_before_splitting(self):
+        validator = PurgedWalkForwardValidator(n_splits=2, test_size=10,
+                                                gap=0, min_train_size=10)
+        data = pd.DataFrame({"close": range(30)}, index=list(range(15, -15, -1)))
+        with self.assertRaisesRegex(ValueError, "sorted chronologically"):
+            validator.evaluate(data, lambda train, test, fold: {"total_return": 0.1})
+
+
 if __name__ == "__main__":
     unittest.main()
 
