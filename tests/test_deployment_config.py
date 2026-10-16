@@ -114,6 +114,16 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("Live execution is not connected", source)
         self.assertNotIn("github.com/eleven-official", source)
 
+    def test_rule_version_labels_match_replay_engine(self):
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        engine = (ROOT / "static" / "js" / "strategy-lab.js").read_text(encoding="utf-8")
+        match = re.search(r'const RULE_VERSION = "([^"]+)";', engine)
+        self.assertIsNotNone(match)
+        version = match.group(1)
+        self.assertIn(f"RULE SET · VERSION {version}", html)
+        self.assertIn(f'class="versionValue">{version}</strong>', html)
+        self.assertIn(f"REVIEWING RULE SET {version}", html)
+
     def test_profile_code_persists_locally_without_sending_contact_details(self):
         source = (ROOT / "static" / "js" / "profile.js").read_text(encoding="utf-8")
         self.assertIn("localStorage.setItem", source)
