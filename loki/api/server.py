@@ -299,7 +299,15 @@ async def run_trade_council(payload: TradeCouncilRequest) -> dict[str, object]:
 async def create_daily_risk_summary(payload: DailyRiskRequest) -> dict[str, object]:
     """Summarize a user-configured daily paper-risk cap without blocking actions."""
     try:
-        summary = build_daily_risk_summary(**_model_data(payload))
+        summary = build_daily_risk_summary(
+            capital=payload.capital,
+            loss_limit_percent=payload.loss_limit_percent,
+            realized_pnl=payload.realized_pnl,
+            realized_loss=payload.realized_loss,
+            open_planned_risk=payload.open_planned_risk,
+            closed_today=payload.closed_today,
+            open_positions=payload.open_positions,
+        )
     except DailyRiskError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {
@@ -320,10 +328,10 @@ async def chat_with_loki(payload: BotChatRequest) -> dict[str, object]:
         "mode": "local-context-coach",
         "answer": answer_bot_question(values),
         "context_used": {
-            "market": bool((values.get("market") or {}).get("symbol")),
-            "decision": bool((values.get("decision") or {}).get("action")),
-            "journal": bool((values.get("journal") or {}).get("closed_trades")),
-            "daily_risk": bool(values.get("daily_risk")),
+            "market": bool(payload.market and payload.market.symbol),
+            "decision": bool(payload.decision and payload.decision.action),
+            "journal": bool(payload.journal.closed_trades),
+            "daily_risk": payload.daily_risk is not None,
         },
         "disclaimer": "Contextual paper research only; not a forecast, financial advice or an order.",
     }
