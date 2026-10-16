@@ -182,6 +182,7 @@
           <div class="bot-prompts" aria-label="Suggested questions">
             <button type="button" data-bot-prompt="Why did the council say WAIT or SKIP?">Explain my council</button>
             <button type="button" data-bot-prompt="What is my planned size and downside risk?">Explain my risk</button>
+            <button type="button" data-bot-prompt="How much of my daily loss cap remains?">Daily risk check</button>
             <button type="button" data-bot-prompt="How has my selected setup performed in the journal?">Review my setup</button>
           </div>
           <form id="bot-chat-form" class="bot-chat-form">
@@ -222,6 +223,34 @@
         <article><span>AVERAGE R</span><strong id="journal-average-r">—</strong><small>Outcome / planned risk</small></article>
         <article class="journal-pnl-stat"><span>GROSS P&amp;L · QUOTE UNITS</span><strong id="journal-pnl">—</strong><small>Excludes fees and slippage</small></article>
       </div>
+
+      <section class="daily-risk-panel" aria-labelledby="daily-risk-title">
+        <div class="daily-risk-header">
+          <div>
+            <span class="section-kicker">RISK GUARD / YOUR LOCAL DAY</span>
+            <h3 id="daily-risk-title">Daily risk guard</h3>
+            <p>See how much of your chosen paper loss cap is committed before considering another setup.</p>
+          </div>
+          <div class="daily-risk-controls">
+            <span id="daily-risk-status" class="daily-risk-status loading" role="status" aria-live="polite">UPDATING</span>
+            <label for="daily-risk-limit">Daily loss cap
+              <span class="input-wrap"><input id="daily-risk-limit" type="number" value="2" min="0.1" max="100" step="0.1" inputmode="decimal" /><span class="input-suffix">%</span></span>
+            </label>
+          </div>
+        </div>
+        <div class="daily-risk-metrics" aria-live="polite">
+          <article><span>CAP AMOUNT</span><strong id="daily-risk-limit-amount">—</strong><small>Based on plan capital</small></article>
+          <article><span>REALIZED P&amp;L TODAY</span><strong id="daily-risk-realized">—</strong><small>Manual journal exits</small></article>
+          <article><span>OPEN PLANNED RISK</span><strong id="daily-risk-open">—</strong><small>Original stop risk</small></article>
+          <article><span>CAP REMAINING</span><strong id="daily-risk-remaining">—</strong><small id="daily-risk-committed">Committed: —</small></article>
+        </div>
+        <div class="daily-risk-meter-row">
+          <div id="daily-risk-meter" class="daily-risk-meter" role="progressbar" aria-label="Daily paper loss cap used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="daily-risk-progress"></span></div>
+          <strong id="daily-risk-utilization">—</strong>
+        </div>
+        <p id="daily-risk-day" class="daily-risk-day">Preparing this browser's local-day summary…</p>
+        <p class="daily-risk-caveat">Advisory estimate from this browser only. Counts gross realized losses and original planned risk on open paper entries; excludes mark-to-market, fees and slippage. It never blocks plans or orders.</p>
+      </section>
 
       <section class="playbook-review" aria-labelledby="playbook-review-title">
         <div class="playbook-heading">

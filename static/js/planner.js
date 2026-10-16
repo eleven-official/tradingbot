@@ -14,6 +14,12 @@ const botSend = document.querySelector("#bot-send");
 let marketSnapshot = null;
 let selectedStrategyKey = "";
 const JOURNAL_STORAGE_KEY = "loki.paper-journal.v1";
+const DAILY_RISK_STORAGE_KEY = "loki.daily-risk-limit.v1";
+const dailyRiskLimitInput = document.querySelector("#daily-risk-limit");
+let dailyRiskSummary = null;
+let dailyRiskRequestId = 0;
+let dailyRiskTimer = null;
+let dailyRiskMidnightTimer = null;
 let journalEntries = readJournalEntries();
 let lastDecision = null;
 
@@ -317,11 +323,130 @@ function journalTime(value) {
   return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleString();
 }
 
+function readDailyRiskLimit() {
+  try {
+    const saved = Number(localStorage.getItem(DAILY_RISK_STORAGE_KEY));
+    return Number.isFinite(saved) && saved > 0 && saved <= 100 ? saved : 2;
+  } catch {
+    return 2;
+  }
+}
+
+function localDayKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+}
+
+function renderDailyRisk(summary) {
+  const panel = document.querySelector(".daily-risk-panel");
+  const status = document.querySelector("#daily-risk-status");
+  const meter = document.querySelector("#daily-risk-meter");
+  const validStatus = ["WITHIN_LIMIT", "WATCH", "PAUSE"].includes(summary.status) ? summary.status : "WITHIN_LIMIT";
+  const statusClass = validStatus.toLowerCase();
+  panel.dataset.riskStatus = validStatus;
+  status.textContent = validStatus.replace("_", " ");
+  status.className = "daily-risk-status " + statusClass;
+  document.querySelector("#daily-risk-limit-amount").textContent = journalAmount(summary.limit_amount);
+  const pnl = document.querySelector("#daily-risk-realized");
+  pnl.textContent = (Number(summary.realized_pnl) > 0 ? "+" : "") + journalAmount(summary.realized_pnl);
+  pnl.className = Number(summary.realized_pnl) > 0 ? "positive" : Number(summary.realized_pnl) < 0 ? "negative" : "";
+  document.querySelector("#daily-risk-open").textContent = journalAmount(summary.open_planned_risk);
+  const remaining = document.querySelector("#daily-risk-remaining");
+  remaining.textContent = journalAmount(summary.remaining_amount);
+  remaining.className = statusClass === "pause" ? "pause" : statusClass === "watch" ? "watch" : "safe";
+  document.querySelector("#daily-risk-committed").textContent = "Committed: " + journalAmount(summary.committed_loss);
+  const utilization = Math.max(0, Number(summary.utilization_percent) || 0);
+  meter.className = "daily-risk-meter " + statusClass;
+  meter.setAttribute("aria-valuenow", String(Math.min(100, utilization)));
+  document.querySelector("#daily-risk-progress").style.width = Math.min(100, utilization) + "%";
+  document.querySelector("#daily-risk-utilization").textContent = number(utilization, 1) + "% used";
+  document.querySelector("#daily-risk-day").textContent =
+    new Date().toLocaleDateString() + " · " + summary.closed_today + " closed exits · " + summary.open_positions + " open paper entries";
+}
+
+function showDailyRiskUnavailable(message, className = "unavailable") {
+  dailyRiskSummary = null;
+  const status = document.querySelector("#daily-risk-status");
+  status.textContent = message;
+  status.className = "daily-risk-status " + className;
+  document.querySelector(".daily-risk-panel").dataset.riskStatus = className.toUpperCase();
+  document.querySelector("#daily-risk-day").textContent = className === "loading"
+    ? "Updating from today's browser-local journal entries…"
+    : "Enter a valid capital amount and daily cap, and make sure the local risk service is available.";
+  updateBotContextStatus();
+}
+
+async function updateDailyRisk() {
+  const requestId = ++dailyRiskRequestId;
+  const capital = Number(form.elements.capital.value);
+  const lossLimitPercent = Number(dailyRiskLimitInput.value);
+  if (!(capital > 0) || !(lossLimitPercent > 0) || lossLimitPercent > 100) {
+    showDailyRiskUnavailable("SET CAP & CAPITAL");
+    return;
+  }
+
+  const today = localDayKey(new Date());
+  const closedToday = journalEntries.filter((entry) =>
+    entry.status === "closed" &&
+    localDayKey(entry.closedAt) === today &&
+    Number.isFinite(Number(entry.pnl))
+  );
+  const open = journalEntries.filter((entry) => entry.status === "open");
+  const realizedPnl = closedToday.reduce((sum, entry) => sum + Number(entry.pnl), 0);
+  const realizedLoss = closedToday.reduce((sum, entry) => sum + Math.max(0, -Number(entry.pnl)), 0);
+  const openPlannedRisk = open.reduce((sum, entry) => {
+    const risk = Number(entry.estimatedLoss);
+    return sum + (Number.isFinite(risk) && risk > 0 ? risk : 0);
+  }, 0);
+  showDailyRiskUnavailable("UPDATING", "loading");
+
+  try {
+    const response = await fetch("/api/daily-risk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        capital,
+        loss_limit_percent: lossLimitPercent,
+        realized_pnl: realizedPnl,
+        realized_loss: realizedLoss,
+        open_planned_risk: openPlannedRisk,
+        closed_today: closedToday.length,
+        open_positions: open.length,
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || "Daily risk summary unavailable.");
+    if (requestId !== dailyRiskRequestId) return;
+    dailyRiskSummary = body;
+    renderDailyRisk(body);
+    updateBotContextStatus();
+  } catch {
+    if (requestId === dailyRiskRequestId) showDailyRiskUnavailable("MONITOR UNAVAILABLE");
+  }
+}
+
+function scheduleDailyRiskUpdate() {
+  window.clearTimeout(dailyRiskTimer);
+  dailyRiskTimer = window.setTimeout(updateDailyRisk, 180);
+}
+
+function scheduleDailyRiskMidnightRefresh() {
+  window.clearTimeout(dailyRiskMidnightTimer);
+  const nextMidnight = new Date();
+  nextMidnight.setHours(24, 0, 1, 0);
+  dailyRiskMidnightTimer = window.setTimeout(() => {
+    updateDailyRisk();
+    scheduleDailyRiskMidnightRefresh();
+  }, Math.max(1000, nextMidnight.getTime() - Date.now()));
+}
+
 function persistJournal(nextEntries) {
   try {
     localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(nextEntries));
     journalEntries = nextEntries;
     renderJournal();
+    updateDailyRisk();
     return true;
   } catch {
     return false;
@@ -407,6 +532,7 @@ function updateBotContextStatus() {
   if (marketSnapshot) parts.push(marketSnapshot.symbol + " " + marketSnapshot.interval + " snapshot");
   if (lastDecision) parts.push(lastDecision.data.action + " council review");
   parts.push(journalEntries.filter((entry) => entry.status === "closed").length + " closed journal outcomes");
+  if (dailyRiskSummary) parts.push("daily risk " + dailyRiskSummary.status.replace("_", " ").toLowerCase());
   status.textContent = "Each message can use: " + parts.join(" · ") + ". Journal data stays in this browser.";
 }
 
@@ -451,6 +577,18 @@ function botContextPayload() {
         pnl: stats.pnl,
       })),
     },
+    daily_risk: dailyRiskSummary ? {
+      status: dailyRiskSummary.status,
+      limit_amount: dailyRiskSummary.limit_amount,
+      realized_pnl: dailyRiskSummary.realized_pnl,
+      realized_loss: dailyRiskSummary.realized_loss,
+      open_planned_risk: dailyRiskSummary.open_planned_risk,
+      committed_loss: dailyRiskSummary.committed_loss,
+      remaining_amount: dailyRiskSummary.remaining_amount,
+      utilization_percent: dailyRiskSummary.utilization_percent,
+      closed_today: dailyRiskSummary.closed_today,
+      open_positions: dailyRiskSummary.open_positions,
+    } : null,
   };
 }
 
@@ -623,7 +761,22 @@ window.addEventListener("storage", (event) => {
   if (event.key === JOURNAL_STORAGE_KEY) {
     journalEntries = readJournalEntries();
     renderJournal();
+    updateDailyRisk();
+  } else if (event.key === DAILY_RISK_STORAGE_KEY) {
+    dailyRiskLimitInput.value = String(readDailyRiskLimit());
+    updateDailyRisk();
   }
 });
+dailyRiskLimitInput.value = String(readDailyRiskLimit());
+dailyRiskLimitInput.addEventListener("input", () => {
+  const value = Number(dailyRiskLimitInput.value);
+  if (Number.isFinite(value) && value > 0 && value <= 100) {
+    try { localStorage.setItem(DAILY_RISK_STORAGE_KEY, String(value)); } catch { /* Keep the setting for this page session. */ }
+  }
+  scheduleDailyRiskUpdate();
+});
+form.elements.capital.addEventListener("input", scheduleDailyRiskUpdate);
 renderJournal();
+updateDailyRisk();
+scheduleDailyRiskMidnightRefresh();
 

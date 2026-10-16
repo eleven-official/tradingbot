@@ -121,6 +121,69 @@ def test_bot_chat_answers_from_supplied_paper_context():
     assert "or an order" in response.json()["disclaimer"]
 
 
+def test_daily_risk_endpoint_summarizes_the_user_configured_cap():
+    response = client.post(
+        "/api/daily-risk",
+        json={
+            "capital": 10_000,
+            "loss_limit_percent": 2,
+            "realized_pnl": -100,
+            "realized_loss": 100,
+            "open_planned_risk": 50,
+            "closed_today": 1,
+            "open_positions": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "paper-only"
+    assert response.json()["status"] == "WATCH"
+    assert response.json()["limit_amount"] == 200
+    assert response.json()["remaining_amount"] == 50
+    assert "never blocks" in response.json()["disclaimer"]
+
+
+def test_daily_risk_endpoint_rejects_negative_loss_inputs():
+    response = client.post(
+        "/api/daily-risk",
+        json={
+            "capital": 10_000,
+            "loss_limit_percent": 2,
+            "realized_pnl": 0,
+            "realized_loss": -1,
+            "open_planned_risk": 0,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_bot_chat_answers_daily_risk_from_supplied_context():
+    response = client.post(
+        "/api/bot-chat",
+        json={
+            "question": "How much of my daily loss cap remains?",
+            "daily_risk": {
+                "status": "WATCH",
+                "limit_amount": 200,
+                "realized_pnl": -100,
+                "realized_loss": 100,
+                "open_planned_risk": 50,
+                "committed_loss": 150,
+                "remaining_amount": 50,
+                "utilization_percent": 75,
+                "closed_today": 1,
+                "open_positions": 1,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Daily paper-risk guard: WATCH" in response.json()["answer"]
+    assert "Remaining cap 50.00" in response.json()["answer"]
+    assert response.json()["context_used"]["daily_risk"] is True
+
+
 def test_bot_chat_rejects_questions_over_500_characters():
     response = client.post("/api/bot-chat", json={"question": "x" * 501})
 

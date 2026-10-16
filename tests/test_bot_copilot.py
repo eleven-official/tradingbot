@@ -88,3 +88,32 @@ def test_unknown_question_describes_coach_scope():
 
     assert "I can explain the current council decision" in answer
     assert "only context sent from this screen" in answer
+
+
+def test_daily_risk_answer_uses_gross_loss_and_disclaims_scope():
+    answer = answer_bot_question({
+        "question": "How much of my daily loss cap remains?",
+        "daily_risk": {
+            "status": "WATCH",
+            "limit_amount": 200,
+            "realized_pnl": 100,
+            "realized_loss": 75,
+            "open_planned_risk": 100,
+            "committed_loss": 175,
+            "remaining_amount": 25,
+            "utilization_percent": 87.5,
+            "closed_today": 2,
+            "open_positions": 1,
+        },
+    })
+
+    assert "today's gross realized losses 75.00" in answer
+    assert "Remaining cap 25.00" in answer
+    assert "does not block plans or orders" in answer
+
+
+def test_daily_risk_answer_handles_missing_summary():
+    answer = answer_bot_question({"question": "Check my daily risk cap"})
+
+    assert "has no current reading yet" in answer
+    assert "track paper entries" in answer

@@ -120,6 +120,29 @@ def _market_answer(context: dict[str, Any]) -> str:
     )
 
 
+def _daily_risk_answer(context: dict[str, Any]) -> str:
+    risk = _record(context.get("daily_risk"))
+    if not risk:
+        return (
+            "The daily risk guard has no current reading yet. Set a valid capital amount "
+            "and daily cap, "
+            "then track paper entries and manual exits in the journal."
+        )
+    return (
+        f"Daily paper-risk guard: {risk.get('status', 'UNKNOWN')}. "
+        f"User cap {_fmt(risk.get('limit_amount'))} quote units; today's gross realized losses "
+        f"{_fmt(risk.get('realized_loss'))}, realized P&L {_fmt(risk.get('realized_pnl'))}, "
+        f"open planned risk {_fmt(risk.get('open_planned_risk'))}, and combined committed loss "
+        f"{_fmt(risk.get('committed_loss'))}. Remaining cap {_fmt(risk.get('remaining_amount'))} "
+        f"({_fmt(risk.get('utilization_percent'), 1)}% used). It covers "
+        f"{risk.get('closed_today', 0)} closed and "
+        f"{risk.get('open_positions', 0)} open journal entries. "
+        "This is an advisory estimate from your browser's local day. "
+        "It uses original planned risk, excludes mark-to-market, fees and slippage, "
+        "and does not block plans or orders."
+    )
+
+
 def answer_bot_question(payload: dict[str, Any]) -> str:
     """Answer a bounded question from the market, council and journal context."""
     question = re.sub(r"\s+", " ", str(payload.get("question") or "")).strip()
@@ -128,6 +151,12 @@ def answer_bot_question(payload: dict[str, Any]) -> str:
     query = question.casefold()
     context = payload if isinstance(payload, dict) else {}
 
+    is_daily_risk_question = (
+        "daily" in query
+        and any(word in query for word in ("risk", "loss", "cap", "limit", "budget"))
+    ) or "loss cap" in query or "daily drawdown" in query
+    if is_daily_risk_question:
+        return _daily_risk_answer(context)
     if any(word in query for word in ("council", "decision", "wait", "skip", "buy", "gate", "why")):
         return _decision_answer(context)
     if any(word in query for word in ("risk", "size", "stop", "loss", "exposure", "position", "quantity", "reward")):

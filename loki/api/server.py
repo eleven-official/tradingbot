@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from loki.api.bot_copilot import answer_bot_question
+from loki.api.daily_risk import DailyRiskError, build_daily_risk_summary
 from loki.api.binance_market_data import (
     MarketDataError,
     get_binance_spot_history,
@@ -141,6 +142,31 @@ class BotJournalContext(BaseModel):
     setups: list[BotSetupStats] = Field(default_factory=list)
 
 
+class DailyRiskRequest(BaseModel):
+    """Browser journal totals for an advisory daily paper-risk check."""
+
+    capital: float = Field(gt=0)
+    loss_limit_percent: float = Field(gt=0, le=100)
+    realized_pnl: float
+    realized_loss: float = Field(ge=0)
+    open_planned_risk: float = Field(ge=0)
+    closed_today: int = Field(default=0, ge=0)
+    open_positions: int = Field(default=0, ge=0)
+
+
+class BotDailyRiskContext(BaseModel):
+    status: str = Field(default="", max_length=16)
+    limit_amount: float | None = None
+    realized_pnl: float | None = None
+    realized_loss: float | None = None
+    open_planned_risk: float | None = None
+    committed_loss: float | None = None
+    remaining_amount: float | None = None
+    utilization_percent: float | None = None
+    closed_today: int = Field(default=0, ge=0)
+    open_positions: int = Field(default=0, ge=0)
+
+
 class BotChatRequest(BaseModel):
     """A bounded question with ephemeral dashboard context; no chat is persisted."""
 
@@ -148,6 +174,7 @@ class BotChatRequest(BaseModel):
     market: BotMarketContext | None = None
     decision: BotDecisionContext | None = None
     journal: BotJournalContext = Field(default_factory=BotJournalContext)
+    daily_risk: BotDailyRiskContext | None = None
 
 
 def _model_data(payload: BaseModel) -> dict[str, object]:
@@ -268,6 +295,23 @@ async def run_trade_council(payload: TradeCouncilRequest) -> dict[str, object]:
     }
 
 
+@app.post("/api/daily-risk")
+async def create_daily_risk_summary(payload: DailyRiskRequest) -> dict[str, object]:
+    """Summarize a user-configured daily paper-risk cap without blocking actions."""
+    try:
+        summary = build_daily_risk_summary(**_model_data(payload))
+    except DailyRiskError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {
+        "mode": "paper-only",
+        **asdict(summary),
+        "disclaimer": (
+            "Advisory journal estimate only. It excludes mark-to-market, fees and slippage, "
+            "and never blocks a plan or order."
+        ),
+    }
+
+
 @app.post("/api/bot-chat")
 async def chat_with_loki(payload: BotChatRequest) -> dict[str, object]:
     """Answer from the dashboard context supplied for this message only."""
@@ -275,7 +319,12 @@ async def chat_with_loki(payload: BotChatRequest) -> dict[str, object]:
     return {
         "mode": "local-context-coach",
         "answer": answer_bot_question(values),
-        "context_used": {"market": bool((values.get("market") or {}).get("symbol")), "decision": bool((values.get("decision") or {}).get("action")), "journal": bool((values.get("journal") or {}).get("closed_trades"))},
+        "context_used": {
+            "market": bool((values.get("market") or {}).get("symbol")),
+            "decision": bool((values.get("decision") or {}).get("action")),
+            "journal": bool((values.get("journal") or {}).get("closed_trades")),
+            "daily_risk": bool(values.get("daily_risk")),
+        },
         "disclaimer": "Contextual paper research only; not a forecast, financial advice or an order.",
     }
 
