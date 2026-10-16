@@ -118,7 +118,7 @@ def test_bot_chat_answers_from_supplied_paper_context():
     assert "BTCUSDT (5m) WAIT" in response.json()["answer"]
     assert "Wait for a confirmed bullish regime" in response.json()["answer"]
     assert response.json()["context_used"]["decision"] is True
-    assert "not an order" in response.json()["disclaimer"]
+    assert "or an order" in response.json()["disclaimer"]
 
 
 def test_bot_chat_rejects_questions_over_500_characters():
