@@ -10,6 +10,7 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
+  PYTHONPATH: ${{ github.workspace }}
   REGISTRY: ghcr.io
   IMAGE_NAME: lokitrading/loki
 
@@ -217,7 +218,7 @@ jobs:
     
     steps:
     - name: Slack Notification
-      uses: 8398a7/action-slack@v3
+      uses: 8398a7a7/action-slack@v3
       with:
         status: ${{ job.status }}
         text: 'Loki CI/CD Pipeline: ${{ job.status }}'
