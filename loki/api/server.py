@@ -16,20 +16,21 @@ app = FastAPI(
 )
 
 # Serve a small /static directory for CSS/JS/images used by the landing page.
-static_dir = Path(__file__).parent.parent / "static"
+project_root = Path(__file__).resolve().parents[2]
+static_dir = project_root / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # Templates dir
-templates_dir = Path(__file__).parent.parent / "templates"
+templates_dir = project_root / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """Render a small landing page so the repo is a website-ready deployment."""
-    context = {"request": request, "version": __version__}
-    return templates.TemplateResponse("index.html", context)
+    context = {"version": __version__}
+    return templates.TemplateResponse(request, "index.html", context)
 
 
 @app.get("/health")

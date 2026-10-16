@@ -32,6 +32,7 @@ from rag_service import RAGService
 from pcr_feed import PCRFeed
 from premarket import PreMarketBriefing
 import structure
+from core_engine.strategy_council import build_strategy_council
 from infra import (
     is_nse_holiday,
     NSE_HOLIDAY_NAMES,
@@ -205,6 +206,11 @@ class TradingBotOrchestrator:
         self._pcr_history = deque(maxlen=12)
         self._today_vix: float = 0.0                # cached for journaling
         self._trend_composite: float = 0.0          # market_trend directional score (-1..1)
+        self._trend_snapshot: dict = {}
+        self._news_headlines: list = []
+        self._last_signal: str = "HOLD"
+        self._last_signal_at: str | None = None
+        self._strategy_status: str = ""
         self.day_conviction: float = 0.0            # 0..1 conviction score
         self.day_conviction_level: str = "LOW"      # LOW / MEDIUM / HIGH
         self._expiry_gamma_active: bool = False      # 0-DTE expiry gamma-scalp mode
@@ -2178,16 +2184,47 @@ class TradingBotOrchestrator:
                       and self.position_agent.active_trade) or {}
             bal, bal_lbl = self._current_balance()
             tf = self.config.get('trading_flags', {}) or {}
+            setup_cfg = self.config.get('setup_score', {}) or {}
+            trail_cfg = self.config.get('trailing_stop_loss', {}) or {}
+            range_cfg = self.config.get('range_scalp', {}) or {}
+            structure_exit_cfg = self.config.get('structure_exit', {}) or {}
+            reversal_exit_cfg = self.config.get('reversal_exit', {}) or {}
+            hold_cfg = self.config.get('hold_to_close', {}) or {}
             snap = {
                 "ts":                 datetime.datetime.now().isoformat(),
                 "state":              self.bot_state,
                 "strategy":           self.active_strategy_name,
+                "last_signal":        self._last_signal,
+                "last_signal_at":     self._last_signal_at,
+                "strategy_status":    self._strategy_status,
+                "strategy_rules": {
+                    "setup_score_enabled": bool(setup_cfg.get('enable', True)),
+                    "entry_threshold": setup_cfg.get('entry_threshold', 65),
+                    "late_window_start": setup_cfg.get('late_window_start', '14:00'),
+                    "late_window_threshold": setup_cfg.get('late_window_threshold', 80),
+                    "hard_stop_percent": tf.get('stop_loss_percent', 25),
+                    "trailing_stop_percent": trail_cfg.get('percentage', 15),
+                    "range_trailing_stop_percent": range_cfg.get('trail_pct', 10),
+                    "indicator_exit_type": trail_cfg.get('indicator_exit_type', 'PSAR'),
+                    "indicator_exit_enabled": bool(trail_cfg.get('use_indicator_exit', True)),
+                    "indicator_exit_profit_only": bool(trail_cfg.get('indicator_exit_profit_only', True)),
+                    "indicator_exit_min_hold_minutes": trail_cfg.get('indicator_exit_min_hold_minutes', 10),
+                    "hard_exit_time": tf.get('hard_exit_time', '14:00'),
+                    "structure_exit_enabled": bool(structure_exit_cfg.get('enable', False)),
+                    "reversal_exit_enabled": bool(reversal_exit_cfg.get('enable', False)),
+                    "hold_to_close_enabled": bool(hold_cfg.get('enable', False)),
+                    "hold_to_close_time": hold_cfg.get('exit_time', '15:15'),
+                },
                 "manual_mode":        bool(getattr(self, '_manual_mode', False)),
                 "mode":               getattr(self, '_trading_mode', 'MODERATE'),
                 "sentiment":          self.day_sentiment,
                 "day_quality":        getattr(self, '_day_quality', 'UNKNOWN'),
                 "regime":             getattr(self, 'day_regime', 'PENDING'),
                 "regime_reason":      getattr(self, '_regime_reason', ''),
+                "trend_composite":    getattr(self, '_trend_composite', 0.0),
+                "trend_summary":      (getattr(self, '_trend_snapshot', {}) or {}).get('summary', ''),
+                "trend_components":   (getattr(self, '_trend_snapshot', {}) or {}).get('components', {}),
+                "news_headlines":     getattr(self, '_news_headlines', [])[:3],
                 "conviction":         getattr(self, 'day_conviction_level', 'LOW'),
                 "conviction_score":   getattr(self, 'day_conviction', 0.0),
                 "setups_scored":      getattr(self, '_scored_today', 0),
@@ -2228,6 +2265,30 @@ class TradingBotOrchestrator:
                 "why_no_trade":       (self._no_trade_diagnosis()
                                        if self.trades_today_count == 0 else []),
                 "no_trade_reason":    self.no_trade_reason,
+                "council": build_strategy_council(
+                    strategy=self.active_strategy_name,
+                    signal=getattr(self, '_last_signal', 'HOLD'),
+                    sentiment=self.day_sentiment,
+                    regime=getattr(self, 'day_regime', 'PENDING'),
+                    regime_reason=getattr(self, '_regime_reason', ''),
+                    trend_composite=getattr(self, '_trend_composite', None),
+                    trend_summary=(getattr(self, '_trend_snapshot', {}) or {}).get('summary'),
+                    trend_components=(getattr(self, '_trend_snapshot', {}) or {}).get('components'),
+                    conditions=sorted(getattr(self, 'todays_conditions', set()) or []),
+                    conviction=getattr(self, 'day_conviction_level', 'LOW'),
+                    setup_score=(getattr(self, '_last_score', None)
+                                 or getattr(self, '_best_score_today', None)),
+                    strategy_status=getattr(self, '_strategy_status', ''),
+                    news_headlines=getattr(self, '_news_headlines', []),
+                    recent_blockers=[
+                        f"{self._BLOCK_LABELS.get(key, key)} ×{count}"
+                        for key, count in sorted(
+                            (getattr(self, '_block_reasons', {}) or {}).items(),
+                            key=lambda item: item[1], reverse=True,
+                        )[:5]
+                    ],
+                    active_trade=bool(active),
+                ),
             }
             atomic_write_json(state_path("bot_status.json"), snap)
         except Exception as e:
@@ -2505,6 +2566,7 @@ class TradingBotOrchestrator:
              rest of the bot (signal-direction gate → CE/PE) is unchanged.
         """
         valid = {"Very Bullish", "Bullish", "Bearish", "Very Bearish", "Neutral"}
+        self._news_headlines = []
 
         # 1. Hard override wins (unattended runs).
         hard_override = (
@@ -2513,6 +2575,12 @@ class TradingBotOrchestrator:
         )
         if hard_override and hard_override in valid:
             logging.info(f"[MarketTrend] Hard-override from config/env: {hard_override}")
+            self._trend_composite = 0.0
+            self._trend_snapshot = {
+                "verdict": hard_override,
+                "summary": "Directional override supplied by configuration or environment.",
+                "components": {},
+            }
             return hard_override
 
         # 2. Automated price-action verdict.
@@ -2525,6 +2593,11 @@ class TradingBotOrchestrator:
                      "summary": "analysis failed — Neutral"}
         automated = trend.get("sentiment", "Neutral")
         self._trend_composite = float(trend.get("composite", 0.0) or 0.0)
+        self._trend_snapshot = {
+            "verdict": str(trend.get("verdict", "NEUTRAL")),
+            "summary": str(trend.get("summary", "") or ""),
+            "components": trend.get("components", {}) or {},
+        }
         logging.info(
             f"[MarketTrend] Verdict: {trend.get('verdict')} "
             f"(score {trend.get('composite'):+.2f}) → {automated}"
@@ -2596,6 +2669,7 @@ class TradingBotOrchestrator:
         )
         if hard_override and hard_override in valid:
             logging.info(f"Sentiment hard-override from config/env: {hard_override}")
+            self._news_headlines = []
             return hard_override
 
         # 2. Automated read.
@@ -2604,6 +2678,15 @@ class TradingBotOrchestrator:
         except Exception as e:
             logging.warning(f"Automated sentiment failed ({e}); defaulting to 'Neutral'.")
             automated = "Neutral"
+        try:
+            # get_market_sentiment has already populated the one-hour article
+            # cache, so this reads the same evidence without another news fetch.
+            self._news_headlines = await asyncio.to_thread(
+                self.sentiment_agent.get_top_headlines, 3
+            )
+        except Exception as e:
+            logging.debug(f"Could not attach cached headlines to council: {e}")
+            self._news_headlines = []
         logging.info(f"Automated sentiment read: {automated}")
 
         manual_enabled = self.config['trading_flags'].get('manual_sentiment_override', True)
@@ -4043,6 +4126,20 @@ class TradingBotOrchestrator:
                         is_expiry_day=getattr(self, "is_expiry_day", False),
                     )
 
+                    self._last_signal = signal if signal in ("BUY", "SELL") else "HOLD"
+                    self._last_signal_at = datetime.datetime.now().isoformat(timespec="seconds")
+                    try:
+                        status_text = self.active_strategy.get_status_message(
+                            day_df_for_signal, self.day_sentiment,
+                            cpr_pivots=self.position_agent.cpr_pivots,
+                            vix_conditions=self.todays_conditions,
+                            is_expiry_day=getattr(self, "is_expiry_day", False),
+                        )
+                        self._strategy_status = str(status_text or "")[:500]
+                    except Exception as _status_exc:
+                        self._strategy_status = ""
+                        logging.debug(f"Strategy status explanation skipped: {_status_exc}")
+
                     if signal == 'HOLD':
                         self._note_block("no_signal")
                     if signal != 'HOLD':
@@ -4273,9 +4370,20 @@ class TradingBotOrchestrator:
                         self.completed_trades.append({
                             'symbol':   status.get('Symbol', '?'),
                             'type':     status.get('TradeType', '?'),
+                            'timestamp': (status.get('Timestamp').isoformat()
+                                          if hasattr(status.get('Timestamp'), 'isoformat')
+                                          else status.get('Timestamp')),
+                            'entry_time': (status.get('entry_time').isoformat()
+                                           if hasattr(status.get('entry_time'), 'isoformat')
+                                           else status.get('entry_time')),
+                            'entry_price': status.get('EntryPrice'),
+                            'exit_price': status.get('ExitPrice'),
+                            'quantity': status.get('Quantity'),
+                            'exit_reason': status.get('ExitReason'),
                             'gross':    float(status.get('GrossProfitLoss',
                                               status.get('ProfitLoss', 0)) or 0),
                             'costs':    float(status.get('Costs', 0) or 0),
+                            'cost_breakdown': status.get('CostBreakdown') or {},
                             'net':      float(status.get('ProfitLoss', 0) or 0),
                             'strategy': status.get('Strategy', '?'),
                             'regime':   getattr(self, 'day_regime', 'PENDING'),
@@ -4420,3 +4528,5 @@ if __name__ == "__main__":
         asyncio.run(bot.run())
     elif bot.authenticate():
         asyncio.run(bot.run())
+
+
