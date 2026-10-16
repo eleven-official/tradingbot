@@ -28,8 +28,8 @@ templates = Jinja2Templates(directory=str(templates_dir))
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """Render a small landing page so the repo is a website-ready deployment."""
-    context = {"request": request, "version": __version__}
-    return templates.TemplateResponse("index.html", context)
+    context = {"version": __version__}
+    return templates.TemplateResponse(request, "index.html", context)
 
 
 @app.get("/health")
