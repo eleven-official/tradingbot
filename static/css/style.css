@@ -164,3 +164,49 @@ a { color: inherit; }
 @media (max-width: 390px) { .shell { width: calc(100% - 22px); }.brandName { font-size: 10px; }.serviceLink { font-size: 7px; }.profileCard { padding: 21px; }.workspaceTop { padding: 0 9px; }.topRight { gap: 8px; }.userChip { font-size: 0; }.userChip .avatar { font-size: 10px; }.paperChip { padding: 0 6px; font-size: 6px; }.banner small { font-size: 7px; }.banner > button { font-size: 7px; }.metricCard > span:first-child { font-size: 6px; }.metricCard strong { font-size: 19px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 
+
+
+/* Adaptive paper agent and locked live-mode disclosure */
+.modeChoiceRow { display:flex; align-items:center; gap:8px; margin:0 0 10px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:rgba(16,22,32,.82); }
+.modeChoiceRow > .eyebrow { margin-right:auto; }
+.modeChoice { border:1px solid var(--line); border-radius:5px; padding:5px 8px; color:#9da8b5; font-family:var(--mono); font-size:7px; letter-spacing:.04em; }
+.modeChoice.active { border-color:rgba(128,226,210,.25); color:var(--cyan); background:rgba(128,226,210,.06); }
+.modeChoice.locked { border-color:rgba(255,139,130,.22); color:#d99590; background:rgba(255,139,130,.04); }
+.agentPaperPanel { margin-top:11px; padding:15px; }
+.agentPaperHead { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.agentPaperHead h2 { margin:5px 0 7px; color:#e8edf0; font-family:var(--display); font-size:17px; letter-spacing:-.03em; font-weight:600; }
+.agentPaperHead p { max-width:780px; margin:0; color:#8994a2; font-size:8px; line-height:1.7; }
+.agentTag { flex:0 0 auto; border:1px solid rgba(197,242,121,.19); border-radius:4px; padding:5px 7px; color:var(--acid); font-family:var(--mono); font-size:6px; letter-spacing:.04em; }
+.agentStrategyList { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; }
+.agentStrategyList span { border:1px solid var(--line); border-radius:5px; padding:6px 8px; color:#bdc7d0; background:rgba(255,255,255,.018); font-size:7px; }
+.agentActionRow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; border-bottom:1px solid var(--line); padding-bottom:12px; }
+.agentPaperStatus { color:#a7b1bd; font-size:8px; line-height:1.5; }
+.agentCandidateList { padding-top:11px; }
+.agentCandidateList > p { margin:6px 0 0; color:#8994a2; font-size:8px; line-height:1.6; }
+.agentCandidateTable { display:grid; gap:5px; margin-top:9px; }
+.agentCandidateRow { display:grid; grid-template-columns:minmax(120px,1.1fr) minmax(210px,2fr) auto; align-items:center; gap:10px; border:1px solid var(--line); border-radius:5px; padding:7px 8px; background:rgba(255,255,255,.015); }
+.agentCandidateRow b { color:#d5dce2; font-size:8px; font-weight:600; }
+.agentCandidateRow > span { color:#8994a2; font-family:var(--mono); font-size:7px; }
+.agentCandidateRow em { justify-self:end; border:1px solid var(--line); border-radius:4px; padding:4px 5px; color:#929eaa; font-family:var(--mono); font-size:6px; font-style:normal; }
+.agentCandidateRow em.selected { border-color:rgba(197,242,121,.28); color:var(--acid); background:rgba(197,242,121,.06); }
+.agentChoiceMetric strong { overflow-wrap:anywhere; font-size:14px; }
+.realSetupDetails { margin-top:9px; color:var(--cyan); font-size:8px; }
+.realSetupDetails summary { width:max-content; max-width:100%; cursor:pointer; }
+.realSetupDetails ul { margin:8px 0 0; padding-left:16px; color:#929eaa; line-height:1.8; }
+@media (max-width: 800px) {
+  .modeChoiceRow { flex-wrap:wrap; }
+  .modeChoiceRow > .eyebrow { width:100%; margin-bottom:2px; }
+  .agentPaperHead { flex-direction:column; }
+  .agentCandidateRow { grid-template-columns:1fr auto; gap:5px 8px; }
+  .agentCandidateRow > span { grid-column:1/-1; grid-row:2; }
+  .agentCandidateRow em { grid-column:2; grid-row:1; }
+  .agentActionRow > .button { width:100%; }
+  .realSetupDetails summary { width:auto; }
+}
+
+.agentRuleBox { display:grid; gap:7px; margin-top:12px; border-top:1px solid var(--line); padding-top:11px; }
+.agentRuleBox > div { display:grid; grid-template-columns:minmax(85px,.55fr) minmax(0,2fr); gap:10px; align-items:start; }
+.agentRuleBox b { color:#c5cfd7; font-size:8px; font-weight:600; }
+.agentRuleBox p { margin:0; color:#929eaa; font-size:8px; line-height:1.6; }
+.agentRuleBox > small { color:#8994a2; font-size:7px; line-height:1.6; }
+@media (max-width: 800px) { .agentRuleBox > div { grid-template-columns:1fr; gap:4px; } }
