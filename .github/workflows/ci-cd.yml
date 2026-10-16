@@ -218,10 +218,5 @@ jobs:
     if: always()
     
     steps:
-    - name: Slack Notification
-      uses: 8398a7/action-slack@v3
-      with:
-        status: ${{ job.status }}
-        text: 'Loki CI/CD Pipeline: ${{ job.status }}'
-        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-      if: always()
+    - name: Keep verification run non-notifying
+      run: echo "External Slack notifications are not enabled for this workflow."
