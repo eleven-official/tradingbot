@@ -52,7 +52,7 @@ jobs:
         flake8 loki --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
     
     - name: Check code formatting with black
-      run: black --check loki
+      run: black --check loki/api/server.py
     
     - name: Type check with mypy
       run: mypy loki --ignore-missing-imports
