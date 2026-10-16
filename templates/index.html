@@ -2,23 +2,280 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Loki Trading Platform</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Loki paper-trading strategy and risk workbench" />
+  <meta name="theme-color" content="#080d12" />
+  <title>Loki · Trade Console</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}" />
+  <script defer src="{{ url_for('static', path='/js/planner.js') }}"></script>
 </head>
 <body>
-  <main class="container">
-    <h1>Loki Trading Platform</h1>
-    <p class="lead">Lightweight frontend for the Loki Trading Platform.</p>
-    <p>Version: {{ version }}</p>
-    <p>Visit the API health endpoint: <a href="/health">/health</a></p>
-    <section class="links">
-      <a class="card" href="/health">Health</a>
-      <a class="card" href="https://github.com/eleven-official/tradingbot">Source on GitHub</a>
+  <main class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Loki Trade Console home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span><strong>LOKI</strong><small>TRADE CONSOLE</small></span>
+      </a>
+      <nav class="workspace-nav" aria-label="Workspace navigation">
+        <a href="#market-desk">Market</a>
+        <a href="#risk-desk">Risk desk</a>
+        <a href="#paper-journal">Journal</a>
+        <a href="#bot-coach">Ask Loki</a>
+        <a href="/strategy-lab">Strategy lab ↗</a>
+      </nav>
+      <div class="topbar-meta">
+        <span class="mode-pill"><i></i> PAPER WORKBENCH</span>
+        <span class="build-tag">{{ version }}</span>
+      </div>
+    </header>
+
+    <section id="market-desk" class="market-strip" aria-labelledby="market-title">
+      <div class="market-heading">
+        <div>
+          <p class="eyebrow">MARKET DESK <span class="eyebrow-line"></span> PUBLIC DATA ONLY</p>
+          <h1 id="market-title">See the setup.<br /><em>Defend the trade.</em></h1>
+        </div>
+        <form id="live-feed-form" class="feed-controls">
+          <label class="symbol-control">Market
+            <input name="symbol" value="BTCUSDT" pattern="[A-Za-z0-9]{5,20}" maxlength="20" autocomplete="off" required />
+          </label>
+          <label class="interval-control">Frame
+            <select name="interval"><option value="1m">1m</option><option value="5m">5m</option><option value="15m">15m</option><option value="1h">1h</option></select>
+          </label>
+          <button type="submit" class="refresh-button"><span aria-hidden="true">↻</span> Refresh feed</button>
+          <p id="live-feed-status" role="status">Connect a read-only Binance Spot feed to begin.</p>
+        </form>
+      </div>
+
+      <div class="market-stats" aria-label="Latest market snapshot">
+        <article class="market-stat featured"><span>SPOT PRICE</span><strong id="stat-price">—</strong><small id="stat-symbol">Awaiting snapshot</small></article>
+        <article class="market-stat"><span>24H CHANGE</span><strong id="stat-change">—</strong><small>Rolling 24-hour move</small></article>
+        <article class="market-stat"><span>QUOTE SPREAD</span><strong id="stat-spread">—</strong><small>Bid / ask midpoint</small></article>
+        <article class="market-stat"><span>DATA AGE</span><strong id="stat-age">—</strong><small id="stat-source">No feed loaded</small></article>
+      </div>
     </section>
+
+    <section class="console-grid" aria-label="Market and trade review workspace">
+      <div class="main-column">
+        <section class="panel chart-panel" aria-labelledby="chart-title">
+          <div class="panel-header chart-header">
+            <div>
+              <p class="section-kicker">01 / PRICE ACTION</p>
+              <h2 id="chart-title">Market structure</h2>
+            </div>
+            <div class="chart-legend"><span><i class="legend-up"></i> Up</span><span><i class="legend-down"></i> Down</span><span><i class="legend-ema"></i> EMA 8 / 20</span></div>
+          </div>
+          <div class="chart-frame" id="market-chart-frame">
+            <div id="chart-empty" class="chart-empty"><span class="chart-glyph" aria-hidden="true">⌁</span><strong>Waiting for market data</strong><span>Load the public feed to see completed candles and moving averages.</span></div>
+            <svg id="market-chart" class="market-chart" role="img" aria-label="Live candlestick chart" hidden></svg>
+          </div>
+          <div class="chart-foot"><span id="chart-caption">Candles use completed bars only.</span><span id="chart-window">— bars</span></div>
+          <div class="indicator-strip" aria-label="Technical indicators">
+            <span><small>REGIME</small><b id="indicator-trend">—</b></span>
+            <span><small>RSI 14</small><b id="indicator-rsi">—</b></span>
+            <span><small>VOLUME</small><b id="indicator-volume">—</b></span>
+            <span><small>EMA 8 / 20</small><b id="indicator-ema">—</b></span>
+          </div>
+        </section>
+
+        <section class="panel strategy-panel" aria-labelledby="strategy-title">
+          <div class="panel-header">
+            <div><p class="section-kicker">02 / STRATEGY INTELLIGENCE</p><h2 id="strategy-title">Setup board</h2></div>
+            <span class="score-note">Rule confluence · not a win probability</span>
+          </div>
+          <div id="strategy-empty" class="strategy-empty">Load market data to compare momentum, pullback, breakout and reversion rules.</div>
+          <div id="strategy-board" class="strategy-board" hidden>
+            <div class="strategy-focus" id="strategy-focus"></div>
+            <div class="strategy-list" id="strategy-candidates" aria-label="Candidate strategy checklist"></div>
+          </div>
+          <p class="strategy-footnote">Rules describe how the selected timeframe looks now. They do not estimate returns or predict a win rate.</p>
+        </section>
+      </div>
+
+      <aside id="risk-desk" class="side-column">
+        <form id="trade-council-form" class="panel plan-panel">
+          <div class="panel-header">
+            <div><p class="section-kicker">03 / PLAN THE RISK</p><h2>Define your levels</h2></div>
+            <span class="long-only">LONG ONLY</span>
+          </div>
+          <p class="panel-intro">Set the invalidation first. Loki sizes the paper plan from your stop distance and exposure cap.</p>
+          <input type="hidden" name="setup_name" value="" />
+          <input type="hidden" name="setup_score" value="" />
+          <input type="hidden" name="side" value="BUY" />
+          <div class="input-grid two">
+            <label>Capital
+              <span class="input-wrap"><span class="input-prefix">$</span><input name="capital" type="number" value="10000" min="1" step="any" required /></span>
+            </label>
+            <label>Risk budget
+              <span class="input-wrap"><input name="risk_percent" type="number" value="1" min="0.01" max="100" step="0.01" required /><span class="input-suffix">%</span></span>
+            </label>
+          </div>
+          <div class="level-grid">
+            <label><span class="level-label entry-label">ENTRY</span><input name="entry_price" type="number" min="0.000001" step="any" required /></label>
+            <label><span class="level-label stop-label">STOP</span><input name="stop_price" type="number" min="0.000001" step="any" required /></label>
+            <label><span class="level-label target-label">TARGET</span><input name="target_price" type="number" min="0.000001" step="any" required /></label>
+          </div>
+          <details class="advanced-inputs">
+            <summary>Exposure &amp; market gates <span>Adjust thresholds</span></summary>
+            <div class="input-grid two advanced-grid">
+              <label>Max notional <span class="input-wrap"><input name="max_notional_percent" type="number" value="10" min="0.01" max="100" step="any" required /><span class="input-suffix">%</span></span></label>
+              <label>Current price <input name="current_price" type="number" min="0.000001" step="any" required /></label>
+              <label>Trend <select name="trend" required><option value="" disabled selected>Select trend</option><option value="BULLISH">Bullish</option><option value="NEUTRAL">Neutral</option><option value="BEARISH">Bearish</option></select></label>
+              <label>Volatility <span class="input-wrap"><input name="volatility_percent" type="number" min="0" step="any" required /><span class="input-suffix">%</span></span></label>
+              <label>Volume vs baseline <span class="input-wrap"><input name="volume_ratio" type="number" min="0" step="0.01" required /><span class="input-suffix">×</span></span></label>
+              <label>Bid / ask spread <span class="input-wrap"><input name="spread_percent" type="number" min="0" step="0.001" required /><span class="input-suffix">%</span></span></label>
+              <label>Data age <span class="input-wrap"><input name="market_data_age_seconds" type="number" min="0" step="1" required /><span class="input-suffix">sec</span></span></label>
+              <label>Freshness limit <span class="input-wrap"><input name="max_data_age_seconds" type="number" value="60" min="0" step="1" required /><span class="input-suffix">sec</span></span></label>
+              <label>Minimum participation <span class="input-wrap"><input name="min_volume_ratio" type="number" value="0.8" min="0" step="0.05" required /><span class="input-suffix">×</span></span></label>
+              <label>Max volatility <span class="input-wrap"><input name="max_volatility_percent" type="number" value="5" min="0" step="0.1" required /><span class="input-suffix">%</span></span></label>
+              <label>Max spread <span class="input-wrap"><input name="max_spread_percent" type="number" value="0.5" min="0" step="0.05" required /><span class="input-suffix">%</span></span></label>
+              <label>Minimum setup rules <span class="input-wrap"><input name="min_setup_score" type="number" value="80" min="0" max="100" step="5" required /><span class="input-suffix">/ 100</span></span></label>
+              <label>Minimum reward / risk <input name="minimum_reward_risk" type="number" value="1.5" min="0.01" step="any" required /></label>
+              <label>Entry tolerance <span class="input-wrap"><input name="max_entry_deviation_percent" type="number" value="0.5" min="0" step="0.1" required /><span class="input-suffix">%</span></span></label>
+              <label>Market session <select name="market_open" required><option value="" disabled selected>Select session</option><option value="true">Open</option><option value="false">Closed</option></select></label>
+            </div>
+          </details>
+          <button type="submit" id="run-council" class="run-button">Run the Defence Council <span aria-hidden="true">↗</span></button>
+          <p class="form-note"><i></i> Paper analysis only · No broker keys · No orders sent</p>
+        </form>
+
+        <section id="plan-result" class="panel council-panel" aria-live="polite" aria-labelledby="council-heading">
+          <div class="panel-header">
+            <div><p class="section-kicker">04 / TRADE DEFENCE COUNCIL</p><h2 id="council-heading">Council review</h2></div>
+            <span class="council-count">6 GATES</span>
+          </div>
+          <div class="council-placeholder" id="council-placeholder">
+            <span class="council-seal" aria-hidden="true">L</span>
+            <strong>Waiting for a plan</strong>
+            <span>Run the council to see every gate, reason and risk number.</span>
+          </div>
+          <div id="council-output" hidden>
+            <div id="council-decision"></div>
+            <div class="gate-summary" id="gate-summary"></div>
+            <div class="plan-metrics" id="plan-metrics"></div>
+            <div class="plan-map-wrap" id="plan-map-wrap"></div>
+            <ol class="review-list" id="review-list"></ol>
+            <p class="disclaimer" id="council-disclaimer">A calculated stop loss is an estimate; gaps and slippage can increase losses.</p>
+            <div id="decision-journal-actions" class="decision-journal-actions" hidden>
+              <label class="journal-note-label" for="council-note">Add a note to your review
+                <textarea id="council-note" maxlength="500" rows="2" placeholder="What did you see? What would change your mind?"></textarea>
+              </label>
+              <div class="journal-action-buttons">
+                <button id="save-review" class="secondary-button" type="button">Save decision review</button>
+                <button id="track-paper-position" class="run-button track-button" type="button" hidden>Track paper entry <span aria-hidden="true">＋</span></button>
+              </div>
+              <p id="decision-journal-feedback" class="journal-feedback" role="status"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="bot-coach" class="panel bot-chat-panel" aria-labelledby="bot-coach-heading">
+          <div class="panel-header bot-chat-heading">
+            <div><p class="section-kicker">05 / LOKI COACH</p><h2 id="bot-coach-heading">Ask the bot</h2></div>
+            <span class="coach-status"><i></i> CONTEXT READY</span>
+          </div>
+          <p class="bot-chat-intro">Ask why a gate paused, what the risk plan means, or what your journal says about a setup.</p>
+          <p id="bot-context-status" class="bot-context-status">Uses the current screen and a summary of this browser’s journal for each question.</p>
+          <div id="bot-chat-log" class="bot-chat-log" role="log" aria-live="polite" aria-relevant="additions">
+            <article class="bot-message assistant"><span class="bot-message-label">LOKI COACH</span><p>Hi. I can explain this page’s market snapshot, council review, risk plan and recorded setup outcomes. What would you like to understand?</p></article>
+          </div>
+          <div class="bot-prompts" aria-label="Suggested questions">
+            <button type="button" data-bot-prompt="Why did the council say WAIT or SKIP?">Explain my council</button>
+            <button type="button" data-bot-prompt="What is my planned size and downside risk?">Explain my risk</button>
+            <button type="button" data-bot-prompt="How much of my daily loss cap remains?">Daily risk check</button>
+            <button type="button" data-bot-prompt="How has my selected setup performed in the journal?">Review my setup</button>
+          </div>
+          <form id="bot-chat-form" class="bot-chat-form">
+            <label class="sr-only" for="bot-question">Ask Loki a question</label>
+            <textarea id="bot-question" name="question" maxlength="500" rows="2" placeholder="Ask about this market, decision or journal…" required></textarea>
+            <button id="bot-send" class="run-button bot-send" type="submit">Ask Loki <span aria-hidden="true">↑</span></button>
+          </form>
+          <p id="bot-chat-status" class="bot-chat-status" role="status">Local context coach · no outside AI provider · no orders sent.</p>
+        </section>
+      </aside>
+    </section>
+
+    <section id="paper-journal" class="panel journal-panel" aria-labelledby="journal-title">
+      <div class="journal-topline">
+        <div>
+          <p class="section-kicker">06 / REVIEW THE PROCESS</p>
+          <h2 id="journal-title">Paper journal</h2>
+          <p class="journal-intro">Keep the setup, council reasons and outcome together. Entries stay in this browser.</p>
+        </div>
+        <div class="journal-tools">
+          <label class="journal-filter-label" for="journal-filter">Show
+            <select id="journal-filter">
+              <option value="all">All entries</option>
+              <option value="open">Open paper</option>
+              <option value="closed">Closed paper</option>
+              <option value="review">Decision reviews</option>
+            </select>
+          </label>
+          <button id="export-journal" class="secondary-button" type="button">Export CSV</button>
+          <button id="clear-journal" class="quiet-button" type="button">Clear history</button>
+        </div>
+      </div>
+
+      <div class="journal-stats" aria-label="Journal performance summary">
+        <article><span>OPEN PAPER</span><strong id="journal-open-count">0</strong><small>Manually tracked</small></article>
+        <article><span>CLOSED</span><strong id="journal-closed-count">0</strong><small>Recorded outcomes</small></article>
+        <article><span>WIN RATE</span><strong id="journal-win-rate">—</strong><small>Closed entries only</small></article>
+        <article><span>AVERAGE R</span><strong id="journal-average-r">—</strong><small>Outcome / planned risk</small></article>
+        <article class="journal-pnl-stat"><span>GROSS P&amp;L · QUOTE UNITS</span><strong id="journal-pnl">—</strong><small>Excludes fees and slippage</small></article>
+      </div>
+
+      <section class="daily-risk-panel" aria-labelledby="daily-risk-title">
+        <div class="daily-risk-header">
+          <div>
+            <span class="section-kicker">RISK GUARD / YOUR LOCAL DAY</span>
+            <h3 id="daily-risk-title">Daily risk guard</h3>
+            <p>See how much of your chosen paper loss cap is committed before considering another setup.</p>
+          </div>
+          <div class="daily-risk-controls">
+            <span id="daily-risk-status" class="daily-risk-status loading" role="status" aria-live="polite">UPDATING</span>
+            <label for="daily-risk-limit">Daily loss cap
+              <span class="input-wrap"><input id="daily-risk-limit" type="number" value="2" min="0.1" max="100" step="0.1" inputmode="decimal" /><span class="input-suffix">%</span></span>
+            </label>
+          </div>
+        </div>
+        <div class="daily-risk-metrics" aria-live="polite">
+          <article><span>CAP AMOUNT</span><strong id="daily-risk-limit-amount">—</strong><small>Based on plan capital</small></article>
+          <article><span>REALIZED P&amp;L TODAY</span><strong id="daily-risk-realized">—</strong><small>Manual journal exits</small></article>
+          <article><span>OPEN PLANNED RISK</span><strong id="daily-risk-open">—</strong><small>Original stop risk</small></article>
+          <article><span>CAP REMAINING</span><strong id="daily-risk-remaining">—</strong><small id="daily-risk-committed">Committed: —</small></article>
+        </div>
+        <div class="daily-risk-meter-row">
+          <div id="daily-risk-meter" class="daily-risk-meter" role="progressbar" aria-label="Daily paper loss cap used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="daily-risk-progress"></span></div>
+          <strong id="daily-risk-utilization">—</strong>
+        </div>
+        <p id="daily-risk-day" class="daily-risk-day">Preparing this browser's local-day summary…</p>
+        <p class="daily-risk-caveat">Advisory estimate from this browser only. Counts gross realized losses and original planned risk on open paper entries; excludes mark-to-market, fees and slippage. It never blocks plans or orders.</p>
+      </section>
+
+      <section class="playbook-review" aria-labelledby="playbook-review-title">
+        <div class="playbook-heading">
+          <div><span class="section-kicker">YOUR RECORDED OUTCOMES</span><h3 id="playbook-review-title">Setup feedback</h3></div>
+          <span class="playbook-caveat">Historical notes, not a forecast</span>
+        </div>
+        <div class="playbook-table-wrap">
+          <table class="playbook-table">
+            <thead><tr><th scope="col">Setup</th><th scope="col">Closed</th><th scope="col">Win rate</th><th scope="col">Avg R</th><th scope="col">Gross P&amp;L · quote units</th><th scope="col">Sample read</th></tr></thead>
+            <tbody id="playbook-review-body"></tbody>
+          </table>
+        </div>
+        <p id="playbook-review-empty" class="playbook-empty">Track and close a paper entry to compare outcomes. Under 5 is too small to change rules; 5–19 is an early read; 20+ is reviewable, not proof. Check holdout results and costs too.</p>
+      </section>
+
+      <div class="journal-list-heading"><span id="journal-entry-count">No saved entries</span><span>Close prices are entered manually; no orders or price triggers run here.</span></div>
+      <div id="journal-empty" class="journal-empty">
+        <strong>Your learning loop starts with a record.</strong>
+        <span>Save a council review or track a BUY as a paper entry. Later, record its exit and compare setups.</span>
+      </div>
+      <div id="journal-list" class="journal-list" aria-live="polite"></div>
+    </section>
+
+    <footer class="footer"><span>LOKI / PAPER RESEARCH CONSOLE</span><span>Market data: Binance Spot public API · Read only</span><a href="/health">SYSTEM HEALTH <span aria-hidden="true">↗</span></a></footer>
   </main>
-  <footer>
-    <small>Deployed from eleven-official/tradingbot</small>
-  </footer>
 </body>
 </html>
+

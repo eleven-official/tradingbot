@@ -1,21 +1,6 @@
 {
-  "functions": {
-    "main.py": {
-      "runtime": "python3.12"
-    }
-  },
-  "routes": [
-    {
-      "src": "/favicon\\.png",
-      "dest": "main.py"
-    },
-    {
-      "src": "/favicon\\.ico",
-      "dest": "main.py"
-    },
-    {
-      "src": "^/(.*)$",
-      "dest": "main.py"
-    }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": [
+    "syd1"
   ]
 }
