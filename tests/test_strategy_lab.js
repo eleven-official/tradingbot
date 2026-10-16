@@ -220,7 +220,58 @@ test("result metrics reconcile to final balance and trade expectancy", () => {
 
 test("rule version is visible on every logged trade", () => {
   const result = Lab.backtest(trendFixture());
-  assert.equal(result.ruleVersion, "1.0");
-  assert.ok(result.trades.every((trade) => trade.ruleVersion === "1.0"));
+  assert.equal(result.ruleVersion, "1.1");
+  assert.ok(result.trades.every((trade) => trade.ruleVersion === "1.1"));
 });
 
+
+test("candidate strategies keep delayed fills and explicit per-trade rule metadata", () => {
+  const bars = Lab.makeScenario("rising");
+  for (const strategyId of ["trend-50-100", "breakout-20", "pullback-reclaim"]) {
+    const result = Lab.backtest(bars, { strategyId });
+    assert.equal(result.strategyId, strategyId);
+    assert.ok(result.trades.every((trade) => trade.strategyId === strategyId));
+    assert.ok(result.trades.every((trade) => trade.ruleVersion === "1.1"));
+    for (const trade of result.trades) {
+      assert.equal(trade.entryIndex, bars.findIndex((bar) => bar.date === trade.entryDate));
+      assert.equal(trade.entryIndex, bars.findIndex((bar) => bar.date === trade.signalDate) + 1);
+    }
+  }
+});
+
+test("AI paper agent selects only candidates with enough profitable training evidence", () => {
+  const result = Lab.agentEvaluate(Lab.makeScenario("rising"), { splitPercent: 70 });
+  assert.notEqual(result.selectedStrategyId, "cash");
+  assert.equal(result.minimumTrainingTrades, 5);
+  assert.ok(result.candidates.some((candidate) => candidate.strategyId === result.selectedStrategyId && candidate.eligible));
+  assert.ok(result.holdout.trades.every((trade) => trade.entryIndex >= result.splitIndex));
+  assert.match(result.selectionReason, /training-only/);
+  assert.ok(result.candidates.every((candidate) => candidate.trainingTrades >= 0 && Number.isFinite(candidate.score)));
+});
+
+test("AI agent candidate selection is unchanged when untouched holdout prices change", () => {
+  const bars = Lab.makeScenario("rising");
+  const first = Lab.agentEvaluate(bars, { splitPercent: 70 });
+  const changed = bars.map((bar, index) => index < first.splitIndex ? { ...bar } : {
+    ...bar, open: bar.open * 0.55, high: bar.high * 0.55, low: bar.low * 0.55, close: bar.close * 0.55,
+  });
+  const second = Lab.agentEvaluate(changed, { splitPercent: 70 });
+  assert.equal(second.selectedStrategyId, first.selectedStrategyId);
+  assert.deepEqual(second.candidates, first.candidates);
+  assert.notEqual(second.holdout.benchmark.returnPct, first.holdout.benchmark.returnPct);
+});
+
+test("AI agent parks in cash when no training rule meets the evidence floor", () => {
+  const result = Lab.agentEvaluate(Lab.makeScenario("falling"), { splitPercent: 70 });
+  assert.equal(result.selectedStrategyId, "cash");
+  assert.equal(result.holdout.tradeCount, 0);
+  assert.equal(result.holdout.returnPct, 0);
+  assert.ok(result.holdout.benchmark.returnPct < 0);
+  assert.match(result.selectionReason, /Stayed in cash/);
+});
+
+test("AI agent rejects invalid splits and never trades unsupported strategy identifiers", () => {
+  const bars = Lab.makeScenario("rising");
+  assert.throws(() => Lab.agentEvaluate(bars, { splitPercent: 75 }), /70% or 80%/);
+  assert.throws(() => Lab.backtest(bars, { strategyId: "magic-profit" }), /frozen strategy/);
+});
