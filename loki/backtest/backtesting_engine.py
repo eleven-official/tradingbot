@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +138,9 @@ class ExecutionModel:
         use_realistic_fills: bool = True,
         spread_pct: float = 0.0002       # 0.02% full spread, half charged per side
     ):
-        if commission_pct < 0 or slippage_pct < 0 or spread_pct < 0:
-            raise ValueError("execution cost percentages must be non-negative")
+        rates = (commission_pct, slippage_pct, spread_pct)
+        if any(not math.isfinite(rate) or rate < 0 for rate in rates):
+            raise ValueError("execution cost percentages must be finite and non-negative")
         self.commission_pct = commission_pct
         self.slippage_pct = slippage_pct
         self.spread_pct = spread_pct
@@ -157,6 +159,22 @@ class ExecutionModel:
         Returns:
             (filled, fill_price, commission, slippage)
         """
+        prices = (current_price, bar_high, bar_low)
+        if any(not math.isfinite(price) or price <= 0 for price in prices):
+            raise ValueError("market prices must be finite and positive")
+        if bar_high < bar_low:
+            raise ValueError("bar_high must be greater than or equal to bar_low")
+        if not math.isfinite(order.quantity) or order.quantity <= 0:
+            raise ValueError("order quantity must be finite and positive")
+        if order.order_type == OrderType.LIMIT and (
+            order.price is None or not math.isfinite(order.price) or order.price <= 0
+        ):
+            raise ValueError("limit price must be finite and positive")
+        if order.order_type == OrderType.STOP and (
+            order.stop_price is None or not math.isfinite(order.stop_price) or order.stop_price <= 0
+        ):
+            raise ValueError("stop price must be finite and positive")
+
         filled = False
         fill_price = 0.0
         commission = 0.0
@@ -233,6 +251,8 @@ class BacktestingEngine:
         use_realistic_fills: bool = True,
         spread_pct: float = 0.0002
     ):
+        if not math.isfinite(initial_capital) or initial_capital <= 0:
+            raise ValueError("initial_capital must be finite and positive")
         self.initial_capital = initial_capital
         self.capital = initial_capital
         
@@ -616,7 +636,8 @@ class BacktestingEngine:
 def monte_carlo_simulation(
     backtest_result: BacktestResult,
     n_simulations: int = 1000,
-    confidence_level: float = 0.95
+    confidence_level: float = 0.95,
+    random_seed: Optional[int] = None,
 ) -> Dict:
     """
     Run Monte Carlo simulation on backtest results
@@ -629,6 +650,11 @@ def monte_carlo_simulation(
     Returns:
         Dict with simulation results
     """
+    if not isinstance(n_simulations, int) or isinstance(n_simulations, bool) or n_simulations < 1:
+        raise ValueError("n_simulations must be a positive integer")
+    if not math.isfinite(confidence_level) or not 0.0 < confidence_level < 1.0:
+        raise ValueError("confidence_level must be finite and between 0 and 1")
+
     logger.info(f"🎲 Running {n_simulations} Monte Carlo simulations...")
     
     # Extract trade returns
@@ -641,9 +667,10 @@ def monte_carlo_simulation(
     final_returns = []
     max_drawdowns = []
     
+    rng = np.random.default_rng(random_seed)
     for _ in range(n_simulations):
         # Randomly sample trades with replacement
-        simulated_returns = np.random.choice(trade_returns, size=len(trade_returns), replace=True)
+        simulated_returns = rng.choice(trade_returns, size=len(trade_returns), replace=True)
         
         # Calculate equity curve
         equity = [100]  # Start with 100
@@ -669,6 +696,7 @@ def monte_carlo_simulation(
     results = {
         'n_simulations': n_simulations,
         'confidence_level': confidence_level,
+        'random_seed': random_seed,
         'final_return': {
             'mean': float(np.mean(final_returns)),
             'median': float(np.median(final_returns)),
