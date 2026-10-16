@@ -36,6 +36,17 @@ test("rising and falling scenarios cover different directional regimes", () => {
   assert.equal(Lab.describeRegime(falling).label, "falling overall");
 });
 
+test("mixed demo path actually contains rising, falling and sideways segments", () => {
+  const mixed = Lab.makeScenario("mixed");
+  const third = Math.floor(mixed.length / 3);
+  const up = mixed[third - 1].close / mixed[0].close - 1;
+  const down = mixed[2 * third - 1].close / mixed[third].close - 1;
+  const sideways = mixed.at(-1).close / mixed[2 * third].close - 1;
+  assert.ok(up > 0.08, `rising segment returned ${(up * 100).toFixed(1)}%`);
+  assert.ok(down < -0.08, `falling segment returned ${(down * 100).toFixed(1)}%`);
+  assert.ok(Math.abs(sideways) < 0.15, `sideways segment moved ${(sideways * 100).toFixed(1)}%`);
+});
+
 test("unsupported scenario and invalid lengths fail closed", () => {
   assert.throws(() => Lab.makeScenario("live"), /supported demo/);
   assert.throws(() => Lab.makeScenario("mixed", 119), /between 120/);
