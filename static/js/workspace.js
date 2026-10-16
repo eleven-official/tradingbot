@@ -446,7 +446,14 @@
   } catch (_) { latestPaper = null; }
   try {
     latestAgentPaper = JSON.parse(localStorage.getItem("loki-ai-paper-v1") || "null");
-    updateAgentPaper(latestAgentPaper);
+    if (latestAgentPaper && latestAgentPaper.agentVersion !== LAB.AGENT_VERSION) {
+      const previousVersion = latestAgentPaper.agentVersion || "older";
+      latestAgentPaper = null;
+      updateAgentPaper(null);
+      setText("agentPaperStatus", `Saved agent v${previousVersion}; rerun with v${LAB.AGENT_VERSION} to use the current selection rules.`);
+    } else {
+      updateAgentPaper(latestAgentPaper);
+    }
   } catch (_) { latestAgentPaper = null; updateAgentPaper(null); }
   if (profile()) {
     const saved = profile();
