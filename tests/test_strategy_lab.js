@@ -17,6 +17,21 @@ function trendFixture(count = 240) {
   return barsFromCloses(closes);
 }
 
+function baselineAlphaFixture() {
+  let price = 100;
+  return Array.from({ length: 420 }, (_, i) => {
+    const open = price;
+    const factor = i < 100 ? 1.002 : ((i - 100) % 20 < 14 ? 1.02 : 0.95);
+    const close = price * factor;
+    price = close;
+    return {
+      date: new Date(Date.UTC(2020, 0, 1 + i)).toISOString().slice(0, 10),
+      open, high: Math.max(open, close) * 1.002,
+      low: Math.min(open, close) * 0.998, close, volume: 100000,
+    };
+  });
+}
+
 test("demo scenarios are deterministic and produce valid OHLCV bars", () => {
   for (const name of ["mixed", "rising", "falling", "sideways"]) {
     const first = Lab.makeScenario(name);
@@ -239,14 +254,26 @@ test("candidate strategies keep delayed fills and explicit per-trade rule metada
   }
 });
 
-test("AI paper agent selects only candidates with enough profitable training evidence", () => {
-  const result = Lab.agentEvaluate(Lab.makeScenario("rising"), { splitPercent: 70 });
-  assert.notEqual(result.selectedStrategyId, "cash");
+test("AI paper agent selects only candidates that beat the training baseline", () => {
+  const result = Lab.agentEvaluate(baselineAlphaFixture(), { splitPercent: 70 });
+  assert.equal(result.selectedStrategyId, "trend-50-100");
   assert.equal(result.minimumTrainingTrades, 5);
-  assert.ok(result.candidates.some((candidate) => candidate.strategyId === result.selectedStrategyId && candidate.eligible));
+  const selected = result.candidates.find((candidate) => candidate.strategyId === result.selectedStrategyId);
+  assert.ok(selected.eligible);
+  assert.equal(selected.beatsTrainingBaseline, true);
+  assert.ok(selected.trainingReturnPct > selected.trainingBenchmarkReturnPct);
   assert.ok(result.holdout.trades.every((trade) => trade.entryIndex >= result.splitIndex));
   assert.match(result.selectionReason, /training-only/);
+  assert.match(result.selectionReason, /baseline/);
   assert.ok(result.candidates.every((candidate) => candidate.trainingTrades >= 0 && Number.isFinite(candidate.score)));
+});
+
+test("AI paper agent stays in cash when every rising-market rule lags the baseline", () => {
+  const result = Lab.agentEvaluate(Lab.makeScenario("rising"), { splitPercent: 70 });
+  assert.equal(result.selectedStrategyId, "cash");
+  assert.ok(result.candidates.every((candidate) => candidate.trainingReturnPct <= candidate.trainingBenchmarkReturnPct));
+  assert.ok(result.candidates.every((candidate) => !candidate.eligible));
+  assert.match(result.selectionReason, /baseline/);
 });
 
 test("AI agent candidate selection is unchanged when untouched holdout prices change", () => {
