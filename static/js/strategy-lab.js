@@ -1,7 +1,14 @@
 (() => {
   "use strict";
 
-  const RULE_VERSION = "1.0";
+  const RULE_VERSION = "1.1";
+  const AGENT_VERSION = "0.1";
+  const MIN_AGENT_TRAINING_TRADES = 5;
+  const STRATEGIES = Object.freeze([
+    Object.freeze({ id: "trend-50-100", name: "Trend continuation · 50/100", entry: "Close above SMA100 and SMA50 above SMA100.", exit: "Close below SMA50 or 5% close-based stop." }),
+    Object.freeze({ id: "breakout-20", name: "Trend-filtered 20-bar breakout", entry: "Close breaks above the prior 20-bar high while SMA50 is above SMA100.", exit: "Close below SMA20 or 5% close-based stop." }),
+    Object.freeze({ id: "pullback-reclaim", name: "Uptrend pullback reclaim", entry: "In an SMA50>SMA100 uptrend, close crosses back above SMA20 while above SMA100.", exit: "Close below SMA50 or 5% close-based stop." }),
+  ]);
   const WARMUP_BARS = 100;
   const DEFAULTS = Object.freeze({ feeBps: 6, spreadBps: 2, slippageBps: 3, startingEquity: 10000, allocation: 0.25, stopPct: 0.05 });
 
@@ -99,6 +106,16 @@
     return result;
   }
 
+  function priorRollingHigh(values, period) {
+    const result = Array(values.length).fill(null);
+    for (let i = period; i < values.length; i += 1) {
+      let high = -Infinity;
+      for (let j = i - period; j < i; j += 1) high = Math.max(high, values[j]);
+      result[i] = high;
+    }
+    return result;
+  }
+
   function normalizeOptions(options = {}) {
     const values = { ...DEFAULTS, ...options };
     for (const name of ["feeBps", "spreadBps", "slippageBps", "startingEquity", "allocation", "stopPct"]) {
@@ -107,6 +124,9 @@
     }
     if (values.feeBps < 0 || values.feeBps > 100 || values.spreadBps < 0 || values.spreadBps > 200 || values.slippageBps < 0 || values.slippageBps > 200) throw new Error("Costs must be non-negative and within the supported range.");
     if (values.startingEquity <= 0 || values.allocation <= 0 || values.allocation > 1 || values.stopPct <= 0 || values.stopPct >= 1) throw new Error("Starting equity, position size, and stop loss are outside their supported range.");
+    const strategyId = String(values.strategyId ?? STRATEGIES[0].id);
+    if (!STRATEGIES.some((strategy) => strategy.id === strategyId)) throw new Error("Choose a supported frozen strategy.");
+    values.strategyId = strategyId;
     return values;
   }
 
@@ -135,12 +155,15 @@
   function backtest(inputBars, options = {}) {
     const bars = assertBars(inputBars);
     const config = normalizeOptions(options);
+    const strategy = STRATEGIES.find((item) => item.id === config.strategyId);
     const fromIndex = Math.max(WARMUP_BARS, Math.floor(options.fromIndex ?? WARMUP_BARS));
     const toIndex = Math.min(bars.length, Math.floor(options.toIndex ?? bars.length));
     if (fromIndex >= toIndex - 1) throw new Error("The selected replay period is too short after indicator warm-up.");
     const closes = bars.map((bar) => bar.close);
+    const ma20 = movingAverage(closes, 20);
     const ma50 = movingAverage(closes, 50);
     const ma100 = movingAverage(closes, 100);
+    const priorHigh20 = priorRollingHigh(bars.map((bar) => bar.high), 20);
     const adverse = (config.spreadBps + config.slippageBps) / 10000;
     const feeRate = config.feeBps / 10000;
     let cash = config.startingEquity;
@@ -150,7 +173,13 @@
     const curve = [{ date: bars[fromIndex].date, equity: cash }];
     let totalCosts = 0;
 
-    const buyAt = (barIndex) => {
+    const entrySignal = (i) => {
+      if (strategy.id === "trend-50-100") return closes[i] > ma100[i] && ma50[i] > ma100[i];
+      if (strategy.id === "breakout-20") return priorHigh20[i] !== null && closes[i] > priorHigh20[i] && ma50[i] > ma100[i];
+      return closes[i] > ma100[i] && ma50[i] > ma100[i] && closes[i] > ma20[i] && closes[i - 1] <= ma20[i - 1];
+    };
+    const exitSignal = (i) => closes[i] < (strategy.id === "breakout-20" ? ma20[i] : ma50[i]);
+    const buyAt = (barIndex, reason) => {
       const raw = bars[barIndex].open;
       const fill = raw * (1 + adverse);
       const quantity = (cash * config.allocation) / (fill * (1 + feeRate));
@@ -159,7 +188,7 @@
       const fee = notional * feeRate;
       const outlay = notional + fee;
       if (outlay > cash) return;
-      position = { entryIndex: barIndex, entrySignalIndex: barIndex - 1, entryRaw: raw, entryFill: fill, quantity, entryFee: fee, entryCost: outlay, entryReason: "Trend filter confirmed at prior close" };
+      position = { entryIndex: barIndex, entrySignalIndex: barIndex - 1, entryRaw: raw, entryFill: fill, quantity, entryFee: fee, entryCost: outlay, entryReason: reason };
       cash -= outlay;
       totalCosts += fee + (fill - raw) * quantity;
     };
@@ -174,14 +203,14 @@
       const grossPnl = (rawPrice - position.entryRaw) * position.quantity;
       const costs = position.entryFee + fee + (position.entryFill - position.entryRaw) * position.quantity + (rawPrice - fill) * position.quantity;
       const netPnl = proceeds - position.entryCost;
-      trades.push({ entryDate: bars[position.entryIndex].date, exitDate: bars[barIndex].date, entryIndex: position.entryIndex, signalDate: bars[position.entrySignalIndex].date, exitIndex: barIndex, entryPrice: position.entryFill, exitPrice: fill, entryRawPrice: position.entryRaw, exitRawPrice: rawPrice, quantity: position.quantity, grossPnl, netPnl, costs, fees: position.entryFee + fee, spreadAndSlippage: costs - position.entryFee - fee, returnPct: netPnl / position.entryCost, exitReason: reason, ruleVersion: RULE_VERSION });
+      trades.push({ entryDate: bars[position.entryIndex].date, exitDate: bars[barIndex].date, entryIndex: position.entryIndex, signalDate: bars[position.entrySignalIndex].date, exitIndex: barIndex, entryPrice: position.entryFill, exitPrice: fill, entryRawPrice: position.entryRaw, exitRawPrice: rawPrice, quantity: position.quantity, grossPnl, netPnl, costs, fees: position.entryFee + fee, spreadAndSlippage: costs - position.entryFee - fee, returnPct: netPnl / position.entryCost, entryReason: position.entryReason, exitReason: reason, ruleVersion: RULE_VERSION, strategyId: strategy.id, strategyName: strategy.name });
       totalCosts += fee + (rawPrice - fill) * position.quantity;
       position = null;
     };
 
     for (let i = fromIndex; i < toIndex; i += 1) {
       if (pending) {
-        if (pending.type === "entry" && !position) buyAt(i);
+        if (pending.type === "entry" && !position) buyAt(i, pending.reason);
         else if (pending.type === "exit" && position) sellAt(i, bars[i].open, pending.reason);
         pending = null;
       }
@@ -191,9 +220,9 @@
       if (i >= toIndex - 1) break;
       if (position) {
         if (close <= position.entryRaw * (1 - config.stopPct)) pending = { type: "exit", reason: `${(config.stopPct * 100).toFixed(0)}% close-based stop` };
-        else if (close < ma50[i]) pending = { type: "exit", reason: "Close below 50-bar average" };
-      } else if (close > ma100[i] && ma50[i] > ma100[i]) {
-        pending = { type: "entry" };
+        else if (exitSignal(i)) pending = { type: "exit", reason: strategy.exit };
+      } else if (entrySignal(i)) {
+        pending = { type: "entry", reason: strategy.entry };
       }
     }
 
@@ -204,7 +233,7 @@
     const totalNetPnl = finalEquity - config.startingEquity;
     const expectancy = trades.length ? trades.reduce((sum, trade) => sum + trade.netPnl, 0) / trades.length : 0;
     const benchmark = buyAndHold(bars, fromIndex, toIndex, config);
-    return { ruleVersion: RULE_VERSION, fromIndex, toIndex, startDate: bars[fromIndex].date, endDate: bars[toIndex - 1].date, startingEquity: config.startingEquity, finalEquity, returnPct: totalNetPnl / config.startingEquity, totalNetPnl, totalCosts, trades, tradeCount: trades.length, winningTrades: wins, losingTrades: trades.length - wins, winRate: trades.length ? wins / trades.length : 0, expectancy, maxDrawdown: maxDrawdown(curve, config.startingEquity), sharpe: sharpe(curve), equityCurve: curve, benchmark, config };
+    return { ruleVersion: RULE_VERSION, strategyId: strategy.id, strategyName: strategy.name, fromIndex, toIndex, startDate: bars[fromIndex].date, endDate: bars[toIndex - 1].date, startingEquity: config.startingEquity, finalEquity, returnPct: totalNetPnl / config.startingEquity, totalNetPnl, totalCosts, trades, tradeCount: trades.length, winningTrades: wins, losingTrades: trades.length - wins, winRate: trades.length ? wins / trades.length : 0, expectancy, maxDrawdown: maxDrawdown(curve, config.startingEquity), sharpe: sharpe(curve), equityCurve: curve, benchmark, config };
   }
 
   function buyAndHold(bars, fromIndex, toIndex, config) {
@@ -232,6 +261,72 @@
     return { splitPercent, splitIndex: split, training, holdout, barsCount: bars.length, startDate: bars[0].date, splitDate: bars[split].date, endDate: bars[bars.length - 1].date, source: options.source || "synthetic demo" };
   }
 
+  function emptyReplay(bars, fromIndex, toIndex, config) {
+    const benchmark = buyAndHold(bars, fromIndex, toIndex, config);
+    const dates = [bars[fromIndex].date, bars[toIndex - 1].date];
+    return {
+      ruleVersion: RULE_VERSION, strategyId: "cash", strategyName: "Cash · no candidate passed",
+      fromIndex, toIndex, startDate: dates[0], endDate: dates[1],
+      startingEquity: config.startingEquity, finalEquity: config.startingEquity,
+      returnPct: 0, totalNetPnl: 0, totalCosts: 0, trades: [], tradeCount: 0,
+      winningTrades: 0, losingTrades: 0, winRate: 0, expectancy: 0, maxDrawdown: 0,
+      sharpe: 0, equityCurve: [{ date: dates[0], equity: config.startingEquity }, { date: dates[1], equity: config.startingEquity }],
+      benchmark, config,
+    };
+  }
+
+  function agentEvaluate(inputBars, options = {}) {
+    const bars = assertBars(inputBars);
+    const config = normalizeOptions(options);
+    const splitPercent = Number(options.splitPercent ?? 70);
+    if (![70, 80].includes(splitPercent)) throw new Error("Choose a 70% or 80% training split.");
+    const split = Math.floor(bars.length * splitPercent / 100);
+    if (split < WARMUP_BARS + 15 || bars.length - split < 20) throw new Error("The training period or untouched holdout is too short.");
+
+    const trained = STRATEGIES.map((strategy) => {
+      const result = backtest(bars, { ...options, strategyId: strategy.id, fromIndex: WARMUP_BARS, toIndex: split });
+      const score = result.returnPct - result.maxDrawdown * 0.75;
+      return { strategy, result, score, eligible: result.tradeCount >= MIN_AGENT_TRAINING_TRADES && result.returnPct > 0 && result.expectancy > 0 };
+    }).sort((a, b) => b.score - a.score);
+
+    const selected = trained.find((candidate) => candidate.eligible) || null;
+    const training = selected ? selected.result : emptyReplay(bars, WARMUP_BARS, split, config);
+    const holdout = selected
+      ? backtest(bars, { ...options, strategyId: selected.strategy.id, fromIndex: split, toIndex: bars.length })
+      : emptyReplay(bars, split, bars.length, config);
+    const candidates = trained.map(({ strategy, result, score, eligible }) => ({
+      strategyId: strategy.id,
+      name: strategy.name,
+      trainingReturnPct: result.returnPct,
+      trainingDrawdown: result.maxDrawdown,
+      trainingExpectancy: result.expectancy,
+      trainingTrades: result.tradeCount,
+      score,
+      eligible,
+    }));
+    const selectionReason = selected
+      ? `Selected ${selected.strategy.name} using training-only net return minus a drawdown penalty; it had ${selected.result.tradeCount} training trades and ${selected.result.expectancy.toFixed(2)} average net P&L per trade. The chosen rule is now frozen for the untouched holdout.`
+      : `Stayed in cash: no candidate had at least ${MIN_AGENT_TRAINING_TRADES} training trades with positive after-cost return and expectancy. The holdout was not used to select a strategy.`;
+    return {
+      agentVersion: AGENT_VERSION,
+      selectionMetric: "training net return − 0.75 × max drawdown",
+      minimumTrainingTrades: MIN_AGENT_TRAINING_TRADES,
+      selectedStrategyId: selected?.strategy.id || "cash",
+      selectedStrategyName: selected?.strategy.name || "Cash · no candidate passed",
+      selectionReason,
+      candidates,
+      splitPercent,
+      splitIndex: split,
+      training,
+      holdout,
+      barsCount: bars.length,
+      startDate: bars[0].date,
+      splitDate: bars[split].date,
+      endDate: bars[bars.length - 1].date,
+      source: options.source || "synthetic demo",
+    };
+  }
+
   function describeRegime(bars) {
     const first = bars[0].close;
     const last = bars[bars.length - 1].close;
@@ -244,7 +339,9 @@
     return { label, change, annualizedVolatility: volatility };
   }
 
-  const api = Object.freeze({ RULE_VERSION, WARMUP_BARS, DEFAULTS, assertBars, makeScenario, parseCsv, backtest, evaluate, describeRegime });
+  
+
+  const api = Object.freeze({ RULE_VERSION, AGENT_VERSION, MIN_AGENT_TRAINING_TRADES, STRATEGIES, WARMUP_BARS, DEFAULTS, assertBars, makeScenario, parseCsv, backtest, evaluate, agentEvaluate, describeRegime });
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   if (typeof window !== "undefined") window.LokiLab = api;
 })();
