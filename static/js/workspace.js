@@ -266,7 +266,7 @@
       const name = document.createElement("b");
       name.textContent = candidate.name;
       const stats = document.createElement("span");
-      stats.textContent = `Train ${percent(candidate.trainingReturnPct)} · DD ${percent(-candidate.trainingDrawdown)} · ${candidate.trainingTrades} trades · expectancy ${money(candidate.trainingExpectancy)}`;
+      stats.textContent = `Train ${percent(candidate.trainingReturnPct)} · B&H ${percent(candidate.trainingBenchmarkReturnPct)} · DD ${percent(-candidate.trainingDrawdown)} · ${candidate.trainingTrades} trades · expectancy ${money(candidate.trainingExpectancy)}`;
       const status = document.createElement("em");
       status.textContent = candidate.strategyId === state.selectedStrategyId ? "SELECTED" : candidate.eligible ? "QUALIFIED" : "NO PASS";
       status.classList.toggle("selected", candidate.strategyId === state.selectedStrategyId);
