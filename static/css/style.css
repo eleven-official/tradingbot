@@ -373,3 +373,46 @@ input:focus, select:focus { border-color: var(--mint-deep); box-shadow: 0 0 0 3p
   .paper-close-controls label { flex-basis: auto; }
 }
 
+
+.bot-chat-panel { padding: 18px; }
+.bot-chat-heading h2 { letter-spacing: -.035em; }
+.coach-status { align-items: center; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--mint); display: inline-flex; font-size: .52rem; font-weight: 850; gap: 6px; letter-spacing: .08em; padding: 6px 8px; white-space: nowrap; }
+.coach-status i { background: var(--mint); border-radius: 50%; height: 6px; width: 6px; }
+.bot-chat-intro { color: var(--muted); font-size: .67rem; line-height: 1.5; margin: 10px 0 5px; }
+.bot-context-status { color: var(--dim); font-size: .56rem; line-height: 1.45; margin: 0; }
+.bot-chat-log { background: radial-gradient(ellipse at 0 0, rgba(44, 93, 74, .13), transparent 54%), rgba(8, 13, 18, .7); border: 1px solid var(--line); border-radius: 9px; display: grid; gap: 9px; margin-top: 12px; max-height: 320px; min-height: 180px; overflow-y: auto; padding: 12px; }
+.bot-message { border: 1px solid var(--line); border-radius: 8px; max-width: 95%; padding: 9px 11px; }
+.bot-message.assistant { background: rgba(20, 31, 32, .9); justify-self: start; }
+.bot-message.user { background: rgba(30, 66, 53, .62); border-color: rgba(180, 242, 210, .17); justify-self: end; }
+.bot-message-label { color: var(--mint); display: block; font-size: .5rem; font-weight: 900; letter-spacing: .12em; margin-bottom: 5px; }
+.bot-message.user .bot-message-label { color: #a9c6b7; }
+.bot-message p { color: var(--ink); font-size: .62rem; line-height: 1.55; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bot-prompts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.bot-prompts button { background: rgba(180, 242, 210, .04); border: 1px solid var(--line); border-radius: 99px; color: var(--muted); cursor: pointer; font: inherit; font-size: .54rem; padding: 6px 9px; transition: color .15s, border-color .15s, background .15s; }
+.bot-prompts button:hover, .bot-prompts button:focus-visible { background: rgba(180, 242, 210, .1); border-color: var(--mint-deep); color: var(--mint); outline: none; }
+.bot-chat-form { align-items: end; display: grid; gap: 8px; grid-template-columns: 1fr auto; margin-top: 10px; }
+.bot-chat-form textarea { background: #0c1318; border: 1px solid var(--line-strong); border-radius: 7px; color: var(--ink); font: inherit; font-size: .65rem; line-height: 1.45; min-height: 42px; outline: none; padding: 10px; resize: vertical; }
+.bot-chat-form textarea:focus { border-color: var(--mint-deep); box-shadow: 0 0 0 3px rgba(84, 203, 152, .12); }
+.bot-chat-form textarea::placeholder { color: var(--dim); }
+.bot-send { margin: 0; min-height: 42px; padding: 10px 12px; }
+.bot-send:disabled { cursor: wait; opacity: .65; }
+.bot-chat-status { color: var(--dim); font-size: .54rem; line-height: 1.4; margin: 8px 0 0; text-align: center; }
+.review-list .review-next-step { border-top: 1px solid rgba(203, 218, 225, .06); color: #a5b5b2; margin-top: 3px; padding-top: 5px; }
+.review-next-step b { color: var(--mint); font-size: .52rem; letter-spacing: .04em; }
+.playbook-table { min-width: 720px; }
+.sample-read { border-radius: 4px; display: inline-block; font-size: .53rem; font-weight: 800; padding: 4px 6px; white-space: nowrap; }
+.sample-small { background: rgba(255, 146, 139, .1); color: #ffaaa3; }
+.sample-early { background: rgba(243, 199, 126, .11); color: var(--amber); }
+.sample-reviewable { background: rgba(84, 203, 152, .11); color: var(--mint); }
+.sr-only { clip: rect(0, 0, 0, 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+@media (max-width: 520px) {
+  .bot-chat-panel { padding: 14px; }
+  .bot-chat-form { grid-template-columns: 1fr; }
+  .bot-send { width: 100%; }
+  .bot-prompts button { font-size: .53rem; }
+}
+
+@media (max-width: 520px) {
+  .workspace-nav { flex-wrap: wrap; justify-content: flex-start; }
+  .workspace-nav a { flex: 1 1 28%; min-width: 0; padding: 8px 5px; }
+}

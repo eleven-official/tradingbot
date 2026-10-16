@@ -6,6 +6,11 @@ const chart = document.querySelector("#market-chart");
 const chartEmpty = document.querySelector("#chart-empty");
 const strategyBoard = document.querySelector("#strategy-board");
 const strategyEmpty = document.querySelector("#strategy-empty");
+const botChatForm = document.querySelector("#bot-chat-form");
+const botChatLog = document.querySelector("#bot-chat-log");
+const botChatStatus = document.querySelector("#bot-chat-status");
+const botQuestion = document.querySelector("#bot-question");
+const botSend = document.querySelector("#bot-send");
 let marketSnapshot = null;
 let selectedStrategyKey = "";
 const JOURNAL_STORAGE_KEY = "loki.paper-journal.v1";
@@ -158,6 +163,7 @@ function renderLiveSnapshot(snapshot) {
   ema.className = snapshot.ema_fast > snapshot.ema_slow ? "positive" : snapshot.ema_fast < snapshot.ema_slow ? "negative" : "";
   liveStatus.textContent = `${snapshot.symbol} feed refreshed · ${new Date(Number(snapshot.observed_at) * 1000).toLocaleTimeString()}. Set a stop and target to continue.`;
   liveStatus.className = "live-ok";
+  updateBotContextStatus();
   renderChart(snapshot);
   renderStrategyBoard(snapshot);
 }
@@ -230,6 +236,7 @@ function renderDecision(data, input) {
   const placeholder = document.querySelector("#council-placeholder");
   const output = document.querySelector("#council-output");
   lastDecision = { data, input: { ...input }, snapshot: marketSnapshot ? { ...marketSnapshot } : null };
+  updateBotContextStatus();
   placeholder.hidden = true;
   output.hidden = false;
   document.querySelector("#decision-journal-actions").hidden = false;
@@ -246,7 +253,7 @@ function renderDecision(data, input) {
     ["TARGET PROFIT", number(data.plan.projected_profit)],
   ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
   document.querySelector("#plan-map-wrap").innerHTML = planMap(data.plan, input);
-  document.querySelector("#review-list").innerHTML = data.reviews.map((review) => `<li class="${review.verdict.toLowerCase()}"><b>${escapeHtml(review.agent)}</b><span>${escapeHtml(review.verdict)}</span><p>${escapeHtml(review.reason)}</p></li>`).join("");
+  document.querySelector("#review-list").innerHTML = data.reviews.map((review) => `<li class="${review.verdict.toLowerCase()}"><b>${escapeHtml(review.agent)}</b><span>${escapeHtml(review.verdict)}</span><p>${escapeHtml(review.reason)}</p><p class="review-next-step"><b>Next step</b> · ${escapeHtml(review.next_step || "Refresh the inputs and review this gate again.")}</p></li>`).join("");
   document.querySelector("#council-disclaimer").textContent = `${data.disclaimer} A stop is an estimate; gaps and slippage can increase losses.`;
 }
 
@@ -348,7 +355,7 @@ function saveDecisionToJournal(trackPosition) {
     rationale: data.rationale,
     passedGates: (data.reviews || []).filter((review) => review.verdict === "PASS").length,
     gateCount: (data.reviews || []).length,
-    councilReviews: (data.reviews || []).map((review) => ({ agent: String(review.agent), verdict: String(review.verdict), reason: String(review.reason) })),
+    councilReviews: (data.reviews || []).map((review) => ({ agent: String(review.agent), verdict: String(review.verdict), reason: String(review.reason), next_step: String(review.next_step || "") })),
     setupEvidence: (setupCandidate?.evidence || []).map(String),
     entryPrice: Number(input.entry_price),
     stopPrice: Number(input.stop_price),
@@ -392,6 +399,117 @@ function setupReviewRows() {
   return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
 }
 
+
+function updateBotContextStatus() {
+  const status = document.querySelector("#bot-context-status");
+  if (!status) return;
+  const parts = [];
+  if (marketSnapshot) parts.push(marketSnapshot.symbol + " " + marketSnapshot.interval + " snapshot");
+  if (lastDecision) parts.push(lastDecision.data.action + " council review");
+  parts.push(journalEntries.filter((entry) => entry.status === "closed").length + " closed journal outcomes");
+  status.textContent = "Each message can use: " + parts.join(" · ") + ". Journal data stays in this browser.";
+}
+
+function botContextPayload() {
+  const closed = journalEntries.filter((entry) => entry.status === "closed" && Number.isFinite(Number(entry.pnl)));
+  const wins = closed.filter((entry) => Number(entry.pnl) > 0).length;
+  const averageR = closed.length
+    ? closed.reduce((sum, entry) => sum + (Number(entry.rMultiple) || 0), 0) / closed.length
+    : null;
+  return {
+    market: marketSnapshot ? {
+      symbol: marketSnapshot.symbol,
+      interval: marketSnapshot.interval,
+      current_price: marketSnapshot.current_price,
+      change_24h_percent: marketSnapshot.change_24h_percent,
+      trend: marketSnapshot.trend,
+      rsi_14: marketSnapshot.rsi_14,
+      volume_ratio: marketSnapshot.volume_ratio,
+      spread_percent: marketSnapshot.spread_percent,
+      data_age_seconds: marketSnapshot.data_age_seconds,
+    } : null,
+    decision: lastDecision ? {
+      action: lastDecision.data.action,
+      rationale: lastDecision.data.rationale,
+      setup_name: lastDecision.input.setup_name,
+      setup_score: lastDecision.input.setup_score,
+      reviews: lastDecision.data.reviews,
+      plan: lastDecision.data.plan,
+    } : null,
+    journal: {
+      closed_trades: closed.length,
+      wins: wins,
+      win_rate_percent: closed.length ? wins / closed.length * 100 : null,
+      average_r: averageR,
+      pnl: closed.reduce((sum, entry) => sum + (Number(entry.pnl) || 0), 0),
+      setups: setupReviewRows().map(([name, stats]) => ({
+        name: name,
+        closed: stats.count,
+        wins: stats.wins,
+        win_rate_percent: stats.count ? stats.wins / stats.count * 100 : null,
+        average_r: stats.count ? stats.totalR / stats.count : null,
+        pnl: stats.pnl,
+      })),
+    },
+  };
+}
+
+function appendBotMessage(role, content) {
+  const article = document.createElement("article");
+  article.className = "bot-message " + role;
+  const label = document.createElement("span");
+  label.className = "bot-message-label";
+  label.textContent = role === "user" ? "YOU" : "LOKI COACH";
+  const paragraph = document.createElement("p");
+  paragraph.textContent = content;
+  article.append(label, paragraph);
+  botChatLog.append(article);
+  botChatLog.scrollTop = botChatLog.scrollHeight;
+}
+
+botChatForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const question = botQuestion.value.trim();
+  if (!question || botSend.disabled) return;
+  appendBotMessage("user", question);
+  botQuestion.value = "";
+  botSend.disabled = true;
+  botSend.innerHTML = "Thinking… <span aria-hidden=\"true\">⋯</span>";
+  botChatStatus.textContent = "Reading the market, council and journal context attached to this message…";
+  try {
+    const response = await fetch("/api/bot-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: question, ...botContextPayload() }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.detail || "The coach could not answer that question.");
+    appendBotMessage("assistant", body.answer);
+    botChatStatus.textContent = "Answered from the context on this page. No order was sent.";
+  } catch (error) {
+    appendBotMessage("assistant", error.message || "The coach is unavailable. Please try again.");
+    botChatStatus.textContent = "Question was not answered; check the connection and try again.";
+  } finally {
+    botSend.disabled = false;
+    botSend.innerHTML = "Ask Loki <span aria-hidden=\"true\">↑</span>";
+    botQuestion.focus();
+  }
+});
+
+document.querySelectorAll("[data-bot-prompt]").forEach((button) => {
+  button.addEventListener("click", () => {
+    botQuestion.value = button.dataset.botPrompt;
+    botChatForm.requestSubmit();
+  });
+});
+
+botQuestion.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    botChatForm.requestSubmit();
+  }
+});
+
 function renderJournal() {
   const closed = journalEntries.filter((entry) => entry.status === "closed");
   const open = journalEntries.filter((entry) => entry.status === "open");
@@ -408,8 +526,15 @@ function renderJournal() {
   pnlValue.className = pnlTotal > 0 ? "positive" : pnlTotal < 0 ? "negative" : "";
 
   const playbookRows = setupReviewRows();
+  updateBotContextStatus();
   document.querySelector("#playbook-review-empty").hidden = playbookRows.length > 0;
-  document.querySelector("#playbook-review-body").innerHTML = playbookRows.map(([name, stats]) => `<tr><td>${escapeHtml(name)}</td><td>${stats.count}</td><td>${number(stats.wins / stats.count * 100, 1)}%</td><td>${stats.totalR > 0 ? "+" : ""}${number(stats.totalR / stats.count)}R</td><td class="${stats.pnl > 0 ? "positive" : stats.pnl < 0 ? "negative" : ""}">${journalAmount(stats.pnl)}</td></tr>`).join("");
+  document.querySelector("#playbook-review-body").innerHTML = playbookRows.map(([name, stats]) => {
+    let sample;
+    if (stats.count < 5) sample = { label: "Too small", className: "sample-small", note: "Fewer than 5 closed outcomes; do not use this sample to change rules." };
+    else if (stats.count < 20) sample = { label: "Early read", className: "sample-early", note: "5–19 outcomes; continue logging before treating this as repeatable." };
+    else sample = { label: "Reviewable", className: "sample-reviewable", note: "20+ outcomes; review with holdout and costs, not as proof of future edge." };
+    return "<tr><td>" + escapeHtml(name) + "</td><td>" + stats.count + "</td><td>" + number(stats.wins / stats.count * 100, 1) + "%</td><td>" + (stats.totalR > 0 ? "+" : "") + number(stats.totalR / stats.count) + "R</td><td class=\"" + (stats.pnl > 0 ? "positive" : stats.pnl < 0 ? "negative" : "") + "\">" + journalAmount(stats.pnl) + "</td><td><span class=\"sample-read " + sample.className + "\" title=\"" + sample.note + "\">" + sample.label + "</span></td></tr>";
+  }).join("");
 
   const filter = document.querySelector("#journal-filter").value;
   const visible = filter === "all" ? journalEntries : journalEntries.filter((entry) => entry.status === filter);
@@ -430,7 +555,7 @@ function renderJournal() {
         : `<p class="review-only-note">Saved decision review · no simulated position was tracked</p>`;
     const note = entry.note ? `<p class="journal-note">${escapeHtml(entry.note)}</p>` : "";
     const setupDetails = (entry.setupEvidence || []).length ? `<details class="journal-details"><summary>Setup checklist · ${entry.setupEvidence.length} conditions</summary><ul class="focus-evidence">${entry.setupEvidence.map((item) => `<li class="${String(item).startsWith("PASS") ? "matched" : "missed"}">${escapeHtml(item)}</li>`).join("")}</ul></details>` : "";
-    const councilDetails = (entry.councilReviews || []).length ? `<details class="journal-details"><summary>Council review · ${entry.councilReviews.length} gates</summary><ol class="review-list">${entry.councilReviews.map((review) => `<li class="${escapeHtml(String(review.verdict).toLowerCase())}"><b>${escapeHtml(review.agent)}</b><span>${escapeHtml(review.verdict)}</span><p>${escapeHtml(review.reason)}</p></li>`).join("")}</ol></details>` : "";
+    const councilDetails = (entry.councilReviews || []).length ? `<details class="journal-details"><summary>Council review · ${entry.councilReviews.length} gates</summary><ol class="review-list">${entry.councilReviews.map((review) => `<li class="${escapeHtml(String(review.verdict).toLowerCase())}"><b>${escapeHtml(review.agent)}</b><span>${escapeHtml(review.verdict)}</span><p>${escapeHtml(review.reason)}</p><p class="review-next-step"><b>Next step</b> · ${escapeHtml(review.next_step || "Review the flagged input.")}</p></li>`).join("")}</ol></details>` : "";
     return `<article class="journal-entry-card" data-journal-id="${escapeHtml(entry.id)}">
       <div class="journal-entry-head"><div><span class="journal-status ${entry.status}">${stateLabel}</span><h3>${escapeHtml(entry.symbol)} <small>${escapeHtml(entry.interval)}</small></h3></div><time>${escapeHtml(journalTime(entry.createdAt))}</time></div>
       <div class="journal-entry-summary"><div><span>SETUP</span><strong>${escapeHtml(entry.setupName)}</strong></div><div><span>RULES MATCHED</span><strong>${number(entry.setupScore, 0)} / 100</strong></div><div><span>COUNCIL</span><strong>${escapeHtml(entry.action)} · ${entry.passedGates} / ${entry.gateCount} passed</strong></div><div><span>ENTRY / SIZE</span><strong>${price(entry.entryPrice)} · ${number(entry.quantity, 6)}</strong></div></div>

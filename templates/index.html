@@ -20,6 +20,7 @@
         <a href="#market-desk">Market</a>
         <a href="#risk-desk">Risk desk</a>
         <a href="#paper-journal">Journal</a>
+        <a href="#bot-coach">Ask Loki</a>
         <a href="/strategy-lab">Strategy lab ↗</a>
       </nav>
       <div class="topbar-meta">
@@ -167,13 +168,36 @@
             </div>
           </div>
         </section>
+
+        <section id="bot-coach" class="panel bot-chat-panel" aria-labelledby="bot-coach-heading">
+          <div class="panel-header bot-chat-heading">
+            <div><p class="section-kicker">05 / LOKI COACH</p><h2 id="bot-coach-heading">Ask the bot</h2></div>
+            <span class="coach-status"><i></i> CONTEXT READY</span>
+          </div>
+          <p class="bot-chat-intro">Ask why a gate paused, what the risk plan means, or what your journal says about a setup.</p>
+          <p id="bot-context-status" class="bot-context-status">Uses the current screen and a summary of this browser’s journal for each question.</p>
+          <div id="bot-chat-log" class="bot-chat-log" role="log" aria-live="polite" aria-relevant="additions">
+            <article class="bot-message assistant"><span class="bot-message-label">LOKI COACH</span><p>Hi. I can explain this page’s market snapshot, council review, risk plan and recorded setup outcomes. What would you like to understand?</p></article>
+          </div>
+          <div class="bot-prompts" aria-label="Suggested questions">
+            <button type="button" data-bot-prompt="Why did the council say WAIT or SKIP?">Explain my council</button>
+            <button type="button" data-bot-prompt="What is my planned size and downside risk?">Explain my risk</button>
+            <button type="button" data-bot-prompt="How has my selected setup performed in the journal?">Review my setup</button>
+          </div>
+          <form id="bot-chat-form" class="bot-chat-form">
+            <label class="sr-only" for="bot-question">Ask Loki a question</label>
+            <textarea id="bot-question" name="question" maxlength="500" rows="2" placeholder="Ask about this market, decision or journal…" required></textarea>
+            <button id="bot-send" class="run-button bot-send" type="submit">Ask Loki <span aria-hidden="true">↑</span></button>
+          </form>
+          <p id="bot-chat-status" class="bot-chat-status" role="status">Local context coach · no outside AI provider · no orders sent.</p>
+        </section>
       </aside>
     </section>
 
     <section id="paper-journal" class="panel journal-panel" aria-labelledby="journal-title">
       <div class="journal-topline">
         <div>
-          <p class="section-kicker">05 / REVIEW THE PROCESS</p>
+          <p class="section-kicker">06 / REVIEW THE PROCESS</p>
           <h2 id="journal-title">Paper journal</h2>
           <p class="journal-intro">Keep the setup, council reasons and outcome together. Entries stay in this browser.</p>
         </div>
@@ -206,11 +230,11 @@
         </div>
         <div class="playbook-table-wrap">
           <table class="playbook-table">
-            <thead><tr><th scope="col">Setup</th><th scope="col">Closed</th><th scope="col">Win rate</th><th scope="col">Avg R</th><th scope="col">Gross P&amp;L · quote units</th></tr></thead>
+            <thead><tr><th scope="col">Setup</th><th scope="col">Closed</th><th scope="col">Win rate</th><th scope="col">Avg R</th><th scope="col">Gross P&amp;L · quote units</th><th scope="col">Sample read</th></tr></thead>
             <tbody id="playbook-review-body"></tbody>
           </table>
         </div>
-        <p id="playbook-review-empty" class="playbook-empty">Track and close a paper entry to start comparing outcomes by setup.</p>
+        <p id="playbook-review-empty" class="playbook-empty">Track and close a paper entry to compare outcomes. Under 5 is too small to change rules; 5–19 is an early read; 20+ is reviewable, not proof. Check holdout results and costs too.</p>
       </section>
 
       <div class="journal-list-heading"><span id="journal-entry-count">No saved entries</span><span>Close prices are entered manually; no orders or price triggers run here.</span></div>

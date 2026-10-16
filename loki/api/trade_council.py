@@ -49,6 +49,7 @@ class AgentReview:
     agent: str
     verdict: str
     reason: str
+    next_step: str = ""
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,41 @@ def _finite_nonnegative(name: str, value: float) -> float:
 
 def _first_reason(reviews: list[AgentReview], verdict: str) -> str:
     return next(review.reason for review in reviews if review.verdict == verdict)
+
+
+
+def _next_step(review: AgentReview, request: CouncilRequest) -> str:
+    """Translate a gate result into a concrete, conservative follow-up."""
+    if review.verdict == "PASS":
+        return {
+            "Scout": "Keep using a fresh feed and check participation again before a later review.",
+            "Trend": "Keep the bullish regime and selected setup rules visible in your notes.",
+            "Chart Guardian": "Preserve these entry, stop and target levels; do not chase a later price move.",
+            "Risk Sentinel": "Keep the planned risk budget and exposure cap unchanged for this paper review.",
+            "Volatility Guardian": "Recheck volatility before a later review; the regime can change.",
+            "Execution Gate": "Recheck spread and session status before any separate decision.",
+        }.get(review.agent, "Record this pass and recheck it with fresh data.")
+    if review.agent == "Scout":
+        if "seconds old" in review.reason.lower():
+            return "Refresh the public feed and rerun only when data age is within the freshness limit."
+        return "Wait for volume to reach the configured participation threshold, then refresh."
+    if review.agent == "Trend":
+        if "bearish" in review.reason.lower():
+            return "Stand aside while the declared regime conflicts with a long; reassess only after a confirmed change."
+        return "Wait for a confirmed bullish regime and, when selected, enough setup-rule confluence."
+    if review.agent == "Chart Guardian":
+        if "stop" in review.reason.lower():
+            return "Treat the original thesis as invalidated. Build a new plan only from freshly chosen levels."
+        return "Wait for the planned entry zone or remap entry, stop and target; do not chase."
+    if review.agent == "Risk Sentinel":
+        return "Rework the risk budget, exposure cap or reward-to-risk geometry. Do not move a stop closer just to force approval."
+    if review.agent == "Volatility Guardian":
+        return "Stand aside until volatility is within the chosen safety ceiling; do not raise the ceiling to force a pass."
+    if review.agent == "Execution Gate":
+        if not request.market_open:
+            return "Wait for an open session, then refresh the feed and review the spread again."
+        return "Wait for spread to return within the configured limit, then refresh."
+    return "Review the flagged input and run the council again after it changes."
 
 
 def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
@@ -217,6 +253,11 @@ def evaluate_trade_council(request: CouncilRequest) -> CouncilDecision:
         reviews.append(AgentReview("Execution Gate", "WAIT", f"Spread is {spread:.3f}%, above the {max_spread:.3f}% execution threshold."))
     else:
         reviews.append(AgentReview("Execution Gate", "PASS", f"Market is open and spread is {spread:.3f}%, within the {max_spread:.3f}% threshold."))
+
+    reviews = [
+        AgentReview(review.agent, review.verdict, review.reason, _next_step(review, request))
+        for review in reviews
+    ]
 
     if any(review.verdict == "SKIP" for review in reviews):
         return CouncilDecision("SKIP", _first_reason(reviews, "SKIP"), tuple(reviews), plan)

@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from loki.api.bot_copilot import answer_bot_question
 from loki.api.binance_market_data import (
     MarketDataError,
     get_binance_spot_history,
@@ -84,6 +85,69 @@ class TradeCouncilRequest(RiskPlanRequest):
     setup_name: str = Field(default="", max_length=60)
     setup_score: float | None = Field(default=None, ge=0, le=100)
     min_setup_score: float = Field(default=80.0, ge=0, le=100)
+
+
+class BotMarketContext(BaseModel):
+    symbol: str = Field(default="", max_length=20)
+    interval: str = Field(default="", max_length=8)
+    current_price: float | None = None
+    change_24h_percent: float | None = None
+    trend: str = Field(default="UNKNOWN", max_length=20)
+    rsi_14: float | None = None
+    volume_ratio: float | None = None
+    spread_percent: float | None = None
+    data_age_seconds: float | None = None
+
+
+class BotReviewContext(BaseModel):
+    agent: str = Field(default="", max_length=40)
+    verdict: str = Field(default="", max_length=12)
+    reason: str = Field(default="", max_length=300)
+    next_step: str = Field(default="", max_length=300)
+
+
+class BotPlanContext(BaseModel):
+    quantity: float | None = None
+    estimated_loss: float | None = None
+    reward_risk_ratio: float | None = None
+    notional: float | None = None
+    projected_profit: float | None = None
+
+
+class BotDecisionContext(BaseModel):
+    action: str = Field(default="", max_length=12)
+    rationale: str = Field(default="", max_length=300)
+    setup_name: str = Field(default="", max_length=80)
+    setup_score: float | None = None
+    reviews: list[BotReviewContext] = Field(default_factory=list)
+    plan: BotPlanContext | None = None
+
+
+class BotSetupStats(BaseModel):
+    name: str = Field(default="", max_length=80)
+    closed: int = Field(default=0, ge=0, le=250)
+    wins: int = Field(default=0, ge=0, le=250)
+    win_rate_percent: float | None = None
+    average_r: float | None = None
+    pnl: float | None = None
+
+
+class BotJournalContext(BaseModel):
+    closed_trades: int = Field(default=0, ge=0, le=250)
+    wins: int = Field(default=0, ge=0, le=250)
+    win_rate_percent: float | None = None
+    average_r: float | None = None
+    pnl: float | None = None
+    setups: list[BotSetupStats] = Field(default_factory=list)
+
+
+class BotChatRequest(BaseModel):
+    """A bounded question with ephemeral dashboard context; no chat is persisted."""
+
+    question: str = Field(min_length=1, max_length=500)
+    market: BotMarketContext | None = None
+    decision: BotDecisionContext | None = None
+    journal: BotJournalContext = Field(default_factory=BotJournalContext)
 
 
 def _model_data(payload: BaseModel) -> dict[str, object]:
@@ -201,6 +265,18 @@ async def run_trade_council(payload: TradeCouncilRequest) -> dict[str, object]:
         "rationale": decision.rationale,
         "reviews": [asdict(review) for review in decision.reviews],
         "plan": asdict(decision.plan),
+    }
+
+
+@app.post("/api/bot-chat")
+async def chat_with_loki(payload: BotChatRequest) -> dict[str, object]:
+    """Answer from the dashboard context supplied for this message only."""
+    values = _model_data(payload)
+    return {
+        "mode": "local-context-coach",
+        "answer": answer_bot_question(values),
+        "context_used": {"market": bool((values.get("market") or {}).get("symbol")), "decision": bool((values.get("decision") or {}).get("action")), "journal": bool((values.get("journal") or {}).get("closed_trades"))},
+        "disclaimer": "Contextual paper research only; not a forecast, financial advice or an order.",
     }
 
 

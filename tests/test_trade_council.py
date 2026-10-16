@@ -73,6 +73,13 @@ class TradeCouncilTests(unittest.TestCase):
         self.assertEqual(decision.reviews[5].agent, "Execution Gate")
         self.assertEqual(decision.reviews[5].verdict, "WAIT")
 
+    def test_low_volume_guidance_says_to_wait_for_participation(self):
+        decision = evaluate_trade_council(base_request(volume_ratio=0.5))
+
+        self.assertEqual(decision.action, "WAIT")
+        self.assertIn("volume", decision.reviews[0].next_step.lower())
+        self.assertIn("threshold", decision.reviews[0].next_step.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
