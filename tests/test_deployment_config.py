@@ -1,4 +1,5 @@
 """Guard the Vercel FastAPI deployment entrypoint against invalid runtimes."""
+import ast
 import json
 import re
 import tomllib
@@ -37,6 +38,19 @@ class DeploymentConfigTests(unittest.TestCase):
             if line.strip() and not line.lstrip().startswith("#")
         }
         self.assertEqual(declared, required)
+
+    def test_landing_route_uses_current_starlette_template_response_order(self):
+        source = (ROOT / "loki" / "api" / "server.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "TemplateResponse"
+        ]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual([arg.id if isinstance(arg, ast.Name) else getattr(arg, "value", None)
+                          for arg in calls[0].args], ["request", "index.html", "context"])
 
 
 if __name__ == "__main__":
