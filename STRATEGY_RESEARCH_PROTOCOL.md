@@ -24,7 +24,7 @@ These are example-config values; the running bot can use different settings. An 
 
 Historical OHLC bars do not contain the actual bid and ask. Replace the spread assumption with quote data when available. These modeled costs are estimates, and the limit fill model does not prove that a real order would have filled.
 
-Backtest reports now distinguish gross P&L from net P&L and show commission, spread, slippage, trade count, expectancy, profit factor after costs, and drawdown. Compare against a simple buy-and-hold baseline using `core_engine.research_harness.ResearchHarness`; use `core_engine.walk_forward.PurgedWalkForwardValidator` for sequential windows with a gap.
+Backtest reports now distinguish gross P&L from net P&L and show commission, spread, slippage, trade count, expectancy, profit factor after costs, and drawdown. Monte Carlo resampling accepts a `random_seed` so a stress run can be reproduced. Compare against a simple buy-and-hold baseline using `core_engine.research_harness.ResearchHarness`; use `core_engine.walk_forward.PurgedWalkForwardValidator` for sequential windows with a gap.
 
 ## Test procedure
 
@@ -37,7 +37,7 @@ Backtest reports now distinguish gross P&L from net P&L and show commission, spr
 Run the focused execution-cost and council checks with:
 
 ```bash
-python -m unittest tests.test_backtesting_spread_costs tests.test_strategy_council tests.test_research_harness -v
+python -m unittest tests.test_deployment_config tests.test_backtesting_spread_costs tests.test_strategy_council tests.test_research_harness -v
 ```
 
 These tests validate cost accounting, council explanations, and research controls. They are not historical evidence that any strategy has an edge. No strategy should be called improved until it has passed a multi-regime, after-cost replay with an untouched holdout and a frozen-rule paper run.
