@@ -15,6 +15,7 @@ import logging
 import time
 from typing import Dict, List, Optional
 
+from .agents import LokiAgentPipeline
 from .backtest import BacktestResult, run_backtest, walk_forward, monte_carlo
 from .broker import PaperBroker, make_broker
 from .config import LokiConfig, default_config
@@ -63,6 +64,16 @@ class LokiBot:
                 logger.warning("scan failed for %s: %s", sym, exc)
         signals.sort(key=lambda s: -abs(s.score))
         return signals
+
+    def agent_scan(self, symbols: Optional[List[str]] = None) -> Dict:
+        """Run the full Director→Quant→Risk→Execution pipeline.
+
+        Returns a structured decision trail per symbol (auditable JSON),
+        and executes approved orders on the bot's own broker.
+        """
+        pipeline = LokiAgentPipeline(self.cfg, broker=self.broker)
+        report = pipeline.run_universe(symbols, equity=self.broker.equity(self.last_quotes))
+        return report
 
     # ------------------------------------------------------------------
     # Backtest

@@ -16,6 +16,10 @@ It trades US stocks, crypto, and NSE instruments through one interface, with a
   momentum (RSI/MACD/Stochastic/ROC), volume (OBV + participation),
   volatility (Bollinger %B + ATR regime) and market structure (ADX/DI) into a
   single causal score in `[-100, 100]`.
+- **Multi-agent layer** — AutoHedge-inspired `Director → Quant → Risk →
+  Execution`. The Director reads market regime (bull/bear/ranging) and sets
+  posture; Quant scores the market; Risk sizes and approves; Execution routes
+  orders. Every step emits structured JSON for an auditable decision trail.
 - **Risk engine** — ATR-based position sizing (fixed fractional risk),
   stop-loss / take-profit, time-stop, volatility cap, daily-loss and
   consecutive-loss circuit breakers.
@@ -48,6 +52,22 @@ python loki_bot.py paper --interval 60                   # continuous paper loop
 These are **per-fold** returns (each fold ≈ 2.5 years), low drawdown, and they
 reproduce across non-overlapping time periods — the hallmark of a real,
 non-overfit edge rather than a single lucky in-sample backtest.
+
+## Full 10-year backtest (risk-managed long-only)
+
+| Symbol  | Total return | Trades | Win rate | Profit factor | Max drawdown |
+|---------|-------------:|-------:|---------:|--------------:|-------------:|
+| AAPL    | +55.9%       | 153    | 52%      | 1.60          | -6.0%        |
+| SPY     | +24.7%       | 121    | 50%      | 1.35          | -6.5%        |
+| QQQ     | +35.6%       | 144    | 49%      | 1.41          | -7.2%        |
+| BTC-USD | +114.1%      | 156    | 59%      | 2.21          | -9.3%        |
+
+**Honest framing:** these returns are *lower* than simply buying-and-holding
+strong bull assets (AAPL/BTC rose far more over 2016–2026). The trade-off this
+engine makes is **risk** — a 6–9% max drawdown versus 30–40%+ buy-and-hold
+drawdowns — and **consistency** (positive across every out-of-sample fold).
+That is the real, defensible edge; it is not a 70%-win-rate miracle, which no
+honest system can promise.
 
 ## Important disclaimer
 

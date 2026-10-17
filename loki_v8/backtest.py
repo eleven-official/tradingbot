@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from .config import LokiConfig
+from .regime import regime_series
 from .risk import RiskManager
 from .strategy import EnsembleStrategy
 
@@ -86,6 +87,7 @@ def run_backtest(
     frame = strategy.score_frame(df)
     scores = frame["score"]
     atrs = frame["atr"]
+    regimes = regime_series(frame)
 
     warmup = max(cfg.lookback_bars, 60)
     cash = cfg.initial_cash
@@ -158,7 +160,8 @@ def run_backtest(
             above_ma = float(frame["close"].iloc[i - 1]) > float(frame["sma_200"].iloc[i - 1])
             allow_vol = not (cfg.max_atr_pct > 0 and atr_pct_prev > cfg.max_atr_pct)
             allow_trend = (not cfg.require_trend_filter) or above_ma
-            if allow_vol and allow_trend:
+            allow_regime = (not cfg.regime_filter) or (regimes.iloc[i - 1] != "BEAR")
+            if allow_vol and allow_trend and allow_regime:
                 entry = _fill(o, "buy", cfg)
                 atr_val = atr_prev if np.isfinite(atr_prev) else entry * 0.02
                 stop = entry - cfg.stop_loss_atr * atr_val

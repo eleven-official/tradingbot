@@ -45,6 +45,7 @@ class LokiConfig:
     signal_threshold: float = 20.0      # |score| (0-100) required to act
     min_confidence: float = 65.0        # min ensemble confidence (0-100)
     require_trend_filter: bool = True   # only trade with-trend signals
+    regime_filter: bool = True          # block new longs while in a bear regime
     allow_short: bool = False           # enable short entries (crypto can short)
     max_hold_bars: int = 30             # time-stop: exit after N bars held
     max_atr_pct: float = 5.0            # skip entries when daily ATR% exceeds this
