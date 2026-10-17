@@ -21,6 +21,9 @@ output/
 *.log
 logs/
 
+# Incoming third-party repos being mined for ideas (not part of Loki)
+_incoming/
+
 # Cache folders
 cache/
 news_cache/
