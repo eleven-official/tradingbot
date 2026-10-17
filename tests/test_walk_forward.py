@@ -120,3 +120,44 @@ def test_outperformance_uses_paired_observations():
     result = StatisticalValidator().test_outperformance(strategy, benchmark)
     assert "t_test" in result
     assert np.isfinite(result["t_test"]["statistic"])
+
+
+@pytest.mark.parametrize("bad_result", [
+    {"total_return": float("inf"), "sharpe_ratio": 1.0},
+    {"total_return": 0.02, "sharpe_ratio": float("nan")},
+    {"total_return": 0.02},
+    {"total_return": "invalid", "sharpe_ratio": 1.0},
+])
+def test_walk_forward_never_hides_a_failed_fold(bad_result):
+    validator = PurgedWalkForwardValidator(n_splits=3, test_size=20, gap=2, min_train_size=20, min_positive_folds=2)
+    report = validator.evaluate(
+        sample_data(90),
+        lambda train, test, fold: bad_result if fold == 1 else {"total_return": 0.02, "sharpe_ratio": 1.0},
+    )
+    assert report.robust is False
+    assert any("fold 1 has missing or non-finite" in reason for reason in report.rejection_reasons)
+
+
+def test_walk_forward_rejects_ambiguous_time_order():
+    data = sample_data(90)
+    data.index = [data.index[0]] * len(data)
+    with pytest.raises(ValueError, match="sorted and unique"):
+        PurgedWalkForwardValidator(n_splits=3, min_train_size=20).evaluate(data, lambda *args: {})
+
+
+def test_summary_and_performance_stats_include_the_first_loss_in_drawdown():
+    returns = pd.Series([-0.1, 0.05])
+    assert ResearchHarness.summary(returns)["max_drawdown"] == pytest.approx(-0.1)
+    assert PerformanceStats(returns).calculate_metrics()["max_drawdown"] == pytest.approx(-0.1)
+
+
+def test_downside_deviation_uses_all_periods_instead_of_conditional_std():
+    returns = pd.Series([-0.01, -0.01])
+    assert ResearchHarness.summary(returns)["sortino_ratio"] == pytest.approx(-np.sqrt(252))
+    assert PerformanceStats(returns)._calculate_sortino(risk_free_rate=0) == pytest.approx(-np.sqrt(252))
+
+
+@pytest.mark.parametrize("returns", [pd.Series([0.01, float("nan")]), pd.Series([0.01, -1.1])])
+def test_research_summary_rejects_invalid_returns_instead_of_dropping_them(returns):
+    with pytest.raises(ValueError):
+        ResearchHarness.summary(returns)

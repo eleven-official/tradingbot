@@ -1,0 +1,88 @@
+name: Research workspace regression checks
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-workspace-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-tests:
+    name: Offline research and paper execution (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      PYTHONUTF8: "1"
+      MPLBACKEND: Agg
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements_desktop.txt
+            requirements_test.txt
+
+      - name: Install research and desktop test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements_test.txt
+          python -m pip check
+
+      - name: Verify desktop imports are tested rather than skipped
+        run: python -c "import loki_desktop"
+
+      - name: Run focused offline regressions
+        # These tests never construct a Tk window, contact an exchange or place
+        # broker orders. Override legacy coverage addopts for this small suite.
+        shell: python
+        run: |
+          import subprocess
+          import sys
+
+          tests = [
+              "tests/test_copilot.py",
+              "tests/test_copilot_conversation.py",
+              "tests/test_copilot_fusion_safety.py",
+              "tests/test_strategy_lab.py",
+              "tests/test_frozen_research.py",
+              "tests/test_pullback_research.py",
+              "tests/test_market_learning.py",
+              "tests/test_research_api.py",
+              "tests/test_api.py",
+              "tests/test_fusion_api.py",
+              "tests/test_fusion_launcher.py",
+              "tests/test_fusion_quant.py",
+              "tests/test_fusion_provenance.py",
+              "tests/test_fusion_council.py",
+              "tests/test_fusion_portfolio.py",
+              "tests/test_fusion_external.py",
+              "tests/test_setup_mirofish.py",
+              "tests/test_desktop_presenter.py",
+              "tests/test_desktop_execution.py",
+              "tests/test_walk_forward.py",
+              "tests/test_risk_controller.py",
+              "tests/test_metrics.py",
+              "tests/test_core.py",
+          ]
+          subprocess.run(
+              [sys.executable, "-m", "pytest", "-o", "addopts=", "--strict-markers", "--tb=short", "-q", *tests],
+              check=True,
+          )

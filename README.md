@@ -1,260 +1,82 @@
-# 🚀 Loki - Your Australian Crypto Trading Bot
+# Loki Fusion — research and paper trading
 
-## 🎉 Loki is Ready!
+Loki brings strategy research, factor diagnostics, a role-based council, a paper portfolio, stress scenarios and conversation into one workspace. Selected Vibe-Trading and AutoHedge engines run inside Loki; licensed Fincept analytics and the separate MiroFish service connect locally. This is a research and paper application. No strategy has established the requested 70% future winning-trade rate or improved future profitability.
 
-**System Status:** ✅ FULLY OPERATIONAL  
-**Tests:** 186/186 passing (100% success rate)  
-**Evolutionary Features:** All active  
-**Paper Trading:** Enabled for safety  
+## Start the unified workspace
 
----
-
-## 📱 How to Start Loki
-
-### 🖥️ Desktop Mode (Recommended)
-```bash
-python loki_desktop.py
-```
-- Opens Loki's graphical interface
-- Real-time dashboard with AUD metrics
-- TradingView webhook management
-- Manual trading controls
-- Live activity logs
-
-### 🖥️ Headless Mode (Server)
-```bash
-python loki.py
-```
-- No GUI required
-- Webhook server on port 8000
-- Processes TradingView signals automatically
-- Console output shows activity
-
----
-
-## 🔗 TradingView Setup
-
-### 1. Start Loki
-```bash
-python loki_desktop.py
-# OR
-python loki.py
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python launch_loki_fusion.py
 ```
 
-### 2. Get Your Webhook URL
-**TradingView Webhook URL:** `http://localhost:8000/webhook/tradingview`
+Open http://127.0.0.1:8000. The seven views share the dataset and paper journal:
 
-### 3. Configure TradingView Alert
-- Go to TradingView.com
-- Create an alert on your chart
-- Set webhook URL to: `http://localhost:8000/webhook/tradingview`
-- Use this alert message:
-```json
-{
-  "signal_type": "{{strategy.order.action}}",
-  "symbol": "{{ticker}}",
-  "price": "{{close}}",
-  "quantity": "{{strategy.order.contracts}}"
-}
+- **Overview:** forward-test equity versus buy-and-hold, costs, uncertainty and evidence gaps.
+- **Quant lab:** CSV walk-forward trend research, Vibe-derived causal factors, fixed-rule replay, a separate pullback hypothesis and supervised learning on public historical market factors.
+- **Agent council:** AutoHedge-derived director/analyst role contracts with deterministic signal, evidence, cash, currency and exposure checks. Drafts are inert and blocked when checks fail; no LLM agents are silently invoked.
+- **Paper portfolio:** manual long entries, partial exits, marks, costs, lifecycle P&L, browser persistence, export and cost-aware sizing.
+- **Scenarios:** explicit price-shock sensitivity on current paper positions, plus the actual MiroFish service workflow when configured.
+- **Talk to Loki:** grounded local explanations of research, factors, council decisions, portfolios and stress results; multi-topic questions, instrument followups, loss reviews and useful next checks. Chat has no execution authority.
+- **Integrations:** real readiness states and licensed Fincept daily-return portfolio risk reports.
+
+Upload **161–5,000 bars from a single instrument** with columns `timestamp,open,high,low,close,volume`. Use ISO 8601 timestamps (timezone recommended; naive timestamps are interpreted as UTC) in ascending order. Set bars per year to match the data frequency. All monetary values use the input data's quote currency. Historical data provenance is not independently verified.
+
+Paper journal state is saved in this browser's local storage. Research, council and stress results remain in the current page until export or reload. The workspace export includes uploaded bars and paper records; handle it as business data. Server endpoints compute from caller-supplied state and do not provide accounts, authentication, durable storage or broker orders. Default local research and chat do not call external AI providers.
+
+**Historical machine learning needs no personal account or key.** In Quant lab,
+click **Fetch history & train** to download Open Crypto Pricing's commercially
+reusable CC BY 4.0 daily factor series and fit a fixed logistic market-direction
+model. Training, validation and later evaluation dates stay separate. Exports
+include weights, source attribution, model/data hashes, baseline comparisons and
+limitations. Prediction accuracy is separate from trading win rate. The offline
+trainer accepts up to 250,000 dated returns; the browser OHLCV upload retains its
+5,000-bar limit. See [historical learning](docs/research/HISTORICAL_LEARNING.md).
+
+## Use the supplied external engines
+
+Copy `fusion.config.example.json` to the ignored `fusion.config.local.json`, set local installation paths, then run:
+
+```powershell
+.\.venv\Scripts\python launch_loki_fusion.py --config fusion.config.local.json --check
+.\.venv\Scripts\python launch_loki_fusion.py --config fusion.config.local.json
 ```
 
-### 4. Enable the Alert
-Loki will automatically process TradingView signals in paper trading mode!
+| Component | Included integration | Runtime and license boundary |
+| --- | --- | --- |
+| Vibe-Trading | Adapted RSI, factor IC/rank-group math, causal factor diagnostics and replay | Selected MIT source and attribution in `third_party/vibe_trading`; no hosted Vibe or Qlib runtime |
+| AutoHedge | Adapted role contracts and evidence pipeline | Selected MIT source in `third_party/autohedge`; deterministic local implementation, not Swarms/LLM agents |
+| Fincept | Original portfolio-risk CLI, invoked in a separate local Python process | Requires the user's commercially licensed private installation and NumPy/pandas/SciPy; original source is not redistributed |
+| MiroFish | Actual graph/project, preparation, simulation, report and report-chat API workflow | Separate AGPL service, its dependencies and configured LLM/Zep providers; preserve applicable source obligations |
 
----
+The Fincept commercial license was confirmed for this installation. Distribution rights are not inferred from that confirmation. Keep its installation and agreement outside public source control. MiroFish jobs can incur provider usage and require an explicit host flag; Loki never starts them automatically. Simulation opinions and risk statistics do not certify a trading edge.
 
-## 🧪 Test Loki
+Native engine reads and jobs require the loopback launcher, same-origin session token and explicit host configuration. They are disabled on Vercel. A hosted preview supports the pure research/paper features; it cannot reach your desktop engines. See [external engine setup and contracts](docs/FUSION_EXTERNAL_ENGINES.md) and [MiroFish's concrete readiness check](docs/MIROFISH_SETUP.md).
 
-### Quick Test
-```bash
-python test_auto_trading.py
+## Desktop paper terminal
+
+```powershell
+.\.venv\Scripts\python -m pip install -r requirements_desktop.txt
+.\.venv\Scripts\python loki_desktop.py
 ```
 
-### Manual Webhook Test
-```bash
-python -c "import requests; requests.post('http://localhost:8000/webhook/tradingview', json={'signal_type':'BUY','symbol':'BTCUSDT','price':'50000.00','quantity':'0.001'})"
+The primary desktop supports simulated paper trading, optional public crypto market data, charting, risk settings, paper portfolio analytics, strategy comparison, walk-forward research, and the same read-only copilot. Data provenance and quote freshness are shown. Live execution is unavailable in this terminal. Changing data sources with open positions requires closing those paper positions first.
+
+Other legacy launchers and engines remain in the repository; these instructions target `main.py` and `loki_desktop.py`.
+
+## Command-line strategy evaluation
+
+```powershell
+python run_strategy_lab.py history.csv --output reports/research.json --periods-per-year 365 --fee-bps 10 --slippage-bps 5
 ```
 
-### Health Check
-```bash
-python -c "import requests; print(requests.get('http://localhost:8000/health').json())"
+This command needs only Python's standard library. See [Strategy Lab methodology](docs/STRATEGY_LAB.md) for configuration, assumptions and limitations. Passing research criteria means only that a strategy is a candidate for further paper evaluation. Repeated research on the same holdout can overfit; use a fresh dataset for confirmation.
+
+## Verification and strategy evidence
+
+```powershell
+.\.venv\Scripts\python -m pip install -r requirements_test.txt
+.\.venv\Scripts\python -m pytest tests -o addopts= -q
 ```
 
----
-
-## 🧬 Loki's Evolutionary Features
-
-### 🧠 Machine Learning Strategy Selector
-- Automatically selects best trading strategy
-- Learns from historical performance
-- Adapts to market conditions
-- Fitness score calculation
-
-### 📈 Real-Time Regime Detection
-- Detects 8 different market regimes
-- Provides regime-based recommendations
-- Predicts regime changes
-- Confidence scoring
-
-### 🛡️ Self-Healing System
-- Monitors 5 system components
-- Automatic failure recovery
-- Health reporting
-- Continuous monitoring
-
-### 📊 Advanced Trading Strategies
-- 5 sophisticated algorithms
-- Multi-timeframe analysis
-- Risk-adjusted returns
-- ATR-based position sizing
-
-### 🎉 Enhanced Profit Pleasure
-- Psychology tracking
-- Achievement system
-- Trading recommendations
-- Milestone rewards
-
----
-
-## 🇦🇺 Australian Market Integration
-
-- � AUD currency throughout system
-- 🕐 AEST timezone support
-- 💱 Binance, Bybit, Kraken exchanges
-- 🪙 Crypto/futures trading
-- 💸 Multi-exchange support
-
----
-
-## 📊 What Loki Does Automatically
-
-### When Loki Starts:
-1. ✅ Runs startup tests automatically
-2. ✅ Enables paper trading for safety
-3. ✅ Starts webhook server on port 8000
-4. ✅ Activates auto-trading from TradingView
-5. ✅ Monitors system health continuously
-
-### When TradingView Signal Arrives:
-1. � Signal Reception → Webhook receives TradingView alert
-2. 📈 Market Analysis → Regime detector analyzes market state
-3. 🧠 Strategy Selection → ML selector chooses best strategy
-4. 📄 Paper Execution → Trade executed in paper trading mode
-5. 📊 Performance Tracking → Results recorded for learning
-6. 🎉 Positive Reinforcement → Profit celebration if profitable
-7. 🛡️ System Health → Self-healing monitors integrity
-
----
-
-## 🎯 Quick Start Commands
-
-### Start Loki Desktop:
-```bash
-python loki_desktop.py
-```
-
-### Start Loki Headless:
-```bash
-python loki.py
-```
-
-### Test Loki:
-```bash
-python test_auto_trading.py
-```
-
-### Send Test Signal:
-```bash
-python -c "import requests; requests.post('http://localhost:8000/webhook/tradingview', json={'signal_type':'BUY','symbol':'BTCUSDT','price':'50000.00','quantity':'0.001'})"
-```
-
----
-
-## � Important Files
-
-- **`loki_desktop.py`** - Desktop application (GUI mode)
-- **`loki.py`** - Headless mode (server mode)
-- **`test_auto_trading.py`** - Test script
-- **`desktop_app.py`** - Original desktop app (still works)
-- **`config.example.yaml`** - Configuration template
-
----
-
-## 🔧 Configuration
-
-Create a `config.yaml` file or use the default settings:
-
-```yaml
-crypto_broker:
-  exchange: binance
-  api_key: your_api_key_here
-  api_secret: your_api_secret_here
-  testnet: true
-  base_currency: AUD
-
-trading_flags:
-  paper_trading: true
-  underlying_instrument: BTCUSDT
-
-tradingview:
-  enabled: true
-  auto_execute: true
-  paper_trading: true
-  webhook_secret: your_secret_here
-
-ml_strategy_selector:
-  enabled: true
-  learning_rate: 0.1
-
-regime_detector:
-  enabled: true
-
-self_healing:
-  enabled: true
-```
-
----
-
-## 🎉 Summary
-
-Loki is now:
-- ✅ Named "Loki" throughout the system
-- ✅ Ready to trade automatically from TradingView
-- ✅ Running in paper trading mode for safety
-- ✅ Has both desktop and headless modes
-- ✅ Using ML to select optimal strategies
-- ✅ Detecting market regimes in real-time
-- ✅ Self-healing from system failures
-- ✅ Providing positive reinforcement for profits
-- ✅ 186 tests passing (100% success rate)
-- ✅ Fully operational and ready to use
-
----
-
-## 🚀 Start Loki Now!
-
-**Desktop Mode:**
-```bash
-python loki_desktop.py
-```
-
-**Headless Mode:**
-```bash
-python loki.py
-```
-
-**Your TradingView Webhook URL:** `http://localhost:8000/webhook/tradingview`
-
-**Paper trading is enabled by default** - no real money risk while testing!
-
-Loki is ready to trade automatically from TradingView signals with all evolutionary features active! 🚀🎯
-
----
-
-## 📖 Additional Documentation
-
-- `LOKI_STARTUP_GUIDE.md` - Detailed startup instructions
-- `AUTO_TRADING_GUIDE.md` - Auto-trading setup guide
-- `EVOLUTIONARY_SYSTEM_SUMMARY.md` - Evolutionary features overview
-- `AUSTRALIAN_MARKET_GUIDE.md` - Australian market specifics
-- `TRADINGVIEW_SETUP.md` - TradingView integration details
+The regression suite tests software behavior with synthetic or mocked data. Separately, local Fincept reports verify the original licensed analytics. No paid MiroFish provider run is part of CI. See [frozen strategy validation](docs/research/VALIDATION.md) for an immutable training/holdout protocol using operator-supplied licensed data. Trading profitability remains unproven; a 70% observed win rate can still lose money when losses and costs outweigh gains.

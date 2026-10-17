@@ -54,3 +54,11 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Local integration-test scratch files
+.test-tmp/
+
+# Licensed local engines, provider settings, and user paper exports
+.fusion_components/
+fusion.config.local.json
+paper-exports/
