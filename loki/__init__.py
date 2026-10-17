@@ -14,21 +14,20 @@ from loki.version import __version__, __version_info__
 
 __all__ = ["__version__", "__version_info__"]
 
-if TYPE_CHECKING:
-    from loki.bot import LokiBot  # pragma: no cover
-    from core.state_manager import StateManager  # pragma: no cover
-else:
-    def get_LokiBot():
-        """Return the LokiBot class (imported lazily)."""
-        from loki.bot import LokiBot
-        return LokiBot
+__all__.extend(["LokiBot", "StateManager", "get_LokiBot", "get_StateManager"])
 
-    def get_StateManager():
-        """Return the StateManager class (imported lazily)."""
+def __getattr__(name: str):
+    if name in ("LokiBot", "get_LokiBot"):
+        try:
+            from loki.bot import LokiBot
+            return LokiBot
+        except Exception:
+            from loki_v8.bot import LokiBot
+            return LokiBot
+    if name in ("StateManager", "get_StateManager"):
         from core.state_manager import StateManager
         return StateManager
-
-    __all__.extend(["get_LokiBot", "get_StateManager"])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 import logging
 logging.getLogger(__name__).addHandler(logging.NullHandler())

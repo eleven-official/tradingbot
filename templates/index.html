@@ -37,6 +37,10 @@
         <button id="btn-mode-live" class="mode-btn" onclick="setMode('live')">LIVE BROKER</button>
       </div>
 
+      <button id="btn-toggle-auto" class="action-btn" style="padding:6px 14px; font-size:12px; background:rgba(139, 92, 246, 0.2); border:1px solid #8b5cf6; color:#c084fc; font-weight:700;" onclick="toggleAutonomousLoop()">
+        ▶ START 24/7 AUTO-LOOP
+      </button>
+
       <a href="https://github.com/eleven-official/tradingbot" target="_blank" style="color:var(--text-muted); text-decoration:none; font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:8px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
         GitHub
@@ -92,6 +96,21 @@
         </div>
         <div class="kpi-value text-cyan" id="kpi-mode">PAPER SIM</div>
         <div class="kpi-sub" style="color:var(--text-muted);">Risk Gated & Circuit Guarded</div>
+      </div>
+    </section>
+
+    <!-- Autonomous Engine Live Status Drawer -->
+    <section id="auto-engine-panel" class="kpi-card" style="margin-bottom:20px; display:none; background:rgba(30, 27, 75, 0.45); border-color:#8b5cf6;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="status-dot" style="background:#a855f7; box-shadow:0 0 10px #a855f7;"></div>
+          <strong style="color:#e9d5ff; font-size:14px;">24/7 AUTONOMOUS TRADING ENGINE ACTIVE</strong>
+          <span id="auto-cycle-badge" class="brand-badge" style="background:rgba(168,85,247,0.2); color:#e9d5ff; border-color:#a855f7;">Cycle #0</span>
+        </div>
+        <span id="auto-last-run" style="font-size:12px; font-family:var(--font-mono); color:var(--text-muted);">Idle</span>
+      </div>
+      <div id="auto-logs-box" style="background:rgba(10, 10, 20, 0.7); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:10px 14px; font-family:var(--font-mono); font-size:12px; color:#cbd5e1; max-height:100px; overflow-y:auto;">
+        Waiting for next scan cycle...
       </div>
     </section>
 
@@ -686,9 +705,87 @@
       });
     }
 
+    async function checkAutonomousStatus() {
+      try {
+        const res = await fetch('/api/bot/autonomous');
+        const data = await res.json();
+        const panel = document.getElementById('auto-engine-panel');
+        const btn = document.getElementById('btn-toggle-auto');
+        
+        if (data.is_running) {
+          panel.style.display = 'block';
+          btn.textContent = '⏹ STOP 24/7 AUTO-LOOP';
+          btn.style.background = 'rgba(239, 68, 68, 0.2)';
+          btn.style.borderColor = '#ef4444';
+          btn.style.color = '#f87171';
+          document.getElementById('auto-cycle-badge').textContent = `Cycle #${data.iterations}`;
+          if (data.last_run) {
+            document.getElementById('auto-last-run').textContent = `Last run: ${new Date(data.last_run).toLocaleTimeString()}`;
+          }
+          if (data.logs && data.logs.length > 0) {
+            document.getElementById('auto-logs-box').innerHTML = data.logs.slice(0, 5).join('<br>');
+          }
+        } else {
+          panel.style.display = 'none';
+          btn.textContent = '▶ START 24/7 AUTO-LOOP';
+          btn.style.background = 'rgba(139, 92, 246, 0.2)';
+          btn.style.borderColor = '#8b5cf6';
+          btn.style.color = '#c084fc';
+        }
+      } catch (e) {
+        console.error("Auto status error:", e);
+      }
+    }
+
+    async function toggleAutonomousLoop() {
+      try {
+        const checkRes = await fetch('/api/bot/autonomous');
+        const current = await checkRes.json();
+        const nextAction = current.is_running ? 'stop' : 'start';
+
+        if (nextAction === 'start' && !confirm("Confirm: Start continuous 24/7 autonomous trading loop? The multi-agent council will continuously scan assets and execute approved orders in the background.")) return;
+
+        await fetch('/api/bot/autonomous', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({action: nextAction, interval: 60})
+        });
+        checkAutonomousStatus();
+      } catch (e) {
+        alert("Toggle auto-loop failed: " + e);
+      }
+    }
+
+    function connectWebSocket() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUri = `${proto}//${location.host}/ws/market-data`;
+      try {
+        const ws = new WebSocket(wsUri);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.portfolio_value) {
+              document.getElementById('kpi-equity').textContent = '$' + data.portfolio_value.toLocaleString(undefined, {minimumFractionDigits: 2});
+            }
+          } catch(err){}
+        };
+        ws.onclose = () => { setTimeout(connectWebSocket, 5000); };
+      } catch (e) {
+        console.warn("WebSocket connect error:", e);
+      }
+    }
+
     // Auto-update status every 10 seconds
     updateStatus();
-    setInterval(updateStatus, 10000);
+    checkAutonomousStatus();
+    setInterval(() => {
+      updateStatus();
+      checkAutonomousStatus();
+    }, 10000);
+
+    // Connect WebSocket
+    connectWebSocket();
+
     // Initial scan on load
     triggerScan();
   </script>
