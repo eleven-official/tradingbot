@@ -5,7 +5,9 @@ risk limits, and the tradeable universe are all switchable in one place.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field, asdict
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -71,3 +73,23 @@ class LokiConfig:
 def default_config() -> LokiConfig:
     """Return the recommended default configuration."""
     return LokiConfig()
+
+
+def load_config(path: str) -> LokiConfig:
+    """Load a config from a JSON or YAML file (unknown keys are ignored)."""
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+    if p.suffix.lower() in (".yaml", ".yml"):
+        try:
+            import yaml  # type: ignore
+            data = yaml.safe_load(text) or {}
+        except ImportError as exc:
+            raise RuntimeError("PyYAML is required to load .yaml configs") from exc
+    else:
+        data = json.loads(text) or {}
+    return LokiConfig.from_dict(data)
+
+
+def save_config(cfg: LokiConfig, path: str):
+    """Persist a config as JSON."""
+    Path(path).write_text(json.dumps(cfg.to_dict(), indent=2), encoding="utf-8")

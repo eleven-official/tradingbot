@@ -1,8 +1,12 @@
-"""LOKI v8 — event-driven backtester with walk-forward and Monte Carlo.
+"""LOKI v8 — event-driven backtester with long/short, walk-forward, Monte Carlo.
 
 The loop is fully causal: a signal computed at the close of bar i-1 is
 executed at bar i's open, and stops/targets are resolved intrabar against
 bar i's high/low (gap-aware). No lookahead.
+
+Regime-adaptive entries:
+  * long  — allowed in BULL/RANGING (blocked in BEAR when `regime_filter`)
+  * short — allowed in BEAR (requires `allow_short`), blocked in BULL
 """
 from __future__ import annotations
 
@@ -21,6 +25,7 @@ from .strategy import EnsembleStrategy
 @dataclass
 class Trade:
     symbol: str
+    side: str          # "long" | "short"
     entry_time: pd.Timestamp
     exit_time: pd.Timestamp
     entry_price: float
@@ -28,7 +33,7 @@ class Trade:
     qty: float
     pnl: float
     pnl_pct: float
-    exit_reason: str  # "stop" | "target" | "signal" | "trailing" | "end"
+    exit_reason: str   # "stop" | "target" | "signal" | "trailing" | "time" | "end"
 
 
 @dataclass
@@ -51,7 +56,7 @@ class BacktestResult:
     trades: List[Trade] = field(default_factory=list)
 
     def summary(self) -> str:
-        lines = [
+        return "\n".join([
             f"=== Backtest: {self.symbol} ===",
             f"Initial capital : ${self.initial_capital:,.2f}",
             f"Final equity    : ${self.final_equity:,.2f}",
@@ -65,13 +70,22 @@ class BacktestResult:
             f"Sharpe          : {self.sharpe:.2f}",
             f"Sortino         : {self.sortino:.2f}",
             f"Calmar          : {self.calmar:.2f}",
-        ]
-        return "\n".join(lines)
+        ])
 
 
 def _fill(price: float, side: str, cfg: LokiConfig) -> float:
     slip = cfg.slippage_bps / 10_000.0
     return price * (1 + slip) if side == "buy" else price * (1 - slip)
+
+
+def bars_per_year_for(interval: str, crypto: bool = False) -> int:
+    """Approximate bars/year for annualizing metrics at a given interval."""
+    base = 365 if crypto else 252
+    return {
+        "1m": base * 390, "2m": base * 195, "5m": base * 78, "15m": base * 26,
+        "30m": base * 13, "1h": base * 7, "4h": base * 2, "1d": base,
+        "1wk": 52, "1mo": 12,
+    }.get(interval, base)
 
 
 def run_backtest(
@@ -81,7 +95,7 @@ def run_backtest(
     symbol: str = "SYMBOL",
     bars_per_year: int = 252,
 ) -> BacktestResult:
-    """Run a long-only event-driven backtest over `df` (OHLCV)."""
+    """Run an event-driven long/short backtest over `df` (OHLCV)."""
     strategy = strategy or EnsembleStrategy(cfg)
     df = df.copy()
     frame = strategy.score_frame(df)
@@ -93,87 +107,119 @@ def run_backtest(
     cash = cfg.initial_cash
     risk = RiskManager(cfg)
 
-    pos = None  # dict(qty, entry, stop, target, entry_time)
+    pos = None  # dict(side, qty, entry, stop, target, entry_time, entry_bar)
     trades: List[Trade] = []
     equity_curve: List[float] = []
     times: List[pd.Timestamp] = []
 
     def equity_at(price: float) -> float:
-        return cash + (pos["qty"] * price if pos else 0.0)
+        if pos is None:
+            return cash
+        return cash + pos["qty"] * price if pos["side"] == "long" else cash - pos["qty"] * price
 
     n = len(df)
     for i in range(warmup + 1, n):
         sig_score = float(scores.iloc[i - 1])
         action = strategy.action_for(sig_score)
-        o = float(df["open"].iloc[i])
-        h = float(df["high"].iloc[i])
-        l = float(df["low"].iloc[i])
-        c = float(df["close"].iloc[i])
+        o = float(df["open"].iloc[i]); h = float(df["high"].iloc[i])
+        l = float(df["low"].iloc[i]); c = float(df["close"].iloc[i])
         t = df.index[i]
-        atr_prev = float(atrs.iloc[i - 1])
-        atr_now = float(atrs.iloc[i])
+        atr_prev = float(atrs.iloc[i - 1]); atr_now = float(atrs.iloc[i])
+        regime = str(regimes.iloc[i - 1])
 
-        # --- manage existing position ----------------------------------
+        # ------------------------------------------------------------------
+        # Manage the existing position (stop / target / signal / time)
+        # ------------------------------------------------------------------
         if pos is not None:
-            exit_price = None
-            reason = None
+            exit_price: Optional[float] = None
+            reason: Optional[str] = None
+            long = pos["side"] == "long"
 
-            # Intrabar stop (gap-aware: fill at worst of open or stop)
-            if pos["stop"] > 0 and l <= pos["stop"]:
-                exit_price = min(o, pos["stop"])
-                reason = "stop"
-            # Intrabar target
-            elif pos["target"] > 0 and h >= pos["target"]:
-                exit_price = max(o, pos["target"])
-                reason = "target"
-            # Signal-driven exit (long: SELL means get out)
-            elif action == "SELL":
-                exit_price = c
-                reason = "signal"
-            # Time stop (avoid indefinite capital lock-up)
-            elif cfg.max_hold_bars > 0 and (i - pos["entry_bar"]) >= cfg.max_hold_bars:
-                exit_price = c
-                reason = "time"
+            if long:
+                if pos["stop"] > 0 and l <= pos["stop"]:
+                    exit_price, reason = min(o, pos["stop"]), "stop"
+                elif pos["target"] > 0 and h >= pos["target"]:
+                    exit_price, reason = max(o, pos["target"]), "target"
+                elif action == "SELL":
+                    exit_price, reason = c, "signal"
+            else:  # short
+                if pos["stop"] > 0 and h >= pos["stop"]:
+                    exit_price, reason = max(o, pos["stop"]), "stop"
+                elif pos["target"] > 0 and l <= pos["target"]:
+                    exit_price, reason = min(o, pos["target"]), "target"
+                elif action == "BUY":
+                    exit_price, reason = c, "signal"
+
+            if exit_price is None and cfg.max_hold_bars > 0 and (i - pos["entry_bar"]) >= cfg.max_hold_bars:
+                exit_price, reason = c, "time"
 
             if exit_price is not None:
-                fill = _fill(exit_price, "sell", cfg)
-                pnl = (fill - pos["entry"]) * pos["qty"] - cfg.commission_per_trade
-                pnl_pct = (fill / pos["entry"] - 1.0) * 100.0 if pos["entry"] else 0.0
-                cash += fill * pos["qty"] - cfg.commission_per_trade
+                if long:
+                    fill = _fill(exit_price, "sell", cfg)
+                    pnl = (fill - pos["entry"]) * pos["qty"] - cfg.commission_per_trade
+                    pnl_pct = (fill / pos["entry"] - 1.0) * 100.0 if pos["entry"] else 0.0
+                    cash += fill * pos["qty"] - cfg.commission_per_trade
+                else:
+                    fill = _fill(exit_price, "buy", cfg)
+                    pnl = (pos["entry"] - fill) * pos["qty"] - cfg.commission_per_trade
+                    pnl_pct = (pos["entry"] / fill - 1.0) * 100.0 if fill else 0.0
+                    cash -= fill * pos["qty"] + cfg.commission_per_trade
+
                 trades.append(Trade(
-                    symbol=symbol, entry_time=pos["entry_time"], exit_time=t,
+                    symbol=symbol, side=pos["side"], entry_time=pos["entry_time"], exit_time=t,
                     entry_price=pos["entry"], exit_price=fill, qty=pos["qty"],
-                    pnl=pnl, pnl_pct=pnl_pct, exit_reason=reason,
+                    pnl=pnl, pnl_pct=pnl_pct, exit_reason=reason or "end",
                 ))
                 risk.record_trade(pnl)
                 pos = None
             else:
-                # Trailing stop ratchet
+                # ATR trailing-stop ratchet
                 if cfg.trailing_stop_atr > 0:
-                    new_stop = c - cfg.trailing_stop_atr * atr_now
-                    if new_stop > pos["stop"]:
-                        pos["stop"] = new_stop
+                    if long:
+                        ns = c - cfg.trailing_stop_atr * atr_now
+                        if ns > pos["stop"]:
+                            pos["stop"] = ns
+                    else:
+                        ns = c + cfg.trailing_stop_atr * atr_now
+                        if ns < pos["stop"]:
+                            pos["stop"] = ns
 
-        # --- new entry --------------------------------------------------
-        if pos is None and action == "BUY":
+        # ------------------------------------------------------------------
+        # New entry (regime-gated long / short)
+        # ------------------------------------------------------------------
+        if pos is None:
             atr_pct_prev = float(frame["atr_pct"].iloc[i - 1]) if np.isfinite(frame["atr_pct"].iloc[i - 1]) else 0.0
             above_ma = float(frame["close"].iloc[i - 1]) > float(frame["sma_200"].iloc[i - 1])
             allow_vol = not (cfg.max_atr_pct > 0 and atr_pct_prev > cfg.max_atr_pct)
-            allow_trend = (not cfg.require_trend_filter) or above_ma
-            allow_regime = (not cfg.regime_filter) or (regimes.iloc[i - 1] != "BEAR")
-            if allow_vol and allow_trend and allow_regime:
-                entry = _fill(o, "buy", cfg)
-                atr_val = atr_prev if np.isfinite(atr_prev) else entry * 0.02
-                stop = entry - cfg.stop_loss_atr * atr_val
-                target = entry + cfg.take_profit_atr * atr_val
-                qty = risk.position_size(equity_at(entry), entry, stop)
-                cost = qty * entry + cfg.commission_per_trade
-                if qty > 0 and cost <= cash:
-                    cash -= cost
-                    pos = {
-                        "qty": qty, "entry": entry, "stop": stop, "target": target,
-                        "entry_time": t, "entry_bar": i,
-                    }
+            bear = regime == "BEAR"
+
+            if action == "BUY":
+                allow_trend = (not cfg.require_trend_filter) or above_ma
+                allow_regime = (not cfg.regime_filter) or (not bear)
+                if allow_vol and allow_trend and allow_regime:
+                    entry = _fill(o, "buy", cfg)
+                    atr_val = atr_prev if np.isfinite(atr_prev) else entry * 0.02
+                    stop = entry - cfg.stop_loss_atr * atr_val
+                    target = entry + cfg.take_profit_atr * atr_val
+                    qty = risk.position_size(equity_at(entry), entry, stop)
+                    cost = qty * entry + cfg.commission_per_trade
+                    if qty > 0 and cost <= cash:
+                        cash -= cost
+                        pos = {"side": "long", "qty": qty, "entry": entry, "stop": stop,
+                               "target": target, "entry_time": t, "entry_bar": i}
+
+            elif action == "SELL" and cfg.allow_short:
+                allow_regime = (not cfg.regime_filter) or bear
+                if allow_vol and allow_regime:
+                    entry = _fill(o, "sell", cfg)
+                    atr_val = atr_prev if np.isfinite(atr_prev) else entry * 0.02
+                    stop = entry + cfg.stop_loss_atr * atr_val
+                    target = entry - cfg.take_profit_atr * atr_val
+                    qty = risk.position_size(equity_at(entry), entry, stop)
+                    if qty > 0:
+                        cash += entry * qty - cfg.commission_per_trade
+                        pos = {"side": "short", "qty": qty, "entry": entry, "stop": stop,
+                               "target": target, "entry_time": t, "entry_bar": i}
 
         equity_curve.append(equity_at(c))
         times.append(t)
@@ -181,17 +227,22 @@ def run_backtest(
     # Force-close any open position at the end
     if pos is not None:
         last_c = float(df["close"].iloc[-1])
-        fill = _fill(last_c, "sell", cfg)
-        pnl = (fill - pos["entry"]) * pos["qty"] - cfg.commission_per_trade
-        pnl_pct = (fill / pos["entry"] - 1.0) * 100.0 if pos["entry"] else 0.0
-        cash += fill * pos["qty"] - cfg.commission_per_trade
+        long = pos["side"] == "long"
+        fill = _fill(last_c, "sell" if long else "buy", cfg)
+        if long:
+            pnl = (fill - pos["entry"]) * pos["qty"] - cfg.commission_per_trade
+            pnl_pct = (fill / pos["entry"] - 1.0) * 100.0 if pos["entry"] else 0.0
+            cash += fill * pos["qty"] - cfg.commission_per_trade
+        else:
+            pnl = (pos["entry"] - fill) * pos["qty"] - cfg.commission_per_trade
+            pnl_pct = (pos["entry"] / fill - 1.0) * 100.0 if fill else 0.0
+            cash -= fill * pos["qty"] + cfg.commission_per_trade
         trades.append(Trade(
-            symbol=symbol, entry_time=pos["entry_time"], exit_time=df.index[-1],
+            symbol=symbol, side=pos["side"], entry_time=pos["entry_time"], exit_time=df.index[-1],
             entry_price=pos["entry"], exit_price=fill, qty=pos["qty"],
             pnl=pnl, pnl_pct=pnl_pct, exit_reason="end",
         ))
         pos = None
-        equity_curve[-1] = cash if equity_curve else cash
 
     eq = pd.Series(equity_curve, index=times)
     return _build_result(symbol, cfg.initial_cash, eq, trades, bars_per_year)
@@ -222,26 +273,15 @@ def _build_result(symbol: str, initial: float, equity: pd.Series,
     returns = equity.pct_change().dropna()
     sharpe = _sharpe(returns, bars_per_year)
     sortino = _sortino(returns, bars_per_year)
-    max_dd, dd_series = _max_drawdown(equity)
+    max_dd, _ = _max_drawdown(equity)
     calmar = (cagr / abs(max_dd)) if max_dd < 0 else 0.0
 
     return BacktestResult(
-        symbol=symbol,
-        initial_capital=initial,
-        final_equity=final,
-        total_return_pct=total_ret,
-        cagr_pct=cagr,
-        total_trades=len(trades),
-        win_rate_pct=win_rate,
-        profit_factor=profit_factor,
-        avg_win=avg_win,
-        avg_loss=avg_loss,
-        max_drawdown_pct=max_dd,
-        sharpe=sharpe,
-        sortino=sortino,
-        calmar=calmar,
-        equity_curve=equity,
-        trades=trades,
+        symbol=symbol, initial_capital=initial, final_equity=final,
+        total_return_pct=total_ret, cagr_pct=cagr, total_trades=len(trades),
+        win_rate_pct=win_rate, profit_factor=profit_factor, avg_win=avg_win,
+        avg_loss=avg_loss, max_drawdown_pct=max_dd, sharpe=sharpe, sortino=sortino,
+        calmar=calmar, equity_curve=equity, trades=trades,
     )
 
 
@@ -256,11 +296,11 @@ def _sortino(returns: pd.Series, bars_per_year: int, rf: float = 0.02) -> float:
     if len(returns) == 0:
         return 0.0
     excess = returns - rf / bars_per_year
-    downside = returns[returns < 0]
-    downside_std = downside.std()
-    if downside_std == 0 or np.isnan(downside_std):
+    downside = np.minimum(excess.to_numpy(), 0.0)
+    downside_dev = float(np.sqrt((downside ** 2).mean()))
+    if downside_dev == 0 or np.isnan(downside_dev):
         return 0.0
-    return float(np.sqrt(bars_per_year) * excess.mean() / downside_std)
+    return float(np.sqrt(bars_per_year) * excess.mean() / downside_dev)
 
 
 def _max_drawdown(equity: pd.Series) -> Tuple[float, pd.Series]:
@@ -295,12 +335,7 @@ def walk_forward(
     n_splits: int = 4,
     bars_per_year: int = 252,
 ) -> List[BacktestResult]:
-    """Backtest n_splits contiguous, non-overlapping out-of-sample folds.
-
-    Each fold trades a distinct slice of history but is seeded with enough
-    preceding bars to warm up the indicators. Consistency across folds is a
-    much stronger signal than a single in-sample backtest.
-    """
+    """Backtest n_splits contiguous, non-overlapping out-of-sample folds."""
     n = len(df)
     warmup = max(cfg.lookback_bars, 60)
     tradeable = n - warmup
@@ -317,3 +352,32 @@ def walk_forward(
             continue
         results.append(run_backtest(seg, cfg, symbol=symbol, bars_per_year=bars_per_year))
     return results
+
+
+def portfolio_backtest(
+    dfs: Dict[str, pd.DataFrame],
+    cfg: LokiConfig,
+    bars_per_year: int = 252,
+) -> BacktestResult:
+    """Equal-weight portfolio backtest across multiple symbols.
+
+    Splits the starting capital evenly, backtests each symbol independently,
+    then combines the equity curves into one portfolio curve. Diversification
+    usually smooths the drawdown versus any single symbol.
+    """
+    n = len(dfs)
+    if n == 0:
+        raise ValueError("no dataframes supplied")
+
+    per_symbol = cfg.initial_cash / n
+    curves: Dict[str, pd.Series] = {}
+    all_trades: List[Trade] = []
+
+    for sym, df in dfs.items():
+        sub = LokiConfig(**{**cfg.to_dict(), "initial_cash": per_symbol})
+        r = run_backtest(df, sub, symbol=sym, bars_per_year=bars_per_year)
+        curves[sym] = r.equity_curve
+        all_trades.extend(r.trades)
+
+    combined = pd.DataFrame(curves).ffill().sum(axis=1).dropna()
+    return _build_result("PORTFOLIO", cfg.initial_cash, combined, all_trades, bars_per_year)

@@ -1,8 +1,10 @@
 """LOKI v8 — execution layer with a paper/live switch.
 
 `PaperBroker` is a local fill simulator used for both paper trading and as
-the deterministic reference implementation. Live adapters (Alpaca/Binance/
-Kite) implement the same interface and are selected by `LokiConfig.mode`.
+the deterministic reference implementation. Positions are signed: qty > 0 is
+long, qty < 0 is short, so one code path handles both directions. Live
+adapters (Alpaca/Binance/Kite) implement the same interface and are selected
+by `LokiConfig.mode`.
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Position:
     symbol: str
-    qty: float
+    qty: float          # > 0 long, < 0 short
     avg_entry: float
     stop_loss: float = 0.0
     take_profit: float = 0.0
@@ -34,11 +36,15 @@ class Position:
     def unrealized_pnl(self, price: float) -> float:
         return (price - self.avg_entry) * self.qty
 
+    @property
+    def side(self) -> str:
+        return "long" if self.qty >= 0 else "short"
+
 
 @dataclass
 class Trade:
     symbol: str
-    side: str
+    side: str          # "long" | "short"
     qty: float
     entry_price: float
     exit_price: float
@@ -63,61 +69,118 @@ class PaperBroker:
         slip = self.cfg.slippage_bps / 10_000.0
         return price * (1 + slip) if side == "buy" else price * (1 - slip)
 
+    def _record_trade(self, symbol: str, side: str, qty: float,
+                      entry: float, exit_price: float):
+        pnl = (exit_price - entry) * qty if side == "long" else (entry - exit_price) * qty
+        pnl -= self.cfg.commission_per_trade
+        pnl_pct = (exit_price / entry - 1.0) * 100.0 if side == "long" else (entry / exit_price - 1.0) * 100.0
+        self.trades.append(Trade(
+            symbol=symbol, side=side, qty=qty, entry_price=entry,
+            exit_price=exit_price, pnl=pnl, pnl_pct=pnl_pct,
+            entered_at=time.time(), exited_at=time.time(),
+        ))
+        return pnl
+
+    # ------------------------------------------------------------------
+    # Long operations
+    # ------------------------------------------------------------------
     def buy(self, symbol: str, qty: float, price: float) -> bool:
+        """Open or add to a long position (covers a short first if present)."""
         if qty <= 0 or price <= 0:
             return False
+        pos = self.positions.get(symbol)
+        if pos is not None and pos.qty < 0:
+            # Cover the short first
+            cover = min(qty, -pos.qty)
+            fill = self._fill_price(price, "buy")
+            self._record_trade(symbol, "short", cover, pos.avg_entry, fill)
+            self.cash -= cover * fill + self.cfg.commission_per_trade
+            pos.qty += cover
+            if abs(pos.qty) < 1e-12:
+                del self.positions[symbol]
+            qty -= cover
+            if qty <= 0:
+                return True
+
         fill = self._fill_price(price, "buy")
         cost = qty * fill + self.cfg.commission_per_trade
         if cost > self.cash:
-            # Scale down to available cash (leave a small buffer).
-            qty = max(0, int((self.cash - self.cfg.commission_per_trade) // fill)) if fill > 0 else 0
+            qty = int((self.cash - self.cfg.commission_per_trade) // fill) if fill > 0 else 0
             if qty <= 0:
                 return False
             cost = qty * fill + self.cfg.commission_per_trade
         self.cash -= cost
         pos = self.positions.get(symbol)
         if pos:
-            total_qty = pos.qty + qty
-            pos.avg_entry = (pos.avg_entry * pos.qty + fill * qty) / total_qty
-            pos.qty = total_qty
+            total = pos.qty + qty
+            pos.avg_entry = (pos.avg_entry * pos.qty + fill * qty) / total
+            pos.qty = total
         else:
             self.positions[symbol] = Position(symbol=symbol, qty=qty, avg_entry=fill)
         return True
 
     def sell(self, symbol: str, qty: float, price: float) -> bool:
-        pos = self.positions.get(symbol)
-        if not pos or qty <= 0 or price <= 0:
+        """Close/reduce a long position (opens a short if none held)."""
+        if qty <= 0 or price <= 0:
             return False
-        qty = min(qty, pos.qty)
-        fill = self._fill_price(price, "sell")
-        proceeds = qty * fill - self.cfg.commission_per_trade
-        self.cash += proceeds
-        pnl = (fill - pos.avg_entry) * qty - self.cfg.commission_per_trade
-        pnl_pct = (fill / pos.avg_entry - 1.0) * 100.0 if pos.avg_entry else 0.0
-        self.trades.append(Trade(
-            symbol=symbol, side="sell", qty=qty,
-            entry_price=pos.avg_entry, exit_price=fill,
-            pnl=pnl, pnl_pct=pnl_pct,
-            entered_at=pos.opened_at, exited_at=time.time(),
-        ))
-        pos.qty -= qty
-        if pos.qty <= 1e-12:
-            del self.positions[symbol]
-        return True
+        pos = self.positions.get(symbol)
+        if pos is not None and pos.qty > 0:
+            qty = min(qty, pos.qty)
+            fill = self._fill_price(price, "sell")
+            self._record_trade(symbol, "long", qty, pos.avg_entry, fill)
+            self.cash += qty * fill - self.cfg.commission_per_trade
+            pos.qty -= qty
+            if pos.qty <= 1e-12:
+                del self.positions[symbol]
+            return True
+        return self.sell_short(symbol, qty, price)
 
     def close(self, symbol: str, price: float) -> bool:
+        """Close whatever position exists in `symbol`."""
         pos = self.positions.get(symbol)
         if not pos:
             return False
-        return self.sell(symbol, pos.qty, price)
+        return self.buy(symbol, -pos.qty, price) if pos.qty < 0 else self.sell(symbol, pos.qty, price)
 
+    # ------------------------------------------------------------------
+    # Short operations
+    # ------------------------------------------------------------------
+    def sell_short(self, symbol: str, qty: float, price: float) -> bool:
+        """Open or add to a short position (negative qty)."""
+        if qty <= 0 or price <= 0:
+            return False
+        fill = self._fill_price(price, "sell")
+        self.cash += qty * fill - self.cfg.commission_per_trade
+        pos = self.positions.get(symbol)
+        if pos and pos.qty < 0:
+            total = pos.qty - qty
+            pos.avg_entry = (pos.avg_entry * -pos.qty + fill * qty) / -total
+            pos.qty = total
+        else:
+            self.positions[symbol] = Position(symbol=symbol, qty=-qty, avg_entry=fill)
+        return True
+
+    def buy_to_cover(self, symbol: str, qty: float, price: float) -> bool:
+        """Close/reduce a short position."""
+        pos = self.positions.get(symbol)
+        if not pos or pos.qty >= 0 or qty <= 0 or price <= 0:
+            return False
+        qty = min(qty, -pos.qty)
+        fill = self._fill_price(price, "buy")
+        self._record_trade(symbol, "short", qty, pos.avg_entry, fill)
+        self.cash -= qty * fill + self.cfg.commission_per_trade
+        pos.qty += qty
+        if abs(pos.qty) < 1e-12:
+            del self.positions[symbol]
+        return True
+
+    # ------------------------------------------------------------------
     def equity(self, prices: Dict[str, float]) -> float:
         total = self.cash
         for sym, pos in self.positions.items():
             total += pos.market_value(prices.get(sym, pos.avg_entry))
         return total
 
-    # ------------------------------------------------------------------
     def save_state(self, prices: Dict[str, float]):
         try:
             self.state_file.parent.mkdir(parents=True, exist_ok=True)
