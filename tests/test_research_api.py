@@ -13,8 +13,10 @@ def test_workspace_and_assets_resolve_outside_repo_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     response = client.get('/')
     assert response.status_code == 200
-    assert 'Know your edge.' in response.text
-    assert 'No broker connected' in response.text
+    assert 'Find an edge.' in response.text
+    assert 'No broker orders submitted' in response.text
+    for view in ('overview', 'strategy-lab', 'agent-council', 'portfolio', 'scenarios', 'integrations', 'copilot'):
+        assert f'id="{view}"' in response.text
     assert client.get('/static/css/style.css').status_code == 200
     assert client.get('/static/js/workspace.js').status_code == 200
     assert client.get('/health').json()['status'] == 'ok'

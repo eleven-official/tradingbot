@@ -75,7 +75,7 @@ class TestLokiCopilot(unittest.TestCase):
 
     def test_empty_and_invalid_positions_are_distinct(self):
         empty = self.assistant.respond("portfolio", {"positions": {}})
-        invalid = self.assistant.respond("portfolio", {"positions": []})
+        invalid = self.assistant.respond("portfolio", {"positions": "invalid"})
         self.assertIn("No open positions", empty.text)
         self.assertIn("positions are unknown", invalid.text)
 

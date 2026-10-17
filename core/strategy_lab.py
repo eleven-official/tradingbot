@@ -29,6 +29,7 @@ class LabConfig:
     trailing_stop_pct: float = 0.08
     min_trades: int = 20
     max_drawdown: float = 0.20
+    min_win_rate: float = 0.70
 
     def __post_init__(self) -> None:
         for name in ("periods_per_year", "n_splits", "min_train_bars", "gap_bars", "min_trades"):
@@ -55,6 +56,8 @@ class LabConfig:
             raise ValueError("trailing_stop_pct and max_drawdown must be between 0 and 1")
         if self.min_trades < 1:
             raise ValueError("min_trades must be positive")
+        if not 0 <= self.min_win_rate <= 1:
+            raise ValueError("min_win_rate must be between 0 and 1")
 
 
 @dataclass(frozen=True)
@@ -186,6 +189,48 @@ def _signal(bars: list[Bar], index: int, parameters: TrendParameters, config: La
     returns = [current / previous - 1 for previous, current in zip(recent, recent[1:])]
     volatility = statistics.stdev(returns) * math.sqrt(config.periods_per_year) if len(returns) > 1 else 0.0
     return min(config.max_exposure, config.target_volatility / volatility) if volatility > 0 else config.max_exposure
+
+
+def analyze_trend(
+    data: Sequence[Mapping[str, Any]], parameters: Mapping[str, Any] | TrendParameters,
+    config: Mapping[str, Any] | LabConfig | None = None,
+) -> dict[str, Any]:
+    """Analyze completed candles with a frozen research parameter pair.
+
+    The caller must exclude the currently forming candle. This uses exactly the
+    research signal's completed-bar calculation for the *next* opening fill;
+    it does not fit parameters or place orders. ``suggested_stop`` is a fresh
+    entry reference, not the trailing high of an existing position.
+    """
+    if isinstance(parameters, Mapping):
+        if set(parameters) != {"fast", "slow"}:
+            raise ValueError("Trend parameters need fast and slow only")
+        parameters = TrendParameters(**parameters)
+    if not isinstance(parameters, TrendParameters):
+        raise ValueError("parameters must be a frozen fast/slow pair")
+    if (any(isinstance(value, bool) or not isinstance(value, int) for value in (parameters.fast, parameters.slow))
+            or not 1 <= parameters.fast < parameters.slow <= 1000):
+        raise ValueError("Trend parameters must satisfy 1 <= fast < slow <= 1000")
+    if config is None:
+        config = LabConfig()
+    elif isinstance(config, Mapping):
+        try:
+            config = LabConfig(**config)
+        except TypeError as exc:
+            raise ValueError("Unknown research settings") from exc
+    if not isinstance(config, LabConfig):
+        raise ValueError("config must be a mapping of research settings")
+    bars = validate_bars(data)
+    allocation = _signal(bars, len(bars), parameters, config)
+    return {
+        "target_allocation": allocation,
+        "latest_close": bars[-1].close,
+        "suggested_stop": bars[-1].close * (1 - config.trailing_stop_pct),
+        "timestamp": bars[-1].timestamp.isoformat(),
+        "observations": len(bars),
+        "parameters": asdict(parameters),
+        "completed_bars_only": True,
+    }
 
 
 def _simulate(
@@ -350,6 +395,11 @@ def evaluate_strategy(data: Sequence[Mapping[str, Any]], config: Mapping[str, An
     reasons: list[str] = []
     if summary["total_trades"] < config.min_trades:
         reasons.append(f"Only {summary['total_trades']} closed out-of-sample trades; need at least {config.min_trades}.")
+    if config.min_win_rate > 0:
+        if summary["win_rate"] is None or summary["win_rate"] < config.min_win_rate:
+            reasons.append(f"Observed out-of-sample win rate does not meet the {config.min_win_rate:.0%} research target.")
+        elif summary["win_rate_ci95"][0] < config.min_win_rate:
+            reasons.append(f"The descriptive 95% win-rate interval does not establish a {config.min_win_rate:.0%} win rate.")
     if summary["total_return"] <= 0:
         reasons.append("Out-of-sample return after fees and slippage is not positive.")
     if summary["total_return"] <= baseline_metrics["total_return"]:
@@ -374,6 +424,9 @@ def evaluate_strategy(data: Sequence[Mapping[str, Any]], config: Mapping[str, An
         "live_trading_enabled": False,
         "strategy": "Volatility-sized long-only trend with a trailing close exit",
         "data_fingerprint": fingerprint, "bars": len(bars),
+        "win_rate_target": config.min_win_rate,
+        "win_rate_target_met": bool(summary["win_rate"] is not None and summary["win_rate"] >= config.min_win_rate),
+        "win_rate_target_supported": bool(summary["win_rate_ci95"] is not None and summary["win_rate_ci95"][0] >= config.min_win_rate),
         "test_start": bars[first_test].timestamp.isoformat(), "test_end": bars[-1].timestamp.isoformat(),
         "config": asdict(config), "summary": summary, "benchmark": baseline_metrics,
         "excess_return": summary["total_return"] - baseline_metrics["total_return"],

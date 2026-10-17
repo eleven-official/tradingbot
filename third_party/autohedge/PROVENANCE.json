@@ -1,0 +1,25 @@
+{
+  "source_archive": "AutoHedge-main.zip",
+  "archive_sha256": "e998228572869b754f2aba3ee61016bf427ebc1159ad04421d945dc5e6f3767b",
+  "license": "MIT",
+  "selected_sources": [
+    {
+      "archive_path": "autohedge/workers.py",
+      "retained_original": "upstream/workers.py",
+      "original_sha256": "924bc15346581a11529c1fb22c9e0f52b71ddf8b7c2d57c01f1d4c1ac7e944a9",
+      "runtime_adaptation": "role_contracts.py",
+      "changes": "Worker responsibilities and handoff input/output contracts adapted to data-only role packets. No Swarms/LLM/provider initialization."
+    },
+    {
+      "archive_path": "autohedge/prompts.py",
+      "retained_original": "upstream/prompts.py",
+      "original_sha256": "71cac7242f72c10bb6aca176d01b56e2926b54e02a168632bcac935690e27d9a",
+      "runtime_adaptation": "role_contracts.py",
+      "changes": "Role descriptions and structured output fields adapted; original prompt strings are not used as system instructions or executed."
+    }
+  ],
+  "scope": "Selected source integration only. The full upstream application is not bundled or started.",
+  "runtime_network_access": false,
+  "runtime_model_provider_access": false,
+  "live_order_transport": false
+}

@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from core.strategy_lab import LabConfig, TrendParameters, _metrics, _simulate, evaluate_strategy, validate_bars
+from core.strategy_lab import LabConfig, TrendParameters, _metrics, _signal, _simulate, analyze_trend, evaluate_strategy, validate_bars
 
 
 def sample_bars(count=220, pattern="trend"):
@@ -138,6 +138,33 @@ class StrategyLabTests(unittest.TestCase):
         self.assertLess(metrics["win_rate_ci95"][0], 0.7)
         self.assertLessEqual(metrics["win_rate_ci95"][1], 1.0)
 
+    def test_requested_win_rate_is_an_explicit_evidence_gate(self):
+        report = evaluate_strategy(sample_bars())
+        self.assertEqual(report["win_rate_target"], 0.7)
+        observed = report["summary"]["win_rate"]
+        supported = report["summary"]["win_rate_ci95"]
+        self.assertEqual(report["win_rate_target_met"], observed is not None and observed >= 0.7)
+        self.assertEqual(report["win_rate_target_supported"], supported is not None and supported[0] >= 0.7)
+        if not report["win_rate_target_supported"]:
+            self.assertEqual(report["status"], "needs_more_evidence")
+            self.assertTrue(any("win rate" in reason or "win-rate" in reason for reason in report["rejection_reasons"]))
+
+    def test_public_signal_matches_frozen_research_on_closed_candles(self):
+        rows = sample_bars(70)
+        parameters = TrendParameters(10, 40)
+        config = LabConfig()
+        signal = analyze_trend(rows, parameters, config)
+        self.assertEqual(signal["target_allocation"], _signal(validate_bars(rows), len(rows), parameters, config))
+        self.assertEqual(signal["timestamp"], rows[-1]["timestamp"])
+        self.assertEqual(signal["latest_close"], rows[-1]["close"])
+        self.assertAlmostEqual(signal["suggested_stop"], rows[-1]["close"] * 0.92)
+        self.assertEqual(signal, analyze_trend(rows, {"fast": 10, "slow": 40}, {}))
+        self.assertEqual(analyze_trend(rows[:20], parameters)["target_allocation"], 0)
+        for invalid in ({"fast": 40, "slow": 10}, {"fast": True, "slow": 20},
+                        {"fast": 10, "slow": 40, "target": 1}):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                analyze_trend(rows, invalid)
+
     def test_malformed_input_fails_closed(self):
         for alter in (
             lambda rows: rows.reverse(),
@@ -158,7 +185,7 @@ class StrategyLabTests(unittest.TestCase):
     def test_bad_config_rejected(self):
         for config in ({"gap_bars": 0}, {"n_splits": 1}, {"fee_bps": -1},
                        {"periods_per_year": True}, {"max_exposure": 2},
-                       {"target_volatility": float("inf")}, {"guaranteed_profit": True}):
+                       {"target_volatility": float("inf")}, {"guaranteed_profit": True}, {"min_win_rate": 1.1}):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 evaluate_strategy(sample_bars(), config)
 
