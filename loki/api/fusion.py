@@ -117,6 +117,15 @@ class QuantRequest(StrictModel):
     config: dict = Field(default_factory=dict)
 
 
+@router.post("/learn-history")
+def learn_history():
+    from core.fusion.history import public_history
+    from core.fusion.learning import train_research
+
+    dataset = _call(public_history)
+    return _call(train_research, dataset["observations"], source=dataset["source"])
+
+
 @router.post("/quant")
 def quant(payload: QuantRequest):
     from core.fusion.quant import analyze_factors, run_shadow_replay
@@ -131,6 +140,14 @@ def quant(payload: QuantRequest):
         ),
         "replay": _call(run_shadow_replay, payload.bars, config, symbol=payload.symbol),
     }
+
+
+@router.post("/pullback")
+def pullback(payload: QuantRequest):
+    from core.fusion.reversion import evaluate_pullback
+
+    settings = dict(payload.config, periods_per_year=payload.periods_per_year)
+    return _call(evaluate_pullback, payload.bars, settings, symbol=payload.symbol)
 
 
 class CouncilRequest(StrictModel):

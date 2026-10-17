@@ -63,6 +63,8 @@ jobs:
               "tests/test_copilot_fusion_safety.py",
               "tests/test_strategy_lab.py",
               "tests/test_frozen_research.py",
+              "tests/test_pullback_research.py",
+              "tests/test_market_learning.py",
               "tests/test_research_api.py",
               "tests/test_api.py",
               "tests/test_fusion_api.py",

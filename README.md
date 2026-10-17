@@ -13,7 +13,7 @@ python -m venv .venv
 Open http://127.0.0.1:8000. The seven views share the dataset and paper journal:
 
 - **Overview:** forward-test equity versus buy-and-hold, costs, uncertainty and evidence gaps.
-- **Quant lab:** CSV walk-forward trend research, Vibe-derived causal factors and a separate fixed-rule historical shadow replay.
+- **Quant lab:** CSV walk-forward trend research, Vibe-derived causal factors, fixed-rule replay, a separate pullback hypothesis and supervised learning on public historical market factors.
 - **Agent council:** AutoHedge-derived director/analyst role contracts with deterministic signal, evidence, cash, currency and exposure checks. Drafts are inert and blocked when checks fail; no LLM agents are silently invoked.
 - **Paper portfolio:** manual long entries, partial exits, marks, costs, lifecycle P&L, browser persistence, export and cost-aware sizing.
 - **Scenarios:** explicit price-shock sensitivity on current paper positions, plus the actual MiroFish service workflow when configured.
@@ -23,6 +23,15 @@ Open http://127.0.0.1:8000. The seven views share the dataset and paper journal:
 Upload **161–5,000 bars from a single instrument** with columns `timestamp,open,high,low,close,volume`. Use ISO 8601 timestamps (timezone recommended; naive timestamps are interpreted as UTC) in ascending order. Set bars per year to match the data frequency. All monetary values use the input data's quote currency. Historical data provenance is not independently verified.
 
 Paper journal state is saved in this browser's local storage. Research, council and stress results remain in the current page until export or reload. The workspace export includes uploaded bars and paper records; handle it as business data. Server endpoints compute from caller-supplied state and do not provide accounts, authentication, durable storage or broker orders. Default local research and chat do not call external AI providers.
+
+**Historical machine learning needs no personal account or key.** In Quant lab,
+click **Fetch history & train** to download Open Crypto Pricing's commercially
+reusable CC BY 4.0 daily factor series and fit a fixed logistic market-direction
+model. Training, validation and later evaluation dates stay separate. Exports
+include weights, source attribution, model/data hashes, baseline comparisons and
+limitations. Prediction accuracy is separate from trading win rate. The offline
+trainer accepts up to 250,000 dated returns; the browser OHLCV upload retains its
+5,000-bar limit. See [historical learning](docs/research/HISTORICAL_LEARNING.md).
 
 ## Use the supplied external engines
 
