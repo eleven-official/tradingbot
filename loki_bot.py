@@ -60,8 +60,35 @@ def cmd_run(bot: LokiBot, args):
     bot.run(interval=args.interval, once=args.once)
 
 
+def cmd_council(bot: LokiBot, args):
+    report = bot.agent_scan(args.symbols)
+    print(f"=== Multi-Agent Council Report ({len(report.get('trails', {}))} symbols) ===")
+    for sym, trail in report.get("trails", {}).items():
+        director = next((t for t in trail if t.get("agent") == "director"), {})
+        quant = next((t for t in trail if t.get("agent") == "quant"), {})
+        risk = next((t for t in trail if t.get("agent") == "risk"), {})
+        execution = next((t for t in trail if t.get("agent") == "execution"), {})
+
+        action = quant.get("action", "HOLD")
+        score = quant.get("score", 0.0)
+        sq = quant.get("squeeze_status", "OFF")
+        print(f"\n[{sym}] Action: {action} | Score: {score:+.1f} | Squeeze: {sq}")
+        print(f"  Thesis   : {director.get('thesis', '')}")
+        print(f"  Risk     : {'APPROVED' if risk.get('approved') else 'BLOCKED'} (qty={risk.get('qty', 0):.2f}, reason={risk.get('reason')})")
+        if quant.get("reasons"):
+            print(f"  Factors  : {', '.join(quant['reasons'])}")
+        if execution.get("executed"):
+            print(f"  Hermes   : Executed on {bot.mode.upper()}")
+
+
+def cmd_web(bot: LokiBot, args):
+    import uvicorn
+    print(f"🚀 Starting Loki Quantum Web Terminal on http://{args.host}:{args.port}")
+    uvicorn.run("loki.api.server:app", host=args.host, port=args.port, reload=args.reload)
+
+
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="loki_bot", description="LOKI v8 trading engine")
+    p = argparse.ArgumentParser(prog="loki_bot", description="LOKI Quantum Trading Engine")
     p.add_argument("--mode", choices=["paper", "live"], default=None,
                    help="override the configured trading mode")
     p.add_argument("--symbols", nargs="*", default=None, help="symbols to operate on")
@@ -70,6 +97,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest="command", required=True)
 
     b = sub.add_parser("backtest", help="backtest the ensemble strategy")
+    b.add_argument("--symbols", nargs="*", default=None, help="symbols to operate on")
     b.set_defaults(func=cmd_backtest)
 
     w = sub.add_parser("walkforward", help="walk-forward out-of-sample validation")
@@ -78,7 +106,18 @@ def main(argv=None):
     w.set_defaults(func=cmd_walkforward)
 
     s = sub.add_parser("scan", help="scan for current signals")
+    s.add_argument("--symbols", nargs="*", default=None, help="symbols to operate on")
     s.set_defaults(func=cmd_scan)
+
+    c = sub.add_parser("council", help="run multi-agent deliberation council")
+    c.add_argument("--symbols", nargs="*", default=None, help="symbols to operate on")
+    c.set_defaults(func=cmd_council)
+
+    wb = sub.add_parser("web", help="start real-time web command terminal")
+    wb.add_argument("--host", default="127.0.0.1")
+    wb.add_argument("--port", type=int, default=8000)
+    wb.add_argument("--reload", action="store_true")
+    wb.set_defaults(func=cmd_web)
 
     r = sub.add_parser("paper", help="run the paper/live trading loop")
     r.add_argument("--interval", type=float, default=60.0)

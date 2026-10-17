@@ -63,6 +63,25 @@ class PaperBroker:
         self.positions: Dict[str, Position] = {}
         self.trades: List[Trade] = []
         self.state_file = Path(cfg.state_dir) / "paper_account.json"
+        self._load_state()
+
+    def _load_state(self):
+        if self.state_file.exists():
+            try:
+                data = json.loads(self.state_file.read_text())
+                self.cash = float(data.get("cash", self.cfg.initial_cash))
+                for s, p_data in data.get("positions", {}).items():
+                    self.positions[s] = Position(
+                        symbol=p_data["symbol"],
+                        qty=float(p_data["qty"]),
+                        avg_entry=float(p_data["avg_entry"]),
+                        stop_loss=float(p_data.get("stop_loss", 0.0)),
+                        take_profit=float(p_data.get("take_profit", 0.0)),
+                        opened_at=float(p_data.get("opened_at", time.time())),
+                    )
+                logger.info("Restored paper broker state: cash=$%.2f, positions=%d", self.cash, len(self.positions))
+            except Exception as exc:
+                logger.warning("Could not load paper state: %s", exc)
 
     # ------------------------------------------------------------------
     def _fill_price(self, price: float, side: str) -> float:

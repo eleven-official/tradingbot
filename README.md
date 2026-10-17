@@ -1,34 +1,43 @@
-# 🚀 Loki - Your Australian Crypto Trading Bot
+# 🚀 Loki Quantum Platform — Next-Gen Algorithmic Trading
 
-## 🎉 Loki is Ready!
+## ⚡ Next-Level Upgrade v8.5
 
 **System Status:** ✅ FULLY OPERATIONAL  
-**Tests:** 186/186 passing (100% success rate)  
-**Evolutionary Features:** All active  
-**Paper Trading:** Enabled for safety  
+**Architecture:** Autonomous 4-Agent Council (Director ➔ Quant ➔ Risk Sentinel ➔ Hermes Execution Router)  
+**Signal Engine:** Vectorized Trend + TTM Squeeze Volatility Breakouts + Chaikin Money Flow + Dynamic ATR Channels  
+**Execution:** Zero-Lookahead Event-Driven Paper & Live Multi-Market Engine (US Stocks, Crypto, Global Indices)  
+**Web Terminal:** Real-Time Cyber-Institutional Command Center with Interactive Charts & Instant Order Desk  
 
 ---
 
-## 📱 How to Start Loki
+## 🌟 Quick Launch Options
 
-### 🖥️ Desktop Mode (Recommended)
+### 🌐 1. Quantum Web Terminal (Recommended)
+Launch the interactive web command center with live alpha radar, agent deliberation feed, order desk, and backtesting lab:
 ```bash
-python loki_desktop.py
+python loki_bot.py web --port 8000
+# OR
+python main.py
 ```
-- Opens Loki's graphical interface
-- Real-time dashboard with AUD metrics
-- TradingView webhook management
-- Manual trading controls
-- Live activity logs
+Open **http://localhost:8000** in your browser.
 
-### 🖥️ Headless Mode (Server)
+### 🏛️ 2. Multi-Agent Deliberation Council CLI
+Run the autonomous decision council across your monitored universe:
 ```bash
-python loki.py
+python loki_bot.py council --symbols AAPL MSFT NVDA BTC-USD
 ```
-- No GUI required
-- Webhook server on port 8000
-- Processes TradingView signals automatically
-- Console output shows activity
+
+### 📡 3. Live Alpha Radar Scan
+Scan all configured assets for actionable institutional breakout setups:
+```bash
+python loki_bot.py scan
+```
+
+### 🔬 4. Honest Out-of-Sample Walk-Forward Backtesting
+```bash
+python loki_bot.py walkforward --symbol AAPL --splits 4
+python loki_bot.py backtest --symbols AAPL SPY BTC-USD
+```
 
 ---
 

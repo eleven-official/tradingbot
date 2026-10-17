@@ -139,6 +139,45 @@ def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
     return (direction * volume).cumsum()
 
 
+def cmf(high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series, length: int = 20) -> pd.Series:
+    """Chaikin Money Flow (CMF).
+    
+    Measures institutional accumulation vs distribution over a rolling window.
+    Positive (> 0.05) indicates institutional buying; negative (< -0.05) distribution.
+    """
+    hl_spread = (high - low).replace(0.0, np.nan)
+    mfm = ((close - low) - (high - close)) / hl_spread
+    mfm = mfm.fillna(0.0)
+    mfv = mfm * volume
+    vol_sum = volume.rolling(length).sum().replace(0.0, np.nan)
+    flow = mfv.rolling(length).sum() / vol_sum
+    return flow.fillna(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Squeeze / Volatility Compression (TTM Squeeze)
+# ---------------------------------------------------------------------------
+def ttm_squeeze(high: pd.Series, low: pd.Series, close: pd.Series,
+                length: int = 20, bb_mult: float = 2.0, kc_mult: float = 1.5):
+    """Institutional TTM Squeeze indicator.
+
+    Detects volatility compression when Bollinger Bands contract inside Keltner Channels.
+    When squeeze is True, energy is coiling. When squeeze transitions to False, momentum
+    explodes in the direction of the momentum histogram.
+    """
+    bb_up, bb_mid, bb_low = bollinger_bands(close, length, bb_mult)
+    kc_up, kc_mid, kc_low = keltner_channels(high, low, close, length, kc_mult)
+
+    squeeze_on = (bb_low > kc_low) & (bb_up < kc_up)
+
+    # Momentum oscillator: delta of price from average of Donchian midline & 20 SMA
+    donch_mid = (high.rolling(length).max() + low.rolling(length).min()) / 2.0
+    delta = close - (donch_mid + bb_mid) / 2.0
+    mom = ema(delta, 5)
+
+    return squeeze_on, mom
+
+
 # ---------------------------------------------------------------------------
 # Supertrend
 # ---------------------------------------------------------------------------
@@ -211,8 +250,11 @@ def add_all_indicators(df: pd.DataFrame, atr_len: int = 14, adx_len: int = 14,
     df["roc_20"] = roc(c, 20)
     df["roc_60"] = roc(c, 60)
     df["vwap"] = vwap(h, l, c, v)
+    df["cmf"] = cmf(h, l, c, v)
+    df["squeeze_on"], df["squeeze_mom"] = ttm_squeeze(h, l, c)
     df["supertrend"], df["supertrend_upper"], df["supertrend_lower"] = supertrend(
         h, l, c, supertrend_len, supertrend_mult
     )
     df["atr_pct"] = df["atr"] / c * 100.0
     return df
+

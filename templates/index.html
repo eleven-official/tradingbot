@@ -2,23 +2,695 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Loki Trading Platform</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Loki v8.5 Quantum Algorithmic Trading Terminal</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js via CDN for interactive equity curves -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <main class="container">
-    <h1>Loki Trading Platform</h1>
-    <p class="lead">Lightweight frontend for the Loki Trading Platform.</p>
-    <p>Version: {{ version }}</p>
-    <p>Visit the API health endpoint: <a href="/health">/health</a></p>
-    <section class="links">
-      <a class="card" href="/health">Health</a>
-      <a class="card" href="https://github.com/eleven-official/tradingbot">Source on GitHub</a>
+
+  <!-- Top Navigation Header -->
+  <header class="top-nav">
+    <div class="brand">
+      <div class="brand-logo">⚡</div>
+      <div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="brand-title">LOKI QUANTUM TERMINAL</span>
+          <span class="brand-badge">v{{ version }}</span>
+        </div>
+        <div style="font-size:11px; color:var(--text-sub);">Autonomous Multi-Agent Algorithmic Trading Platform</div>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <div class="status-pill">
+        <div class="status-dot"></div>
+        <span id="nav-engine-status">QUANTUM ENGINE LIVE</span>
+      </div>
+
+      <div class="mode-toggle">
+        <button id="btn-mode-paper" class="mode-btn active" onclick="setMode('paper')">PAPER SIM</button>
+        <button id="btn-mode-live" class="mode-btn" onclick="setMode('live')">LIVE BROKER</button>
+      </div>
+
+      <a href="https://github.com/eleven-official/tradingbot" target="_blank" style="color:var(--text-muted); text-decoration:none; font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.05); padding:6px 12px; border-radius:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="app-container">
+
+    <!-- KPI Metric Cards -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Total Portfolio Equity</span>
+          <span>📈</span>
+        </div>
+        <div class="kpi-value" id="kpi-equity">$100,000.00</div>
+        <div class="kpi-sub text-positive" id="kpi-pnl">+0.00 (+0.00%)</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Available Cash</span>
+          <span>💵</span>
+        </div>
+        <div class="kpi-value" id="kpi-cash">$100,000.00</div>
+        <div class="kpi-sub" style="color:var(--text-muted);">Unencumbered Liquidity</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Active Positions</span>
+          <span>🎯</span>
+        </div>
+        <div class="kpi-value" id="kpi-positions">0 / 4</div>
+        <div class="kpi-sub" style="color:var(--text-muted);">Dynamic ATR Sizing</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Completed Trades</span>
+          <span>📜</span>
+        </div>
+        <div class="kpi-value" id="kpi-trades">0</div>
+        <div class="kpi-sub" style="color:var(--text-muted);">Zero-Lookahead Causal</div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Operating Mode</span>
+          <span>🛡️</span>
+        </div>
+        <div class="kpi-value text-cyan" id="kpi-mode">PAPER SIM</div>
+        <div class="kpi-sub" style="color:var(--text-muted);">Risk Gated & Circuit Guarded</div>
+      </div>
     </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs-nav">
+      <button class="tab-btn active" onclick="showTab('radar')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+        Live Market Radar
+      </button>
+      <button class="tab-btn" onclick="showTab('council')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Agentic Council Deliberation
+      </button>
+      <button class="tab-btn" onclick="showTab('portfolio')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9M14 17H5M12 3v18"/></svg>
+        Portfolio & Execution Desk
+      </button>
+      <button class="tab-btn" onclick="showTab('backtest')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Honest Backtest Lab
+      </button>
+    </nav>
+
+    <!-- TAB 1: Live Market Radar -->
+    <div id="tab-radar" class="tab-content">
+      <div class="control-bar">
+        <div>
+          <h2 style="font-size:18px; font-weight:800;">Real-Time Institutional Alpha Radar</h2>
+          <p style="font-size:13px; color:var(--text-muted);">Vectorized ensemble: Trend stack + TTM Squeeze + Chaikin Money Flow + Dynamic ATR channels</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="action-btn btn-primary" onclick="triggerScan()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            SCAN LIVE UNIVERSE NOW
+          </button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Action</th>
+              <th>Score / Conf</th>
+              <th>TTM Squeeze</th>
+              <th>Entry Price</th>
+              <th>Stop Loss</th>
+              <th>Target 1 / 2</th>
+              <th>Risk:Reward</th>
+              <th>Alpha Thesis & Reasons</th>
+              <th style="text-align:right;">Execute</th>
+            </tr>
+          </thead>
+          <tbody id="radar-table-body">
+            <tr>
+              <td colspan="10" style="text-align:center; padding:40px; color:var(--text-muted);">
+                Click <strong>"SCAN LIVE UNIVERSE NOW"</strong> to compute real-time ensemble signals.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: Agentic Council Deliberation -->
+    <div id="tab-council" class="tab-content" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2 style="font-size:18px; font-weight:800;">Autonomous Agentic Council (AutoHedge Protocol)</h2>
+          <p style="font-size:13px; color:var(--text-muted);">Director (Macro Regime) ➔ Quant (Multi-Factor Alpha) ➔ Sentinel (Risk & Kelly Sizing) ➔ Hermes (Execution Router)</p>
+        </div>
+        <button class="action-btn btn-secondary" onclick="loadCouncil()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Re-evaluate Council Deliberation
+        </button>
+      </div>
+
+      <div id="council-container" class="council-grid">
+        <div class="agent-card" style="grid-column: 1 / -1; text-align:center; padding:40px; color:var(--text-muted);">
+          Click <strong>"Re-evaluate Council Deliberation"</strong> to inspect the multi-agent decision trail.
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Portfolio & Execution Desk -->
+    <div id="tab-portfolio" class="tab-content" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2 style="font-size:18px; font-weight:800;">Active Portfolio & Order Routing</h2>
+          <p style="font-size:13px; color:var(--text-muted);">Real-time mark-to-market positions with dynamic ATR trailing stops and auto-hedged exit rules.</p>
+        </div>
+        <button class="action-btn btn-secondary" onclick="loadPortfolio()">
+          Refresh Desk
+        </button>
+      </div>
+
+      <!-- Quick Trade Ticket Modal / Inline -->
+      <div class="kpi-card" style="margin-bottom:24px; background:rgba(15, 23, 42, 0.85);">
+        <h3 style="font-size:14px; font-weight:700; margin-bottom:12px; color:var(--accent-cyan);">⚡ MANUAL INSTANT ORDER TICKET</h3>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <div style="flex:1; min-width:140px;">
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Symbol</label>
+            <input id="order-symbol" class="form-control" type="text" placeholder="e.g. AAPL, BTC-USD" value="AAPL">
+          </div>
+          <div style="flex:1; min-width:120px;">
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Action</label>
+            <select id="order-action" class="form-control">
+              <option value="BUY">BUY (Long)</option>
+              <option value="SELL">SELL (Short / Exit)</option>
+              <option value="CLOSE">CLOSE ALL</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width:120px;">
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Shares / Units (0 = Auto-Size)</label>
+            <input id="order-qty" class="form-control" type="number" placeholder="0 = Auto ATR" value="0">
+          </div>
+          <button class="action-btn btn-primary" onclick="submitManualOrder()" style="height:42px;">
+            TRANSMIT ORDER
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Positions -->
+      <div class="table-card" style="margin-bottom:24px;">
+        <div class="table-header-title">
+          <span>Active Open Positions</span>
+          <span id="pos-count-badge" class="brand-badge">0 Open</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Direction</th>
+              <th>Units / Qty</th>
+              <th>Avg Entry</th>
+              <th>Current Price</th>
+              <th>Market Value</th>
+              <th>Unrealized P&L</th>
+              <th>Stop Loss</th>
+              <th>Take Profit</th>
+              <th style="text-align:right;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="positions-table-body">
+            <tr>
+              <td colspan="10" style="text-align:center; padding:30px; color:var(--text-muted);">
+                No open positions currently active. Use the Radar to launch high-conviction trades.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Trade History Journal -->
+      <div class="table-card">
+        <div class="table-header-title">
+          <span>Executed Trades Audit Trail</span>
+          <span style="font-size:12px; color:var(--text-muted);">Last 20 Fills</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Direction</th>
+              <th>Quantity</th>
+              <th>Entry Price</th>
+              <th>Exit Price</th>
+              <th>Realized P&L</th>
+              <th>Return %</th>
+            </tr>
+          </thead>
+          <tbody id="trades-table-body">
+            <tr>
+              <td colspan="7" style="text-align:center; padding:24px; color:var(--text-muted);">
+                No closed trades in history yet.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 4: Honest Backtest Lab -->
+    <div id="tab-backtest" class="tab-content" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2 style="font-size:18px; font-weight:800;">Honest Backtest & Walk-Forward Validation Lab</h2>
+          <p style="font-size:13px; color:var(--text-muted);">Zero-lookahead event-driven backtesting with slippage, commission, intraday stops, and Monte Carlo confidence intervals.</p>
+        </div>
+      </div>
+
+      <div class="lab-grid">
+        <div class="table-card" style="padding:24px;">
+          <h3 style="font-size:15px; font-weight:700; margin-bottom:16px;">Configure Simulation</h3>
+          <div class="form-group">
+            <label>Symbol / Ticker</label>
+            <input id="bt-symbol" class="form-control" type="text" value="AAPL">
+          </div>
+          <div class="form-group">
+            <label>Historical Period</label>
+            <select id="bt-period" class="form-control">
+              <option value="1y">1 Year</option>
+              <option value="2y" selected>2 Years</option>
+              <option value="5y">5 Years</option>
+              <option value="10y">10 Years (Institutional)</option>
+            </select>
+          </div>
+          <button class="action-btn btn-primary" style="width:100%; justify-content:center; margin-top:12px;" onclick="runBacktest()">
+            EXECUTE HONEST SIMULATION
+          </button>
+
+          <div id="bt-results-card" style="margin-top:20px; display:none;">
+            <div style="border-top:1px solid var(--border-color); padding-top:16px;">
+              <h4 style="font-size:13px; text-transform:uppercase; color:var(--accent-cyan); margin-bottom:12px;">Performance Metrics</h4>
+              <div class="agent-stat"><span>Total Return:</span><span id="bt-return" class="agent-stat-value text-positive">--</span></div>
+              <div class="agent-stat"><span>CAGR:</span><span id="bt-cagr" class="agent-stat-value">--</span></div>
+              <div class="agent-stat"><span>Win Rate:</span><span id="bt-winrate" class="agent-stat-value">--</span></div>
+              <div class="agent-stat"><span>Profit Factor:</span><span id="bt-pf" class="agent-stat-value">--</span></div>
+              <div class="agent-stat"><span>Max Drawdown:</span><span id="bt-maxdd" class="agent-stat-value text-negative">--</span></div>
+              <div class="agent-stat"><span>Sharpe Ratio:</span><span id="bt-sharpe" class="agent-stat-value">--</span></div>
+              <div class="agent-stat"><span>Total Trades:</span><span id="bt-trades" class="agent-stat-value">--</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-header-title">
+            <span>Simulation Equity Growth Curve</span>
+            <span id="bt-chart-status" style="font-size:12px; color:var(--text-muted);">Ready to run</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="equityChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
+
   <footer>
-    <small>Deployed from eleven-official/tradingbot</small>
+    LOKI Quantitative Intelligence • Built for <strong>eleven-official</strong> • Institutional Multi-Asset Trading Engine
   </footer>
+
+  <!-- Frontend Logic -->
+  <script>
+    let currentMode = "paper";
+    let equityChartInstance = null;
+
+    function showTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + tabId).style.display = 'block';
+      event.currentTarget.classList.add('active');
+
+      if (tabId === 'portfolio') loadPortfolio();
+      if (tabId === 'council') loadCouncil();
+    }
+
+    async function updateStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        document.getElementById('kpi-equity').textContent = '$' + data.equity.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('kpi-cash').textContent = '$' + data.cash.toLocaleString(undefined, {minimumFractionDigits: 2});
+        
+        const pnlEl = document.getElementById('kpi-pnl');
+        const sign = data.total_pnl >= 0 ? '+' : '';
+        pnlEl.textContent = `${sign}$${data.total_pnl.toFixed(2)} (${sign}${data.total_pnl_pct.toFixed(2)}%)`;
+        pnlEl.className = 'kpi-sub ' + (data.total_pnl >= 0 ? 'text-positive' : 'text-negative');
+
+        document.getElementById('kpi-positions').textContent = `${data.open_positions} / 4`;
+        document.getElementById('kpi-trades').textContent = data.total_trades;
+        
+        currentMode = data.mode;
+        document.getElementById('kpi-mode').textContent = data.mode.toUpperCase() + (data.mode === 'paper' ? ' SIM' : ' BROKER');
+        document.getElementById('btn-mode-paper').classList.toggle('active', data.mode === 'paper');
+        document.getElementById('btn-mode-live').classList.toggle('active', data.mode === 'live');
+      } catch (e) {
+        console.error('Status fetch error:', e);
+      }
+    }
+
+    async function setMode(mode) {
+      if (mode === 'live') {
+        const confirmMsg = "Confirm: Switching to LIVE BROKER requires real broker API credentials in .env. Fails closed to local simulator if unset. Proceed?";
+        if (!confirm(confirmMsg)) return;
+      }
+      try {
+        const res = await fetch('/api/mode', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({mode})
+        });
+        const data = await res.json();
+        updateStatus();
+      } catch (e) {
+        alert("Failed to switch mode: " + e);
+      }
+    }
+
+    async function triggerScan() {
+      const tbody = document.getElementById('radar-table-body');
+      tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:40px; color:var(--accent-cyan); font-weight:600;">
+        ⚡ Calculating real-time indicators, TTM Squeeze, CMF, and ensemble scores...
+      </td></tr>`;
+
+      try {
+        const res = await fetch('/api/scan');
+        const data = await res.json();
+        if (!data.signals || data.signals.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--text-muted);">No actionable signals right now. Market in equilibrium.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = '';
+        data.signals.forEach(s => {
+          const actionClass = s.action === 'BUY' ? 'badge-buy' : (s.action === 'SELL' ? 'badge-sell' : 'badge-hold');
+          const squeezeClass = s.squeeze_status === 'ON' ? 'badge-squeeze-on' : (s.squeeze_status.startsWith('FIRING') ? 'badge-squeeze-fire' : 'badge-hold');
+          const reasonsHtml = (s.reasons || []).map(r => `<span class="factor-tag">${r}</span>`).join(' ');
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="font-weight:700; font-family:var(--font-mono); font-size:14px; color:#fff;">${s.symbol}</td>
+            <td><span class="badge ${actionClass}">${s.action}</span></td>
+            <td>
+              <div style="font-family:var(--font-mono); font-weight:700;">${s.score > 0 ? '+' : ''}${s.score}</div>
+              <div style="font-size:11px; color:var(--text-muted);">${s.confidence}% conf</div>
+            </td>
+            <td><span class="badge ${squeezeClass}">${s.squeeze_status}</span></td>
+            <td style="font-family:var(--font-mono);">$${s.entry_price.toFixed(2)}</td>
+            <td style="font-family:var(--font-mono); color:var(--neon-red);">$${s.stop_loss.toFixed(2)}</td>
+            <td style="font-family:var(--font-mono); color:var(--neon-green);">
+              $${s.take_profit.toFixed(2)} <span style="font-size:10px; color:var(--text-sub);">/ $${s.target_2.toFixed(2)}</span>
+            </td>
+            <td style="font-family:var(--font-mono); font-weight:600;">1 : ${s.risk_reward}</td>
+            <td><div class="factors-list">${reasonsHtml}</div></td>
+            <td style="text-align:right;">
+              <button class="action-btn btn-buy" style="padding:6px 14px; font-size:11px;" onclick="placeQuickOrder('${s.symbol}', '${s.action}', ${s.entry_price})">
+                EXECUTE
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--neon-red);">Scan error: ${e.message}</td></tr>`;
+      }
+    }
+
+    async function loadPortfolio() {
+      try {
+        const res = await fetch('/api/portfolio');
+        const data = await res.json();
+        
+        const posTbody = document.getElementById('positions-table-body');
+        document.getElementById('pos-count-badge').textContent = `${data.positions.length} Open`;
+
+        if (data.positions.length === 0) {
+          posTbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--text-muted);">No open positions currently active.</td></tr>`;
+        } else {
+          posTbody.innerHTML = '';
+          data.positions.forEach(p => {
+            const sideClass = p.side === 'long' ? 'badge-long' : 'badge-short';
+            const pnlColor = p.unrealized_pnl >= 0 ? 'text-positive' : 'text-negative';
+            const sign = p.unrealized_pnl >= 0 ? '+' : '';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td style="font-weight:700; font-family:var(--font-mono);">${p.symbol}</td>
+              <td><span class="badge ${sideClass}">${p.side.toUpperCase()}</span></td>
+              <td style="font-family:var(--font-mono);">${p.qty}</td>
+              <td style="font-family:var(--font-mono);">$${p.avg_entry.toFixed(2)}</td>
+              <td style="font-family:var(--font-mono);">$${p.current_price.toFixed(2)}</td>
+              <td style="font-family:var(--font-mono);">$${p.market_value.toFixed(2)}</td>
+              <td style="font-family:var(--font-mono); font-weight:700;" class="${pnlColor}">
+                ${sign}$${p.unrealized_pnl.toFixed(2)} (${sign}${p.unrealized_pnl_pct.toFixed(2)}%)
+              </td>
+              <td style="font-family:var(--font-mono);">$${p.stop_loss.toFixed(2)}</td>
+              <td style="font-family:var(--font-mono);">$${p.take_profit.toFixed(2)}</td>
+              <td style="text-align:right;">
+                <button class="action-btn btn-close" style="padding:6px 12px; font-size:11px;" onclick="closePosition('${p.symbol}')">CLOSE</button>
+              </td>
+            `;
+            posTbody.appendChild(tr);
+          });
+        }
+
+        const tradesTbody = document.getElementById('trades-table-body');
+        if (data.recent_trades.length === 0) {
+          tradesTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:var(--text-muted);">No trade history recorded yet.</td></tr>`;
+        } else {
+          tradesTbody.innerHTML = '';
+          data.recent_trades.forEach(t => {
+            const sideClass = t.side === 'long' ? 'badge-long' : 'badge-short';
+            const pnlColor = t.pnl >= 0 ? 'text-positive' : 'text-negative';
+            const sign = t.pnl >= 0 ? '+' : '';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td style="font-weight:700; font-family:var(--font-mono);">${t.symbol}</td>
+              <td><span class="badge ${sideClass}">${t.side.toUpperCase()}</span></td>
+              <td style="font-family:var(--font-mono);">${t.qty}</td>
+              <td style="font-family:var(--font-mono);">$${t.entry_price.toFixed(2)}</td>
+              <td style="font-family:var(--font-mono);">$${t.exit_price.toFixed(2)}</td>
+              <td style="font-family:var(--font-mono); font-weight:700;" class="${pnlColor}">${sign}$${t.pnl.toFixed(2)}</td>
+              <td style="font-family:var(--font-mono);" class="${pnlColor}">${sign}${t.pnl_pct.toFixed(2)}%</td>
+            `;
+            tradesTbody.appendChild(tr);
+          });
+        }
+      } catch (e) {
+        console.error("Portfolio load error:", e);
+      }
+    }
+
+    async function loadCouncil() {
+      const container = document.getElementById('council-container');
+      container.innerHTML = `<div class="agent-card" style="grid-column: 1 / -1; text-align:center; padding:40px; color:var(--accent-cyan);">
+        ⚡ Consulting Director, Quant Alpha, Risk Sentinel, and Hermes Execution Router...
+      </div>`;
+
+      try {
+        const res = await fetch('/api/council');
+        const report = await res.json();
+        container.innerHTML = '';
+
+        for (const [sym, trail] of Object.entries(report.trails || {})) {
+          const director = trail.find(t => t.agent === 'director') || {};
+          const quant = trail.find(t => t.agent === 'quant') || {};
+          const risk = trail.find(t => t.agent === 'risk') || {};
+          const exec = trail.find(t => t.agent === 'execution') || {};
+
+          const card = document.createElement('div');
+          card.className = 'agent-card agent-' + (quant.action === 'BUY' ? 'risk' : 'quant');
+          card.innerHTML = `
+            <div class="agent-header">
+              <span class="agent-name" style="font-size:16px; color:#fff;">${sym}</span>
+              <span class="badge ${quant.action === 'BUY' ? 'badge-buy' : (quant.action === 'SELL' ? 'badge-sell' : 'badge-hold')}">${quant.action || 'HOLD'}</span>
+            </div>
+            <div class="agent-thesis">${director.thesis || 'Analyzing market structure.'}</div>
+            <div class="agent-stat">
+              <span>Director Posture:</span>
+              <span class="agent-stat-value">${(director.posture || 'neutral').toUpperCase()} (${director.regime || 'RANGING'})</span>
+            </div>
+            <div class="agent-stat">
+              <span>Quant Ensemble Score:</span>
+              <span class="agent-stat-value">${quant.score ? (quant.score > 0 ? '+' : '') + quant.score : '0.0'} (${quant.confidence || 0}% conf)</span>
+            </div>
+            <div class="agent-stat">
+              <span>Risk Sentinel Approval:</span>
+              <span class="agent-stat-value" style="color:${risk.approved ? 'var(--neon-green)' : 'var(--neon-red)'};">
+                ${risk.approved ? 'APPROVED (' + (risk.qty || 0).toFixed(2) + ' units)' : 'BLOCKED: ' + (risk.reason || 'none')}
+              </span>
+            </div>
+            <div class="agent-stat">
+              <span>Execution Router:</span>
+              <span class="agent-stat-value">${exec.executed ? 'FILLED ON ' + currentMode.toUpperCase() : 'STANDBY'}</span>
+            </div>
+          `;
+          container.appendChild(card);
+        }
+      } catch (e) {
+        container.innerHTML = `<div class="agent-card" style="grid-column:1 / -1; color:var(--neon-red); text-align:center;">Council error: ${e.message}</div>`;
+      }
+    }
+
+    async function placeQuickOrder(symbol, action, price) {
+      if (!confirm(`Execute ${action} order on ${symbol} at current price ~$${price.toFixed(2)}?`)) return;
+      try {
+        const res = await fetch('/api/order', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({symbol, action, price})
+        });
+        const data = await res.json();
+        alert(`Order Executed! Symbol: ${data.symbol}, Action: ${data.action}, Fill: $${data.fill_price}`);
+        updateStatus();
+        loadPortfolio();
+      } catch (e) {
+        alert("Order failed: " + e);
+      }
+    }
+
+    async function submitManualOrder() {
+      const symbol = document.getElementById('order-symbol').value.trim();
+      const action = document.getElementById('order-action').value;
+      const qty = parseFloat(document.getElementById('order-qty').value) || null;
+
+      if (!symbol) return alert("Please specify a symbol.");
+
+      try {
+        const res = await fetch('/api/order', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({symbol, action, qty})
+        });
+        const data = await res.json();
+        alert(`Order filled! ${data.action} ${data.symbol} @ $${data.fill_price}`);
+        updateStatus();
+        loadPortfolio();
+      } catch (e) {
+        alert("Order error: " + e);
+      }
+    }
+
+    async function closePosition(symbol) {
+      if (!confirm(`Confirm: Close active position in ${symbol}?`)) return;
+      try {
+        const res = await fetch('/api/order', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({symbol, action: 'CLOSE'})
+        });
+        const data = await res.json();
+        alert(`Closed position in ${symbol} @ $${data.fill_price}`);
+        updateStatus();
+        loadPortfolio();
+      } catch (e) {
+        alert("Failed to close: " + e);
+      }
+    }
+
+    async function runBacktest() {
+      const symbol = document.getElementById('bt-symbol').value.trim().toUpperCase();
+      const period = document.getElementById('bt-period').value;
+      document.getElementById('bt-chart-status').textContent = 'Simulating event-driven execution...';
+
+      try {
+        const res = await fetch(`/api/backtest?symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(period)}`);
+        const data = await res.json();
+
+        document.getElementById('bt-results-card').style.display = 'block';
+        document.getElementById('bt-return').textContent = `${data.total_return_pct >= 0 ? '+' : ''}${data.total_return_pct}%`;
+        document.getElementById('bt-return').className = 'agent-stat-value ' + (data.total_return_pct >= 0 ? 'text-positive' : 'text-negative');
+        document.getElementById('bt-cagr').textContent = `${data.cagr_pct}%`;
+        document.getElementById('bt-winrate').textContent = `${data.win_rate_pct}%`;
+        document.getElementById('bt-pf').textContent = `${data.profit_factor}`;
+        document.getElementById('bt-maxdd').textContent = `-${data.max_drawdown_pct}%`;
+        document.getElementById('bt-sharpe').textContent = `${data.sharpe}`;
+        document.getElementById('bt-trades').textContent = `${data.total_trades}`;
+        document.getElementById('bt-chart-status').textContent = `Complete: ${data.total_trades} trades executed.`;
+
+        // Generate synthetic curve from trades
+        let curve = [data.initial_capital];
+        let running = data.initial_capital;
+        (data.trades || []).forEach(t => {
+          running += t.pnl;
+          curve.push(running);
+        });
+
+        renderChart(curve);
+      } catch (e) {
+        alert("Backtest failed: " + e);
+        document.getElementById('bt-chart-status').textContent = 'Simulation failed.';
+      }
+    }
+
+    function renderChart(curveData) {
+      const ctx = document.getElementById('equityChart').getContext('2d');
+      if (equityChartInstance) equityChartInstance.destroy();
+
+      const labels = curveData.map((_, i) => 'Trade ' + i);
+      const isPositive = curveData[curveData.length - 1] >= curveData[0];
+
+      equityChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Portfolio Equity ($)',
+            data: curveData,
+            borderColor: isPositive ? '#10b981' : '#ef4444',
+            backgroundColor: isPositive ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            fill: true,
+            tension: 0.2,
+            borderWidth: 2,
+            pointRadius: 2,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#94a3b8' } }
+          },
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } },
+            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } }
+          }
+        }
+      });
+    }
+
+    // Auto-update status every 10 seconds
+    updateStatus();
+    setInterval(updateStatus, 10000);
+    // Initial scan on load
+    triggerScan();
+  </script>
 </body>
 </html>

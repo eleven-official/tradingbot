@@ -58,9 +58,19 @@ class QuantAgent:
         sig = self.strategy.generate_signal(df, symbol)
         if sig is None:
             return None
-        return {"symbol": symbol, "action": sig.action, "score": round(sig.score, 1),
-                "confidence": round(sig.confidence, 1), "entry": sig.entry_price,
-                "stop": sig.stop_loss, "target": sig.take_profit}
+        return {
+            "symbol": symbol,
+            "action": sig.action,
+            "score": round(sig.score, 1),
+            "confidence": round(sig.confidence, 1),
+            "entry": sig.entry_price,
+            "stop": sig.stop_loss,
+            "target": sig.take_profit,
+            "target_2": sig.target_2,
+            "risk_reward": sig.risk_reward,
+            "squeeze_status": sig.squeeze_status,
+            "reasons": sig.reasons,
+        }
 
 
 class RiskAgent:
