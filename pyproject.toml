@@ -44,6 +44,10 @@ extend-exclude = '''
 )/
 '''
 
+# Point Vercel at the lightweight ASGI entrypoint (avoids desktop launchers).
+[tool.vercel]
+entrypoint = "main:app"
+
 [tool.isort]
 profile = "black"
 line_length = 100
@@ -69,6 +73,9 @@ strict_equality = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"
+# Make the repo root importable so bare `pytest` (CI) can import loki,
+# loki_v8, core_engine, etc. without each test file needing sys.path hacks.
+pythonpath = ["."]
 addopts = "-ra -q --strict-markers --cov=loki --cov-report=html --cov-report=term-missing"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
