@@ -11,7 +11,15 @@ on:
 env:
   PYTHON_VERSION: '3.12'
   REGISTRY: ghcr.io
-  IMAGE_NAME: lokitrading/loki
+  # GHCR requires the image namespace to match an existing GitHub account
+  # (ghcr.io/<owner>/<image>); "lokitrading" does not exist, so pushes were
+  # rejected with "denied: not_found: owner not found".
+  IMAGE_NAME: eleven-official/loki
+
+# Least-privilege token: enough to read the repo and push the GHCR image.
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   test:
