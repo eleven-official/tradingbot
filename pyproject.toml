@@ -14,6 +14,19 @@ authors = [
 ]
 keywords = ["trading", "algorithmic-trading", "machine-learning", "finance", "quantitative-finance"]
 
+# Runtime dependencies for the deployed site. Vercel's Python runtime installs
+# from THIS table (not requirements.txt) — keep the two lists in sync.
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "jinja2>=3.1.2",
+    "aiofiles>=23.1.0",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0.0",
+    "structlog>=24.1.0",
+    "yfinance>=0.2.40",
+]
+
 [project.urls]
 Homepage = "https://lokitrading.ai"
 Documentation = "https://docs.lokitrading.ai"

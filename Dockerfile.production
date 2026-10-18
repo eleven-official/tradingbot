@@ -39,7 +39,7 @@ COPY --from=builder /root/.local /root/.local
 
 # Copy application code
 COPY loki/ ./loki/
-COPY setup.py pyproject.toml ./
+COPY setup.py pyproject.toml README.md ./
 COPY alembic.ini ./
 
 # Install the package
