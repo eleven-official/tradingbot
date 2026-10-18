@@ -5,22 +5,18 @@ from loki.ml.price_predictor import (
     EnsemblePredictor,
     Prediction,
     FeatureEngineer,
-    create_predictor
+    create_predictor,
 )
 
-from loki.ml.ai_trainer import (
-    AITrainer,
-    TrainingResult,
-    quick_train
-)
+from loki.ml.ai_trainer import AITrainer, TrainingResult, quick_train
 
 __all__ = [
-    'SimpleLSTMPredictor',
-    'EnsemblePredictor',
-    'Prediction',
-    'FeatureEngineer',
-    'create_predictor',
-    'AITrainer',
-    'TrainingResult',
-    'quick_train'
+    "SimpleLSTMPredictor",
+    "EnsemblePredictor",
+    "Prediction",
+    "FeatureEngineer",
+    "create_predictor",
+    "AITrainer",
+    "TrainingResult",
+    "quick_train",
 ]

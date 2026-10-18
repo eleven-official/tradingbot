@@ -12,6 +12,7 @@ Configuration comes from ``LOKI_CONFIG`` (a YAML file such as
 ``config.loki.paper.yaml``), falling back to ``config.yaml``, then to safe
 defaults. The host/port can be overridden with ``LOKI_HOST`` / ``LOKI_PORT``.
 """
+
 from __future__ import annotations
 
 import logging

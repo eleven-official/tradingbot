@@ -4,5 +4,4 @@ from loki.risk.advanced_risk import AdvancedRiskManager, RiskMetrics
 
 RiskController = AdvancedRiskManager
 
-__all__ = ['AdvancedRiskManager', 'RiskMetrics', 'RiskController']
-
+__all__ = ["AdvancedRiskManager", "RiskMetrics", "RiskController"]
