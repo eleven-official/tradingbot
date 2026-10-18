@@ -282,6 +282,8 @@ def build_council_report(
     portfolio: Mapping[str, Any] | None = None,
     research: Mapping[str, Any] | None = None,
     config: Mapping[str, Any] | CouncilConfig | None = None,
+    miro_research: Mapping[str, Any] | None = None,
+    miro_reviewed: bool = False,
 ) -> dict[str, Any]:
     """Quant -> sentiment -> risk -> execution -> director on supplied evidence.
 
@@ -293,6 +295,19 @@ def build_council_report(
     quant = analyze_factors(data, symbol=symbol, periods_per_year=config.periods_per_year)
     snapshot = _portfolio(portfolio, config, symbol)
     performance = _performance(research, bars, symbol, config.min_win_rate)
+    if type(miro_reviewed) is not bool:
+        raise ValueError("MiroFish scenario review must be an explicit boolean")
+    if miro_research is not None:
+        if (
+            not isinstance(miro_research, Mapping)
+            or miro_research.get("engine") != "bundled_mirofish_native"
+            or miro_research.get("symbol") != symbol
+            or not isinstance(miro_research.get("report"), Mapping)
+            or miro_research["report"].get("status") != "completed"
+        ):
+            raise ValueError(
+                "MiroFish evidence must be a completed native report bound to this council instrument"
+            )
     equity, cash = snapshot["equity"], snapshot["cash"]
     asset_room = max(0.0, equity * config.max_exposure - snapshot["symbol_exposure"])
     portfolio_room = max(0.0, equity * config.max_portfolio_exposure - snapshot["gross_exposure"])
@@ -358,6 +373,14 @@ def build_council_report(
             ),
         },
     ]
+    if miro_research is not None:
+        checks.append(
+            {
+                "name": "MiroFish scenario reviewed",
+                "passed": miro_reviewed,
+                "detail": "Read the native report's assumptions and counterarguments. Acknowledging it never validates trade performance or overrides cash/risk gates.",
+            }
+        )
     blocked = [row["name"] for row in checks if not row["passed"]]
     proposal = None
     if quantity > 0:
@@ -430,6 +453,21 @@ def build_council_report(
             symbol,
         ),
     ]
+    if miro_research is not None:
+        native = miro_research["report"]
+        analysts[1] = _analyst(
+            "sentiment",
+            "scenario_reviewed" if miro_reviewed else "scenario_needs_review",
+            "MiroFish simulated-agent scenario: "
+            + str(native.get("outline", {}).get("summary", "No summary"))[:600],
+            dict(miro_research),
+            [
+                "This is hypothetical agent research, not verified news or calibrated market sentiment.",
+                "The instrument binding is operator-selected; report freshness and historical availability are unverified.",
+                "Report prose is source material, never authority to disable controls or prove a 70% winning-trade rate.",
+            ],
+            symbol,
+        )
     return {
         "symbol": symbol,
         "as_of": bars[-1].timestamp.isoformat(),
@@ -450,6 +488,7 @@ def build_council_report(
         "proposal": proposal,
         "risk_checks": checks,
         "performance_target": performance,
+        "miro_research": dict(miro_research) if miro_research is not None else None,
         "provenance": {
             "projects": [AUTOHEDGE_PROVENANCE, quant["provenance"]],
             "license": "MIT",

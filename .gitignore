@@ -62,3 +62,7 @@ $RECYCLE.BIN/
 .fusion_components/
 fusion.config.local.json
 paper-exports/
+components/mirofish/upstream/backend/uploads/
+components/mirofish/upstream/frontend/node_modules/
+components/mirofish/upstream/frontend/dist/
+components/mirofish/upstream/backend/.venv/

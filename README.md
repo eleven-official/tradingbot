@@ -1,6 +1,6 @@
 # Loki Fusion — research and paper trading
 
-Loki brings strategy research, factor diagnostics, a role-based council, a paper portfolio, stress scenarios and conversation into one workspace. Selected Vibe-Trading and AutoHedge engines run inside Loki; licensed Fincept analytics and the separate MiroFish service connect locally. This is a research and paper application. No strategy has established the requested 70% future winning-trade rate or improved future profitability.
+Loki brings strategy research, factor diagnostics, a role-based council, paper accounts, a simulated market, stress scenarios and conversation into one workspace. Selected Vibe-Trading and AutoHedge engines run inside Loki. The complete supplied MiroFish source is bundled, and its native report code feeds the council directly. Licensed Fincept analytics connect locally. No strategy has established the requested 70% future winning-trade rate or improved future profitability.
 
 ## Start the unified workspace
 
@@ -10,12 +10,14 @@ python -m venv .venv
 .\.venv\Scripts\python launch_loki_fusion.py
 ```
 
-Open http://127.0.0.1:8000. The seven views share the dataset and paper journal:
+Open http://127.0.0.1:8000. The nine views connect research, practice and account readiness:
 
 - **Overview:** forward-test equity versus buy-and-hold, costs, uncertainty and evidence gaps.
 - **Quant lab:** CSV walk-forward trend research, Vibe-derived causal factors, fixed-rule replay, a separate pullback hypothesis and supervised learning on public historical market factors.
 - **Agent council:** AutoHedge-derived director/analyst role contracts with deterministic signal, evidence, cash, currency and exposure checks. Drafts are inert and blocked when checks fail; no LLM agents are silently invoked.
 - **Paper portfolio:** manual long entries, partial exits, marks, costs, lifecycle P&L, browser persistence, export and cost-aware sizing.
+- **Simulated market:** generated BTC/ETH/SOL candles, play/pause and virtual clock, six seeded scenarios, a separate practice account, market/limit paper orders, protective stops, costs, journal, export and synthetic council feedback.
+- **Real account:** the top Paper/Real switch opens a separate connection view. Genuine CCXT spot balances can be read with host-configured read-only credentials. Real order submission is not implemented here yet; a mode switch does not arm a bot.
 - **Scenarios:** explicit price-shock sensitivity on current paper positions, plus the actual MiroFish service workflow when configured.
 - **Talk to Loki:** grounded local explanations of research, factors, council decisions, portfolios and stress results; multi-topic questions, instrument followups, loss reviews and useful next checks. Chat has no execution authority.
 - **Integrations:** real readiness states and licensed Fincept daily-return portfolio risk reports.
@@ -47,11 +49,17 @@ Copy `fusion.config.example.json` to the ignored `fusion.config.local.json`, set
 | Vibe-Trading | Adapted RSI, factor IC/rank-group math, causal factor diagnostics and replay | Selected MIT source and attribution in `third_party/vibe_trading`; no hosted Vibe or Qlib runtime |
 | AutoHedge | Adapted role contracts and evidence pipeline | Selected MIT source in `third_party/autohedge`; deterministic local implementation, not Swarms/LLM agents |
 | Fincept | Original portfolio-risk CLI, invoked in a separate local Python process | Requires the user's commercially licensed private installation and NumPy/pandas/SciPy; original source is not redistributed |
-| MiroFish | Actual graph/project, preparation, simulation, report and report-chat API workflow | Separate AGPL service, its dependencies and configured LLM/Zep providers; preserve applicable source obligations |
+| MiroFish | Complete supplied source retained under `components/mirofish/upstream`; original ReportManager and data classes executed directly to feed council scenarios; optional service workflow also retained | AGPL source and exact extraction provenance supplied; native artifact reads need no project API. New provider simulations still need the backend dependencies and LLM/Zep configuration |
 
 The Fincept commercial license was confirmed for this installation. Distribution rights are not inferred from that confirmation. Keep its installation and agreement outside public source control. MiroFish jobs can incur provider usage and require an explicit host flag; Loki never starts them automatically. Simulation opinions and risk statistics do not certify a trading edge.
 
 Native engine reads and jobs require the loopback launcher, same-origin session token and explicit host configuration. They are disabled on Vercel. A hosted preview supports the pure research/paper features; it cannot reach your desktop engines. See [external engine setup and contracts](docs/FUSION_EXTERNAL_ENGINES.md) and [MiroFish's concrete readiness check](docs/MIROFISH_SETUP.md).
+
+See [simulated market, modes and native council evidence](docs/SIMULATED_MARKET.md)
+for order-fill assumptions, account separation and the direct MiroFish report
+path. The [remaining integration work](docs/FUSION_WORK_REMAINING.md) records the
+broader source-merger objective; bundling native code is not a claim that every
+upstream feature is already operating in Loki.
 
 ## Desktop paper terminal
 

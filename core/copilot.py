@@ -219,6 +219,7 @@ class LokiCopilot:
             "scenario": self._scenario,
             "pullback": self._pullback,
             "learning": self._learning,
+            "sim_market": self._sim_market,
         }
         topics = self._topics(question)
         if topics == ["followup"]:
@@ -261,6 +262,7 @@ class LokiCopilot:
             "scenario": "Portfolio stress",
             "pullback": "Pullback research",
             "learning": "Historical model training",
+            "sim_market": "Simulated practice market",
         }
         for topic in topics:
             body, sources, prompts = handlers[topic](snapshot, question)
@@ -344,7 +346,14 @@ class LokiCopilot:
         if special:
             topics.append(special)
         patterns = [
-            ("learning", r"\b(train(?:ed|ing)?|machine.learning|market.model|historical.model|prediction.accuracy)\b"),
+            (
+                "sim_market",
+                r"\b(simulated.market|practice.(?:market|exchange|account|balance|equity|positions?|orders?|pnl|profit)|synthetic.(?:market|account|balance)|market.simulator|paper.mode|real.mode)\b",
+            ),
+            (
+                "learning",
+                r"\b(train(?:ed|ing)?|machine.learning|market.model|historical.model|prediction.accuracy)\b",
+            ),
             ("pullback", r"\b(pullback|mean.reversion)\b"),
             (
                 "council",
@@ -386,6 +395,8 @@ class LokiCopilot:
                 if topic == "portfolio" and re.search(r"\bposition siz", q):
                     continue
                 if topic == "strategy" and "pullback" in topics:
+                    continue
+                if topic in {"portfolio", "performance"} and "sim_market" in topics:
                     continue
                 topics.append(topic)
         elif re.search(r"\b(?:and|also|plus)\b.*\b(?:risk|drawdown|exposure)\b", q):
@@ -896,6 +907,15 @@ class LokiCopilot:
                 + "."
             )
         target = _mapping(result.get("performance_target"))
+        native = _mapping(result.get("miro_research"))
+        if native:
+            report = _mapping(native.get("report"))
+            outline = _mapping(report.get("outline"))
+            lines.append(
+                f"Native MiroFish scenario {_label(report.get('report_id'))}: {_label(outline.get('summary'))}. "
+                "The retained ReportManager and report classes supplied this scenario without the project's HTTP API. "
+                "Its simulated-agent opinions are hypothetical context; they cannot validate a strategy or override the hard checks."
+            )
         if target:
             lines.append(
                 f"The supplied research has {_count(target.get('closed_trades')) if _count(target.get('closed_trades')) is not None else 'unknown'} "
@@ -1021,45 +1041,93 @@ class LokiCopilot:
         )
 
     @staticmethod
+    def _sim_market(context: Mapping, question: str):
+        market = _mapping(context.get("simulated_market"))
+        metrics = _mapping(market.get("metrics"))
+        lines = [
+            "Open Simulated market, or select Paper at the top, to practice on generated BTC/USD, ETH/USD and SOL/USD candles. "
+            "Play advances a virtual one-minute clock. Market orders use bid/ask plus costs, limits wait for a later candle, and protective stops can gap. "
+            "The practice cash account is separate from the main paper journal and any real exchange balance."
+        ]
+        if market.get("synthetic") is True:
+            lines.append(
+                f"The supplied practice snapshot is step {_label(market.get('step'))} in the {_label(market.get('scenario'))} scenario: "
+                f"practice equity {_cash(metrics.get('equity'))}, cash {_cash(metrics.get('cash'))}, "
+                f"net practice P&L {_cash(metrics.get('total_pnl'))}. These are synthetic outcomes."
+            )
+        lines.append(
+            "Real at the top opens genuine exchange account inspection when configured. Real order submission is not implemented here yet; "
+            "a mode switch never arms a bot or places a trade. Synthetic wins, generated price paths and practice council feedback cannot establish 70% real-market winning trades."
+        )
+        return (
+            "\n".join(lines),
+            ["supplied synthetic practice snapshot"] if market else [],
+            ["Explain the council", "What evidence do I need for a 70% win rate?"],
+        )
+
+    @staticmethod
     def _learning(context: Mapping, question: str):
         report = _mapping(context.get("market_learning"))
-        intro = ("Loki's historical learner fits a small regularized logistic model to past daily returns. "
-                 "Features use only earlier observations, and scaling and weights use training dates only. "
-                 "Validation and test dates do not fit or tune the model. The public source is the "
-                 "CC BY 4.0 Open Crypto Pricing factor series; it needs no account or API key. ")
+        intro = (
+            "Loki's historical learner fits a small regularized logistic model to past daily returns. "
+            "Features use only earlier observations, and scaling and weights use training dates only. "
+            "Validation and test dates do not fit or tune the model. The public source is the "
+            "CC BY 4.0 Open Crypto Pricing factor series; it needs no account or API key. "
+        )
         if not report:
-            return (intro + "No training report was supplied. Use Fetch history & train in Quant lab, "
-                    "or the offline trainer for a larger licensed return CSV. This does not fine-tune "
-                    "the conversational assistant or establish a trading edge.", [], ["What evidence do I need for a 70% win rate?"])
+            return (
+                intro + "No training report was supplied. Use Fetch history & train in Quant lab, "
+                "or the offline trainer for a larger licensed return CSV. This does not fine-tune "
+                "the conversational assistant or establish a trading edge.",
+                [],
+                ["What evidence do I need for a 70% win rate?"],
+            )
         train, test = _mapping(report.get("training")), _mapping(report.get("test"))
-        text = (intro + f"The supplied report covers {_label(report.get('observations'))} dated observations, "
-                f"with {_label(train.get('examples'))} training examples through {_label(train.get('end'))}. "
-                f"Later test direction accuracy is {_percent(test.get('direction_accuracy'), True)} "
-                f"across {_label(test.get('examples'))} predictions; the training-majority baseline scores "
-                f"{_percent(test.get('training_majority_baseline_accuracy'), True)}. "
-                "Direction accuracy is not a completed-trade win rate. This report proves neither "
-                "profitability nor 70% winning trades. Retrospective data revisions and factor design "
-                "can bias these exploratory results. The model cannot place orders.")
-        return text, ["supplied historical-learning report; provenance and availability are not independently authenticated by chat"], ["Explain the trading strategy", "What should I test next?"]
+        text = (
+            intro
+            + f"The supplied report covers {_label(report.get('observations'))} dated observations, "
+            f"with {_label(train.get('examples'))} training examples through {_label(train.get('end'))}. "
+            f"Later test direction accuracy is {_percent(test.get('direction_accuracy'), True)} "
+            f"across {_label(test.get('examples'))} predictions; the training-majority baseline scores "
+            f"{_percent(test.get('training_majority_baseline_accuracy'), True)}. "
+            "Direction accuracy is not a completed-trade win rate. This report proves neither "
+            "profitability nor 70% winning trades. Retrospective data revisions and factor design "
+            "can bias these exploratory results. The model cannot place orders."
+        )
+        return (
+            text,
+            [
+                "supplied historical-learning report; provenance and availability are not independently authenticated by chat"
+            ],
+            ["Explain the trading strategy", "What should I test next?"],
+        )
 
     @staticmethod
     def _pullback(context: Mapping, question: str):
         report = _mapping(context.get("pullback_research"))
-        introduction = ("The pullback hypothesis looks for an oversold close below its 20-bar band "
-                        "while remaining above its 100-close average. Three fixed RSI/band/ATR recipes "
-                        "compete on earlier training prices. Positive net expectancy, enough trades and "
-                        "positive doubled-cost training return are required; otherwise it selects cash. "
-                        "The selected recipe is held fixed on later test prices. Entries fill at the "
-                        "next open, and ambiguous stop/target bars take the stop first.")
+        introduction = (
+            "The pullback hypothesis looks for an oversold close below its 20-bar band "
+            "while remaining above its 100-close average. Three fixed RSI/band/ATR recipes "
+            "compete on earlier training prices. Positive net expectancy, enough trades and "
+            "positive doubled-cost training return are required; otherwise it selects cash. "
+            "The selected recipe is held fixed on later test prices. Entries fill at the "
+            "next open, and ambiguous stop/target bars take the stop first."
+        )
         if not report:
-            return (introduction + " No pullback test result was supplied. Run the candidate test on "
-                    "at least 260 ordered bars. No 70% winning-trade rate or market edge is established.",
-                    [], ["Explain my risk", "Review the backtest"])
+            return (
+                introduction + " No pullback test result was supplied. Run the candidate test on "
+                "at least 260 ordered bars. No 70% winning-trade rate or market edge is established.",
+                [],
+                ["Explain my risk", "Review the backtest"],
+            )
         body, evidence, _ = LokiCopilot._lab_backtest(report)
         body = body.replace("Reported Strategy Lab result:", "Reported pullback train/test result:")
-        return (introduction + "\n\n" + body + "\nFresh holdout provenance has not been verified. "
-                "Repeatedly changing recipes after inspecting test results can overfit.",
-                evidence, ["Explain my risk", "Can you guarantee 70%?"])
+        return (
+            introduction + "\n\n" + body + "\nFresh holdout provenance has not been verified. "
+            "Repeatedly changing recipes after inspecting test results can overfit.",
+            evidence,
+            ["Explain my risk", "Can you guarantee 70%?"],
+        )
 
     @staticmethod
     def _action(context: Mapping, question: str):

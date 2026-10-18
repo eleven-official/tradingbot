@@ -2,3 +2,5 @@
 third_party/**/upstream/* -text -whitespace
 third_party/**/LICENSE -text
 third_party/**/NOTICE -text
+components/mirofish/upstream/** -text -whitespace
+components/mirofish/report_contracts.py -text -whitespace

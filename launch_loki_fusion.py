@@ -28,6 +28,7 @@ def configure(config_path: Path | None = None):
         "fincept_allow_analytics",
         "mirofish_url",
         "mirofish_allow_jobs",
+        "mirofish_data_path",
     }
     if set(config) - allowed:
         raise ValueError("Unknown local engine setting")
@@ -36,6 +37,7 @@ def configure(config_path: Path | None = None):
         ("fincept_path", "LOKI_FINCEPT_PATH"),
         ("fincept_python", "LOKI_FINCEPT_PYTHON"),
         ("mirofish_url", "LOKI_MIROFISH_URL"),
+        ("mirofish_data_path", "LOKI_MIROFISH_DATA_PATH"),
     ):
         if field in config:
             if not isinstance(config[field], str) or len(config[field]) > 4096:
@@ -44,7 +46,7 @@ def configure(config_path: Path | None = None):
             if "\x00" in value:
                 raise ValueError(f"{field} contains an invalid null character")
             if (
-                field in {"fincept_path", "fincept_python"}
+                field in {"fincept_path", "fincept_python", "mirofish_data_path"}
                 and value
                 and config_directory is not None
             ):

@@ -156,12 +156,24 @@ class CouncilRequest(StrictModel):
     portfolio: dict | None = None
     research: dict | None = None
     config: dict = Field(default_factory=dict)
+    miro_report_id: str | None = Field(
+        default=None, min_length=8, max_length=110, pattern=r"^report_[A-Za-z0-9_-]+$"
+    )
+    miro_reviewed: bool = False
 
 
 @router.post("/council")
-def council(payload: CouncilRequest):
+def council(payload: CouncilRequest, request: Request, response: Response):
     from core.fusion.council import build_council_report
 
+    native = None
+    if payload.miro_report_id:
+        from core.fusion.miro_native import load_report
+        from core.fusion.quant import _symbol
+
+        _require_local_action(request)
+        _private_response(response)
+        native = _call(load_report, payload.miro_report_id, _call(_symbol, payload.symbol))
     return _call(
         build_council_report,
         payload.bars,
@@ -169,6 +181,8 @@ def council(payload: CouncilRequest):
         portfolio=payload.portfolio,
         research=payload.research,
         config=payload.config,
+        miro_research=native,
+        miro_reviewed=payload.miro_reviewed,
     )
 
 
@@ -201,6 +215,29 @@ class ScenarioRequest(StrictModel):
     portfolio: dict | None = None
     shock_pct: float = Field(default=-10, ge=-99, le=500)
     volatility_multiplier: float = Field(default=1, ge=0.1, le=10)
+
+
+class SimulatedMarketRequest(StrictModel):
+    action: Literal["create", "snapshot", "advance", "order", "cancel", "council"] = "snapshot"
+    state: dict | None = None
+    seed: int = Field(default=42, ge=0, le=2147483647)
+    scenario: Literal["balanced", "uptrend", "downtrend", "range", "volatile", "crash"] = "balanced"
+    initial_capital: float = Field(default=10000, gt=0, le=1e9)
+    steps: int = Field(default=1, ge=1, le=30)
+    symbol: Literal["BTC/USD", "ETH/USD", "SOL/USD"] = "BTC/USD"
+    side: Literal["buy", "sell"] | None = None
+    order_type: Literal["market", "limit"] = "market"
+    quantity: float | None = Field(default=None, gt=0, le=1e9)
+    limit_price: float | None = Field(default=None, gt=0, le=1e9)
+    stop_loss: float | None = Field(default=None, gt=0, le=1e9)
+    order_id: str | None = Field(default=None, max_length=32)
+
+
+@router.post("/simulated-market")
+def simulated_market(payload: SimulatedMarketRequest):
+    from core.fusion.simulated_market import act
+
+    return _call(act, payload.model_dump(exclude_none=True))
 
 
 @router.post("/scenario")
@@ -288,6 +325,48 @@ def fincept_status(request: Request, response: Response):
     _require_local_action(request)
     _private_response(response)
     return _call(lambda: FinceptAdapter.from_env().status())
+
+
+@router.get("/real/status")
+def real_status(request: Request, response: Response):
+    from core.fusion.real_account import status
+
+    _require_local_action(request)
+    _private_response(response)
+    return _call(status)
+
+
+@router.get("/native-mirofish/status")
+def native_mirofish_status(request: Request, response: Response):
+    from core.fusion.miro_native import native_status
+
+    _require_local_action(request)
+    _private_response(response)
+    return _call(native_status)
+
+
+@router.get("/native-mirofish/report/{identifier}")
+def native_mirofish_report(
+    identifier: str,
+    request: Request,
+    response: Response,
+    symbol: str = Query(default="BTC/USDT", min_length=1, max_length=40),
+):
+    from core.fusion.miro_native import load_report
+    from core.fusion.quant import _symbol
+
+    _require_local_action(request)
+    _private_response(response)
+    return _call(load_report, identifier, _call(_symbol, symbol))
+
+
+@router.post("/real/account")
+def real_account(request: Request, response: Response):
+    from core.fusion.real_account import account_snapshot
+
+    _require_local_action(request)
+    _private_response(response)
+    return _call(account_snapshot)
 
 
 @router.get("/mirofish/{collection}")

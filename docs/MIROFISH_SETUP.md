@@ -1,5 +1,13 @@
 # Connect the actual MiroFish service
 
+The complete supplied source is now included at
+`components/mirofish/upstream`. Use that path with the setup helper below; an
+external clone is no longer needed. Its native ReportManager reader and report
+classes also run directly through Loki's council without this service or its
+project HTTP API. See [native report integration](SIMULATED_MARKET.md).
+That working artifact-read path does not run graph generation, OASIS agents or
+new provider reports. Their genuine runtime prerequisites below still apply.
+
 MiroFish's native graph, agent simulation and report capabilities require its
 separate service and provider configuration. Loki's local scenario calculator is
 not a substitute for those capabilities. An unconfigured adapter does not mean
