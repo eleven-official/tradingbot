@@ -218,8 +218,12 @@ jobs:
     steps:
     - name: Slack Notification
       uses: 8398a7/action-slack@v3
+      # Notification problems must never fail the pipeline (the webhook secret
+      # is optional; without it the action errors, so tolerate it).
+      continue-on-error: true
       with:
         status: ${{ job.status }}
         text: 'Loki CI/CD Pipeline: ${{ job.status }}'
-        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       if: always()

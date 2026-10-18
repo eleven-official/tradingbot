@@ -79,7 +79,9 @@ class AutonomousEngineState:
 
     async def _loop(self):
         bot = get_bot()
-        self.add_log(f"Autonomous Trading Engine STARTED ({bot.mode.upper()} mode, interval={self.interval}s)")
+        self.add_log(
+            f"Autonomous Trading Engine STARTED ({bot.mode.upper()} mode, interval={self.interval}s)"
+        )
         while self.is_running:
             try:
                 self.iterations += 1
@@ -87,7 +89,9 @@ class AutonomousEngineState:
                 report = await asyncio.to_thread(bot.agent_scan, bot.cfg.symbols)
                 exec_count = report.get("executed", 0)
                 sig_count = report.get("signals", 0)
-                self.add_log(f"Cycle #{self.iterations}: {sig_count} signals evaluated, {exec_count} orders executed.")
+                self.add_log(
+                    f"Cycle #{self.iterations}: {sig_count} signals evaluated, {exec_count} orders executed."
+                )
             except Exception as exc:
                 self.add_log(f"Cycle #{self.iterations} exception: {exc}")
             await asyncio.sleep(self.interval)
@@ -161,13 +165,17 @@ async def root(request: Request):
     """Render the web command center for browsers, or JSON for API test clients."""
     accept = request.headers.get("accept", "")
     ua = request.headers.get("user-agent", "").lower()
-    is_browser = "text/html" in accept or ("mozilla" in ua or "chrome" in ua or "safari" in ua or "edge" in ua)
+    is_browser = "text/html" in accept or (
+        "mozilla" in ua or "chrome" in ua or "safari" in ua or "edge" in ua
+    )
     if not is_browser:
-        return JSONResponse({
-            "application": "Loki Trading Platform",
-            "version": __version__,
-            "status": "operational",
-        })
+        return JSONResponse(
+            {
+                "application": "Loki Trading Platform",
+                "version": __version__,
+                "status": "operational",
+            }
+        )
 
     bot = get_bot()
     context = {
@@ -182,22 +190,26 @@ async def root(request: Request):
 @app.get("/health")
 async def health():
     bot = get_bot()
-    return JSONResponse({
-        "status": "healthy",
-        "service": "loki",
-        "version": __version__,
-        "uptime_seconds": 3600,
-        "active_strategies": len(_strategies_store),
-        "market_connection": True,
-        "mode": bot.mode,
-        "open_positions": len(bot.broker.positions),
-    })
+    return JSONResponse(
+        {
+            "status": "healthy",
+            "service": "loki",
+            "version": __version__,
+            "uptime_seconds": 3600,
+            "active_strategies": len(_strategies_store),
+            "market_connection": True,
+            "mode": bot.mode,
+            "open_positions": len(bot.broker.positions),
+        }
+    )
 
 
 @app.get("/api/status")
 async def get_status():
     bot = get_bot()
-    quotes = bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+    quotes = (
+        bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+    )
     eq = bot.broker.equity(quotes)
     open_pos = len(bot.broker.positions)
     pnl = eq - bot.cfg.initial_cash
@@ -241,7 +253,9 @@ def verify_bearer(authorization: Optional[str] = Header(None)):
 @app.get("/api/v1/portfolio")
 async def get_portfolio_v1(auth: str = Depends(verify_bearer)):
     bot = get_bot()
-    quotes = bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+    quotes = (
+        bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+    )
     eq = bot.broker.equity(quotes)
     return {
         "total_value": eq,
@@ -319,23 +333,27 @@ async def stop_strategy_v1(name: str, auth: str = Depends(verify_bearer)):
 @app.get("/api/scan")
 async def get_scan(symbols: Optional[str] = Query(None)):
     bot = get_bot()
-    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else bot.cfg.symbols
+    sym_list = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else bot.cfg.symbols
+    )
     signals = bot.scan(sym_list)
     results = []
     for s in signals:
-        results.append({
-            "symbol": s.symbol,
-            "action": s.action,
-            "score": round(s.score, 1),
-            "confidence": round(s.confidence, 1),
-            "entry_price": round(s.entry_price, 2),
-            "stop_loss": round(s.stop_loss, 2),
-            "take_profit": round(s.take_profit, 2),
-            "target_2": round(getattr(s, "target_2", 0.0), 2),
-            "risk_reward": getattr(s, "risk_reward", 1.5),
-            "squeeze_status": getattr(s, "squeeze_status", "OFF"),
-            "reasons": getattr(s, "reasons", []),
-        })
+        results.append(
+            {
+                "symbol": s.symbol,
+                "action": s.action,
+                "score": round(s.score, 1),
+                "confidence": round(s.confidence, 1),
+                "entry_price": round(s.entry_price, 2),
+                "stop_loss": round(s.stop_loss, 2),
+                "take_profit": round(s.take_profit, 2),
+                "target_2": round(getattr(s, "target_2", 0.0), 2),
+                "risk_reward": getattr(s, "risk_reward", 1.5),
+                "squeeze_status": getattr(s, "squeeze_status", "OFF"),
+                "reasons": getattr(s, "reasons", []),
+            }
+        )
     return {"count": len(results), "signals": results}
 
 
@@ -353,30 +371,34 @@ async def get_portfolio():
         pos_invested = pos.avg_entry * abs(pos.qty)
         unrealized_pct = (unrealized / pos_invested) * 100.0 if pos_invested > 0 else 0.0
 
-        positions_data.append({
-            "symbol": sym,
-            "side": pos.side,
-            "qty": round(pos.qty, 4),
-            "avg_entry": round(pos.avg_entry, 2),
-            "current_price": round(cur_price, 2),
-            "market_value": round(val, 2),
-            "unrealized_pnl": round(unrealized, 2),
-            "unrealized_pnl_pct": round(unrealized_pct, 2),
-            "stop_loss": round(pos.stop_loss, 2),
-            "take_profit": round(pos.take_profit, 2),
-        })
+        positions_data.append(
+            {
+                "symbol": sym,
+                "side": pos.side,
+                "qty": round(pos.qty, 4),
+                "avg_entry": round(pos.avg_entry, 2),
+                "current_price": round(cur_price, 2),
+                "market_value": round(val, 2),
+                "unrealized_pnl": round(unrealized, 2),
+                "unrealized_pnl_pct": round(unrealized_pct, 2),
+                "stop_loss": round(pos.stop_loss, 2),
+                "take_profit": round(pos.take_profit, 2),
+            }
+        )
 
     trades_data = []
     for t in reversed(bot.broker.trades[-20:]):
-        trades_data.append({
-            "symbol": t.symbol,
-            "side": t.side,
-            "qty": round(t.qty, 4),
-            "entry_price": round(t.entry_price, 2),
-            "exit_price": round(t.exit_price, 2),
-            "pnl": round(t.pnl, 2),
-            "pnl_pct": round(t.pnl_pct, 2),
-        })
+        trades_data.append(
+            {
+                "symbol": t.symbol,
+                "side": t.side,
+                "qty": round(t.qty, 4),
+                "entry_price": round(t.entry_price, 2),
+                "exit_price": round(t.exit_price, 2),
+                "pnl": round(t.pnl, 2),
+                "pnl_pct": round(t.pnl_pct, 2),
+            }
+        )
 
     eq = bot.broker.equity(quotes)
     return {
@@ -437,7 +459,11 @@ async def switch_mode(req: ModeRequest):
 @app.get("/api/council")
 async def get_council(symbols: Optional[str] = Query(None)):
     bot = get_bot()
-    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else bot.cfg.symbols[:6]
+    sym_list = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else bot.cfg.symbols[:6]
+    )
     report = bot.agent_scan(sym_list)
     return report
 
@@ -529,15 +555,11 @@ async def apply_training(req: ApplyTrainingRequest):
     bot = get_bot()
     report = train_module.load_report(bot.cfg)
     if report is None:
-        raise HTTPException(
-            status_code=404, detail="no training report; run training first"
-        )
+        raise HTTPException(status_code=404, detail="no training report; run training first")
     symbol = req.symbol.strip().upper()
     applied = train_module.apply_best(report, symbol, bot.cfg)
     if not applied:
-        raise HTTPException(
-            status_code=404, detail=f"no successful training result for {symbol}"
-        )
+        raise HTTPException(status_code=404, detail=f"no successful training result for {symbol}")
     return {"symbol": symbol, "applied": applied}
 
 
@@ -581,24 +603,38 @@ async def websocket_market_data(websocket: WebSocket):
     await websocket.accept()
     bot = get_bot()
     try:
-        # Initial heartbeat
-        quotes = bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+        # Initial heartbeat. Quote fetching touches the network, so it must
+        # never prevent the first message: if quotes fail we still send the
+        # heartbeat with cached/zeroed equity (a silent close here would hang
+        # clients waiting for data).
+        try:
+            quotes = (
+                bot.provider.get_quotes(list(bot.broker.positions.keys()))
+                if bot.broker.positions
+                else {}
+            )
+        except Exception:
+            quotes = {}
         eq = bot.broker.equity(quotes)
-        await websocket.send_json({
-            "timestamp": datetime.now().isoformat(),
-            "portfolio_value": eq,
-            "cash": bot.broker.cash,
-            "open_positions": len(bot.broker.positions),
-            "mode": bot.mode,
-        })
+        await websocket.send_json(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "portfolio_value": eq,
+                "cash": bot.broker.cash,
+                "open_positions": len(bot.broker.positions),
+                "mode": bot.mode,
+            }
+        )
         while True:
             # Echo or stream
             data = await websocket.receive_text()
-            await websocket.send_json({
-                "timestamp": datetime.now().isoformat(),
-                "portfolio_value": bot.broker.equity({}),
-                "received": data,
-            })
+            await websocket.send_json(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "portfolio_value": bot.broker.equity({}),
+                    "received": data,
+                }
+            )
     except (WebSocketDisconnect, Exception):
         pass
 
