@@ -94,11 +94,20 @@ def run_backtest(
     strategy: Optional[EnsembleStrategy] = None,
     symbol: str = "SYMBOL",
     bars_per_year: int = 252,
+    frame: Optional[pd.DataFrame] = None,
 ) -> BacktestResult:
-    """Run an event-driven long/short backtest over `df` (OHLCV)."""
+    """Run an event-driven long/short backtest over `df` (OHLCV).
+
+    ``frame`` may be a pre-computed ``strategy.score_frame(df)`` result. The
+    score/indicator columns depend only on the bars, not on the tunable
+    execution parameters (threshold, stops, filters), so callers that sweep
+    many configurations over the same bars (see ``loki_v8.train``) can score
+    once and reuse the frame instead of recomputing indicators per run.
+    """
     strategy = strategy or EnsembleStrategy(cfg)
     df = df.copy()
-    frame = strategy.score_frame(df)
+    if frame is None:
+        frame = strategy.score_frame(df)
     scores = frame["score"]
     atrs = frame["atr"]
     regimes = regime_series(frame)

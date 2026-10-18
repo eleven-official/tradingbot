@@ -26,6 +26,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from loki.version import __version__
+from loki_v8 import train as train_module
 from loki_v8.bot import LokiBot
 from loki_v8.config import default_config
 
@@ -472,6 +473,72 @@ async def run_backtest_endpoint(symbol: str = "AAPL", period: str = "2y"):
         }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Strategy Trainer — walk-forward parameter training on historical data
+# ---------------------------------------------------------------------------
+class ApplyTrainingRequest(BaseModel):
+    symbol: str
+
+
+@app.get("/api/training/run")
+async def run_training(
+    symbols: Optional[str] = Query(None),
+    period: str = Query("5y"),
+    train_frac: float = Query(0.7, ge=0.5, le=0.9),
+):
+    """Train ensemble execution parameters on historical bars.
+
+    Walk-forward: optimize on the first ``train_frac`` of the history, then
+    verify the top candidates out-of-sample on the remainder. Runs in a
+    worker thread so the event loop stays responsive; results are persisted
+    to ``state/training_report.json``.
+    """
+    bot = get_bot()
+    sym_list = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else list(bot.cfg.symbols)
+    )
+    try:
+        report = await asyncio.to_thread(
+            train_module.train,
+            sym_list,
+            bot.cfg,
+            period=period,
+            train_frac=train_frac,
+        )
+        return report
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"training failed: {exc}")
+
+
+@app.get("/api/training/report")
+async def get_training_report():
+    """Return the most recent persisted training report (empty if none)."""
+    report = train_module.load_report(get_bot().cfg)
+    if report is None:
+        return {"generated_at": None, "symbols": []}
+    return report
+
+
+@app.post("/api/training/apply")
+async def apply_training(req: ApplyTrainingRequest):
+    """Apply a symbol's best trained parameters to the running engine."""
+    bot = get_bot()
+    report = train_module.load_report(bot.cfg)
+    if report is None:
+        raise HTTPException(
+            status_code=404, detail="no training report; run training first"
+        )
+    symbol = req.symbol.strip().upper()
+    applied = train_module.apply_best(report, symbol, bot.cfg)
+    if not applied:
+        raise HTTPException(
+            status_code=404, detail=f"no successful training result for {symbol}"
+        )
+    return {"symbol": symbol, "applied": applied}
 
 
 # ---------------------------------------------------------------------------

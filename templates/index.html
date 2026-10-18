@@ -4,6 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Loki v8.5 Quantum Algorithmic Trading Terminal</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/favicon.png">
+  <meta name="theme-color" content="#090d16">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -116,21 +121,25 @@
 
     <!-- Navigation Tabs -->
     <nav class="tabs-nav">
-      <button class="tab-btn active" onclick="showTab('radar')">
+      <button class="tab-btn active" onclick="showTab('radar', this)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
         Live Market Radar
       </button>
-      <button class="tab-btn" onclick="showTab('council')">
+      <button class="tab-btn" onclick="showTab('council', this)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Agentic Council Deliberation
       </button>
-      <button class="tab-btn" onclick="showTab('portfolio')">
+      <button class="tab-btn" onclick="showTab('portfolio', this)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9M14 17H5M12 3v18"/></svg>
         Portfolio & Execution Desk
       </button>
-      <button class="tab-btn" onclick="showTab('backtest')">
+      <button class="tab-btn" onclick="showTab('backtest', this)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         Honest Backtest Lab
+      </button>
+      <button class="tab-btn" onclick="showTab('trainer', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
+        AI Strategy Trainer
       </button>
     </nav>
 
@@ -147,6 +156,21 @@
             SCAN LIVE UNIVERSE NOW
           </button>
         </div>
+      </div>
+
+      <!-- Custom Watchlist -->
+      <div class="watchlist-bar">
+        <span class="watchlist-label">MY WATCHLIST</span>
+        <div id="watchlist-chips" class="watchlist-chips"></div>
+        <div class="watchlist-add">
+          <input id="watchlist-input" class="form-control watchlist-input" type="text"
+                 placeholder="Add symbol (e.g. TSLA)" maxlength="20"
+                 onkeydown="if(event.key==='Enter') addWatchlistSymbol()">
+          <button class="action-btn btn-secondary watchlist-add-btn" onclick="addWatchlistSymbol()">+ ADD</button>
+        </div>
+        <span id="watchlist-hint" class="watchlist-hint">
+          Scans use your watchlist when it has symbols; otherwise the engine universe.
+        </span>
       </div>
 
       <div class="table-card">
@@ -349,6 +373,40 @@
       </div>
     </div>
 
+    <!-- TAB 5: AI Strategy Trainer -->
+    <div id="tab-trainer" class="tab-content" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2 style="font-size:18px; font-weight:800;">AI Strategy Trainer &mdash; Walk-Forward Validation</h2>
+          <p style="font-size:13px; color:var(--text-muted);">
+            Trains execution parameters (signal threshold, ATR stops/targets, trend filter) on the first 70% of history,
+            then verifies the winners on the remaining 30% &mdash; out-of-sample, no lookahead.
+          </p>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+          <div>
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Symbols (blank = engine universe)</label>
+            <input id="train-symbols" class="form-control" type="text" placeholder="AAPL, MSFT, BTC-USD" style="min-width:240px;">
+          </div>
+          <div>
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">History</label>
+            <select id="train-period" class="form-control">
+              <option value="2y">2 Years</option>
+              <option value="5y" selected>5 Years</option>
+              <option value="10y">10 Years</option>
+            </select>
+          </div>
+          <button id="btn-run-training" class="action-btn btn-primary" onclick="runTraining()" style="height:42px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
+            TRAIN ON HISTORICAL DATA
+          </button>
+        </div>
+      </div>
+
+      <div id="train-status" class="train-status" style="display:none;"></div>
+      <div id="train-results"></div>
+    </div>
+
   </main>
 
   <footer>
@@ -359,15 +417,80 @@
   <script>
     let currentMode = "paper";
     let equityChartInstance = null;
+    let portfolioRefreshTimer = null;
 
-    function showTab(tabId) {
+    // ------------------------------------------------------------------
+    // UI helpers: toast notifications, confirm dialog, HTML escaping
+    // ------------------------------------------------------------------
+    function escapeHtml(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function toast(message, type = 'info') {
+      let holder = document.getElementById('toast-holder');
+      if (!holder) {
+        holder = document.createElement('div');
+        holder.id = 'toast-holder';
+        document.body.appendChild(holder);
+      }
+      const el = document.createElement('div');
+      el.className = 'toast toast-' + type;
+      el.textContent = message;
+      holder.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      setTimeout(() => {
+        el.classList.remove('toast-show');
+        setTimeout(() => el.remove(), 350);
+      }, 4200);
+    }
+
+    function confirmDialog(message) {
+      return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+          <div class="modal-box">
+            <div class="modal-msg">${escapeHtml(message)}</div>
+            <div class="modal-actions">
+              <button class="action-btn btn-secondary" data-ans="0">Cancel</button>
+              <button class="action-btn btn-primary" data-ans="1">Confirm</button>
+            </div>
+          </div>`;
+        overlay.addEventListener('click', e => {
+          const ans = e.target.dataset ? e.target.dataset.ans : null;
+          if (ans !== undefined && ans !== null) {
+            overlay.remove();
+            resolve(ans === '1');
+          } else if (e.target === overlay) {
+            overlay.remove();
+            resolve(false);
+          }
+        });
+        document.body.appendChild(overlay);
+      });
+    }
+
+    function showTab(tabId, btn) {
       document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
       document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
       document.getElementById('tab-' + tabId).style.display = 'block';
-      event.currentTarget.classList.add('active');
+      const target = btn || event.currentTarget;
+      if (target) target.classList.add('active');
 
-      if (tabId === 'portfolio') loadPortfolio();
+      if (tabId === 'portfolio') { loadPortfolio(); startPortfolioRefresh(); }
+      else stopPortfolioRefresh();
       if (tabId === 'council') loadCouncil();
+      if (tabId === 'trainer') loadTrainingReport();
+    }
+
+    function startPortfolioRefresh() {
+      stopPortfolioRefresh();
+      portfolioRefreshTimer = setInterval(loadPortfolio, 15000);
+    }
+    function stopPortfolioRefresh() {
+      if (portfolioRefreshTimer) { clearInterval(portfolioRefreshTimer); portfolioRefreshTimer = null; }
     }
 
     async function updateStatus() {
@@ -396,8 +519,8 @@
 
     async function setMode(mode) {
       if (mode === 'live') {
-        const confirmMsg = "Confirm: Switching to LIVE BROKER requires real broker API credentials in .env. Fails closed to local simulator if unset. Proceed?";
-        if (!confirm(confirmMsg)) return;
+        const ok = await confirmDialog("Switching to LIVE BROKER requires real broker API credentials in .env. Fails closed to the local simulator if unset. Proceed?");
+        if (!ok) return;
       }
       try {
         const res = await fetch('/api/mode', {
@@ -408,7 +531,7 @@
         const data = await res.json();
         updateStatus();
       } catch (e) {
-        alert("Failed to switch mode: " + e);
+        toast("Failed to switch mode: " + e.message, 'error');
       }
     }
 
@@ -418,9 +541,15 @@
         ⚡ Calculating real-time indicators, TTM Squeeze, CMF, and ensemble scores...
       </td></tr>`;
 
+      const watchlist = getWatchlist();
+      const scanUrl = watchlist.length
+        ? '/api/scan?symbols=' + encodeURIComponent(watchlist.join(','))
+        : '/api/scan';
+
       try {
-        const res = await fetch('/api/scan');
+        const res = await fetch(scanUrl);
         const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
         if (!data.signals || data.signals.length === 0) {
           tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--text-muted);">No actionable signals right now. Market in equilibrium.</td></tr>`;
           return;
@@ -429,18 +558,19 @@
         tbody.innerHTML = '';
         data.signals.forEach(s => {
           const actionClass = s.action === 'BUY' ? 'badge-buy' : (s.action === 'SELL' ? 'badge-sell' : 'badge-hold');
-          const squeezeClass = s.squeeze_status === 'ON' ? 'badge-squeeze-on' : (s.squeeze_status.startsWith('FIRING') ? 'badge-squeeze-fire' : 'badge-hold');
-          const reasonsHtml = (s.reasons || []).map(r => `<span class="factor-tag">${r}</span>`).join(' ');
+          const squeezeClass = s.squeeze_status === 'ON' ? 'badge-squeeze-on' : ((s.squeeze_status || '').startsWith('FIRING') ? 'badge-squeeze-fire' : 'badge-hold');
+          const reasonsHtml = (s.reasons || []).map(r => `<span class="factor-tag">${escapeHtml(r)}</span>`).join(' ');
+          const sym = escapeHtml(s.symbol);
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td style="font-weight:700; font-family:var(--font-mono); font-size:14px; color:#fff;">${s.symbol}</td>
-            <td><span class="badge ${actionClass}">${s.action}</span></td>
+            <td style="font-weight:700; font-family:var(--font-mono); font-size:14px; color:#fff;">${sym}</td>
+            <td><span class="badge ${actionClass}">${escapeHtml(s.action)}</span></td>
             <td>
               <div style="font-family:var(--font-mono); font-weight:700;">${s.score > 0 ? '+' : ''}${s.score}</div>
               <div style="font-size:11px; color:var(--text-muted);">${s.confidence}% conf</div>
             </td>
-            <td><span class="badge ${squeezeClass}">${s.squeeze_status}</span></td>
+            <td><span class="badge ${squeezeClass}">${escapeHtml(s.squeeze_status)}</span></td>
             <td style="font-family:var(--font-mono);">$${s.entry_price.toFixed(2)}</td>
             <td style="font-family:var(--font-mono); color:var(--neon-red);">$${s.stop_loss.toFixed(2)}</td>
             <td style="font-family:var(--font-mono); color:var(--neon-green);">
@@ -449,7 +579,7 @@
             <td style="font-family:var(--font-mono); font-weight:600;">1 : ${s.risk_reward}</td>
             <td><div class="factors-list">${reasonsHtml}</div></td>
             <td style="text-align:right;">
-              <button class="action-btn btn-buy" style="padding:6px 14px; font-size:11px;" onclick="placeQuickOrder('${s.symbol}', '${s.action}', ${s.entry_price})">
+              <button class="action-btn btn-buy" style="padding:6px 14px; font-size:11px;" onclick="placeQuickOrder('${sym}', '${escapeHtml(s.action)}', ${s.entry_price})">
                 EXECUTE
               </button>
             </td>
@@ -457,8 +587,52 @@
           tbody.appendChild(tr);
         });
       } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--neon-red);">Scan error: ${e.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--neon-red);">Scan error: ${escapeHtml(e.message)}</td></tr>`;
+        toast('Scan failed: ' + e.message, 'error');
       }
+    }
+
+    // ------------------------------------------------------------------
+    // Watchlist (persisted per-browser in localStorage)
+    // ------------------------------------------------------------------
+    function getWatchlist() {
+      try {
+        const raw = JSON.parse(localStorage.getItem('loki_watchlist') || '[]');
+        return Array.isArray(raw) ? raw.filter(s => /^[A-Z0-9.\-^]{1,15}$/.test(s)) : [];
+      } catch (e) { return []; }
+    }
+
+    function saveWatchlist(list) {
+      localStorage.setItem('loki_watchlist', JSON.stringify(list));
+      renderWatchlist();
+    }
+
+    function addWatchlistSymbol() {
+      const input = document.getElementById('watchlist-input');
+      const sym = input.value.trim().toUpperCase();
+      if (!sym) return;
+      if (!/^[A-Z0-9.\-^]{1,15}$/.test(sym)) {
+        toast('Invalid symbol: ' + sym, 'error');
+        return;
+      }
+      const list = getWatchlist();
+      if (list.includes(sym)) { toast(sym + ' is already on the watchlist', 'info'); return; }
+      list.push(sym);
+      saveWatchlist(list);
+      input.value = '';
+      toast(sym + ' added to watchlist', 'success');
+    }
+
+    function removeWatchlistSymbol(sym) {
+      saveWatchlist(getWatchlist().filter(s => s !== sym));
+    }
+
+    function renderWatchlist() {
+      const holder = document.getElementById('watchlist-chips');
+      const list = getWatchlist();
+      holder.innerHTML = list.length
+        ? list.map(s => `<span class="watchlist-chip">${escapeHtml(s)}<button class="chip-x" title="Remove" onclick="removeWatchlistSymbol('${escapeHtml(s)}')">×</button></span>`).join('')
+        : '<span class="watchlist-empty">No custom symbols yet</span>';
     }
 
     async function loadPortfolio() {
@@ -467,7 +641,8 @@
         const data = await res.json();
         
         const posTbody = document.getElementById('positions-table-body');
-        document.getElementById('pos-count-badge').textContent = `${data.positions.length} Open`;
+        const stamp = new Date().toLocaleTimeString();
+        document.getElementById('pos-count-badge').textContent = `${data.positions.length} Open · ${stamp}`;
 
         if (data.positions.length === 0) {
           posTbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--text-muted);">No open positions currently active.</td></tr>`;
@@ -480,8 +655,8 @@
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
-              <td style="font-weight:700; font-family:var(--font-mono);">${p.symbol}</td>
-              <td><span class="badge ${sideClass}">${p.side.toUpperCase()}</span></td>
+              <td style="font-weight:700; font-family:var(--font-mono);">${escapeHtml(p.symbol)}</td>
+              <td><span class="badge ${sideClass}">${escapeHtml(p.side.toUpperCase())}</span></td>
               <td style="font-family:var(--font-mono);">${p.qty}</td>
               <td style="font-family:var(--font-mono);">$${p.avg_entry.toFixed(2)}</td>
               <td style="font-family:var(--font-mono);">$${p.current_price.toFixed(2)}</td>
@@ -511,8 +686,8 @@
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
-              <td style="font-weight:700; font-family:var(--font-mono);">${t.symbol}</td>
-              <td><span class="badge ${sideClass}">${t.side.toUpperCase()}</span></td>
+              <td style="font-weight:700; font-family:var(--font-mono);">${escapeHtml(t.symbol)}</td>
+              <td><span class="badge ${sideClass}">${escapeHtml(t.side.toUpperCase())}</span></td>
               <td style="font-family:var(--font-mono);">${t.qty}</td>
               <td style="font-family:var(--font-mono);">$${t.entry_price.toFixed(2)}</td>
               <td style="font-family:var(--font-mono);">$${t.exit_price.toFixed(2)}</td>
@@ -524,6 +699,7 @@
         }
       } catch (e) {
         console.error("Portfolio load error:", e);
+        toast('Portfolio refresh failed: ' + e.message, 'error');
       }
     }
 
@@ -579,7 +755,8 @@
     }
 
     async function placeQuickOrder(symbol, action, price) {
-      if (!confirm(`Execute ${action} order on ${symbol} at current price ~$${price.toFixed(2)}?`)) return;
+      const ok = await confirmDialog(`Execute ${action} order on ${symbol} at current price ~$${price.toFixed(2)}?`);
+      if (!ok) return;
       try {
         const res = await fetch('/api/order', {
           method: 'POST',
@@ -587,20 +764,21 @@
           body: JSON.stringify({symbol, action, price})
         });
         const data = await res.json();
-        alert(`Order Executed! Symbol: ${data.symbol}, Action: ${data.action}, Fill: $${data.fill_price}`);
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Order executed: ${action} ${data.symbol} @ $${data.fill_price}`, 'success');
         updateStatus();
         loadPortfolio();
       } catch (e) {
-        alert("Order failed: " + e);
+        toast('Order failed: ' + e.message, 'error');
       }
     }
 
     async function submitManualOrder() {
-      const symbol = document.getElementById('order-symbol').value.trim();
+      const symbol = document.getElementById('order-symbol').value.trim().toUpperCase();
       const action = document.getElementById('order-action').value;
       const qty = parseFloat(document.getElementById('order-qty').value) || null;
 
-      if (!symbol) return alert("Please specify a symbol.");
+      if (!symbol) return toast('Please specify a symbol.', 'error');
 
       try {
         const res = await fetch('/api/order', {
@@ -609,16 +787,18 @@
           body: JSON.stringify({symbol, action, qty})
         });
         const data = await res.json();
-        alert(`Order filled! ${data.action} ${data.symbol} @ $${data.fill_price}`);
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Order filled: ${data.action} ${data.symbol} @ $${data.fill_price}`, 'success');
         updateStatus();
         loadPortfolio();
       } catch (e) {
-        alert("Order error: " + e);
+        toast('Order error: ' + e.message, 'error');
       }
     }
 
     async function closePosition(symbol) {
-      if (!confirm(`Confirm: Close active position in ${symbol}?`)) return;
+      const ok = await confirmDialog(`Close the active position in ${symbol}?`);
+      if (!ok) return;
       try {
         const res = await fetch('/api/order', {
           method: 'POST',
@@ -626,11 +806,12 @@
           body: JSON.stringify({symbol, action: 'CLOSE'})
         });
         const data = await res.json();
-        alert(`Closed position in ${symbol} @ $${data.fill_price}`);
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Closed ${symbol} @ $${data.fill_price}`, 'success');
         updateStatus();
         loadPortfolio();
       } catch (e) {
-        alert("Failed to close: " + e);
+        toast('Failed to close: ' + e.message, 'error');
       }
     }
 
@@ -664,7 +845,7 @@
 
         renderChart(curve);
       } catch (e) {
-        alert("Backtest failed: " + e);
+        toast("Backtest failed: " + e.message, 'error');
         document.getElementById('bt-chart-status').textContent = 'Simulation failed.';
       }
     }
@@ -743,7 +924,10 @@
         const current = await checkRes.json();
         const nextAction = current.is_running ? 'stop' : 'start';
 
-        if (nextAction === 'start' && !confirm("Confirm: Start continuous 24/7 autonomous trading loop? The multi-agent council will continuously scan assets and execute approved orders in the background.")) return;
+        if (nextAction === 'start') {
+          const ok = await confirmDialog("Start the continuous 24/7 autonomous trading loop? The multi-agent council will continuously scan assets and execute approved orders in the background.");
+          if (!ok) return;
+        }
 
         await fetch('/api/bot/autonomous', {
           method: 'POST',
@@ -752,7 +936,7 @@
         });
         checkAutonomousStatus();
       } catch (e) {
-        alert("Toggle auto-loop failed: " + e);
+        toast("Toggle auto-loop failed: " + e.message, 'error');
       }
     }
 
@@ -775,9 +959,155 @@
       }
     }
 
+    // ------------------------------------------------------------------
+    // AI Strategy Trainer
+    // ------------------------------------------------------------------
+    function fmtNum(v, digits = 1) {
+      return (v === null || v === undefined || isNaN(v)) ? '–' : Number(v).toFixed(digits);
+    }
+
+    function paramsSummary(params) {
+      if (!params) return '–';
+      return [
+        `thr ${fmtNum(params.signal_threshold, 0)}`,
+        `SL ${fmtNum(params.stop_loss_atr, 1)}×ATR`,
+        `TP ${fmtNum(params.take_profit_atr, 1)}×ATR`,
+        `trend filter ${params.require_trend_filter ? 'ON' : 'OFF'}`,
+      ].join(' · ');
+    }
+
+    async function runTraining() {
+      const btn = document.getElementById('btn-run-training');
+      const status = document.getElementById('train-status');
+      const symbols = document.getElementById('train-symbols').value.trim();
+      const period = document.getElementById('train-period').value;
+
+      btn.disabled = true;
+      status.style.display = 'block';
+      status.className = 'train-status train-running';
+      status.textContent = `Training on ${period} of history — grid search on the first 70%, out-of-sample validation on the rest. This can take a minute...`;
+
+      try {
+        const qs = new URLSearchParams({period});
+        if (symbols) qs.set('symbols', symbols);
+        const res = await fetch('/api/training/run?' + qs.toString());
+        const report = await res.json();
+        if (!res.ok) throw new Error(report.detail || ('HTTP ' + res.status));
+        renderTrainingReport(report);
+        const okCount = (report.symbols || []).filter(s => s.ok).length;
+        toast(`Training complete: ${okCount}/${(report.symbols || []).length} symbols trained`, okCount ? 'success' : 'error');
+        status.className = 'train-status train-done';
+        status.textContent = `Trained ${okCount} symbol(s) at ${new Date(report.generated_at).toLocaleString()} on ${report.period} history (${report.grid_size}-combination grid).`;
+      } catch (e) {
+        status.className = 'train-status train-error';
+        status.textContent = 'Training failed: ' + e.message;
+        toast('Training failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadTrainingReport() {
+      try {
+        const res = await fetch('/api/training/report');
+        const report = await res.json();
+        if (report.generated_at) {
+          renderTrainingReport(report);
+          const status = document.getElementById('train-status');
+          status.style.display = 'block';
+          status.className = 'train-status train-done';
+          status.textContent = `Showing last training run from ${new Date(report.generated_at).toLocaleString()} (${report.period} history).`;
+        }
+      } catch (e) {
+        console.error('Training report load error:', e);
+      }
+    }
+
+    function renderTrainingReport(report) {
+      const holder = document.getElementById('train-results');
+      holder.innerHTML = '';
+      (report.symbols || []).forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'table-card train-card';
+
+        if (!s.ok) {
+          card.innerHTML = `
+            <div class="table-header-title">
+              <span>${escapeHtml(s.symbol)}</span>
+              <span class="badge badge-hold">NOT TRAINED</span>
+            </div>
+            <div class="train-error-body">${escapeHtml(s.error || 'unknown error')}</div>`;
+          holder.appendChild(card);
+          return;
+        }
+
+        const rows = (s.leaderboard || []).slice(0, 5).map((entry, i) => {
+          const t = entry.train || {};
+          const v = entry.validation || {};
+          const valBadge = (v.trades > 0 && v.return_pct > 0)
+            ? '<span class="badge badge-buy">VALIDATED</span>'
+            : '<span class="badge badge-hold">NOT VALIDATED</span>';
+          return `
+            <tr>
+              <td style="font-family:var(--font-mono); font-weight:700;">#${i + 1}${i === 0 ? ' <span class="best-flag">BEST</span>' : ''}</td>
+              <td style="font-size:12px;">${escapeHtml(paramsSummary(entry.params))}</td>
+              <td style="font-family:var(--font-mono);">${fmtNum(t.sharpe, 2)}</td>
+              <td style="font-family:var(--font-mono);" class="${t.return_pct >= 0 ? 'text-positive' : 'text-negative'}">${fmtNum(t.return_pct, 2)}%</td>
+              <td style="font-family:var(--font-mono);">${fmtNum(t.win_rate_pct)}%</td>
+              <td style="font-family:var(--font-mono);">${t.trades}</td>
+              <td style="font-family:var(--font-mono);" class="${v.return_pct >= 0 ? 'text-positive' : 'text-negative'}">${v.trades ? fmtNum(v.return_pct, 2) + '%' : '–'}</td>
+              <td style="font-family:var(--font-mono);">${v.trades ? fmtNum(v.win_rate_pct) + '%' : '–'}</td>
+              <td style="font-family:var(--font-mono);">${v.trades ? fmtNum(v.profit_factor, 2) : '–'}</td>
+              <td>${valBadge}</td>
+              <td style="text-align:right;">
+                <button class="action-btn btn-buy" style="padding:6px 14px; font-size:11px;" onclick="applyTrained('${escapeHtml(s.symbol)}')">
+                  APPLY
+                </button>
+              </td>
+            </tr>`;
+        }).join('');
+
+        card.innerHTML = `
+          <div class="table-header-title">
+            <span>${escapeHtml(s.symbol)} <span style="font-size:11px; color:var(--text-muted); font-weight:400;">— ${s.bars} bars · ${s.n_combos} combos tested · recommended: ${escapeHtml(paramsSummary(s.best_params))}</span></span>
+            ${s.validated ? '<span class="badge badge-buy">OUT-OF-SAMPLE VALIDATED</span>' : '<span class="badge badge-squeeze-on">IN-SAMPLE ONLY — TRADE WITH CAUTION</span>'}
+          </div>
+          <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th><th>Parameters</th>
+                <th>Train Sharpe</th><th>Train Return</th><th>Train Win%</th><th>Train Trades</th>
+                <th>Valid. Return</th><th>Valid. Win%</th><th>Valid. P.Factor</th>
+                <th>Verdict</th><th></th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          </div>`;
+        holder.appendChild(card);
+      });
+    }
+
+    async function applyTrained(symbol) {
+      try {
+        const res = await fetch('/api/training/apply', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({symbol})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Applied trained parameters for ${data.symbol}: ${paramsSummary(data.applied)}`, 'success');
+      } catch (e) {
+        toast('Apply failed: ' + e.message, 'error');
+      }
+    }
+
     // Auto-update status every 10 seconds
     updateStatus();
     checkAutonomousStatus();
+    renderWatchlist();
     setInterval(() => {
       updateStatus();
       checkAutonomousStatus();

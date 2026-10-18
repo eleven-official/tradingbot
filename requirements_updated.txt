@@ -21,7 +21,8 @@ aiohttp==3.9.5
 websockets
 
 #Desktop Application
-tkinter
+# tkinter ships with Python itself - pip cannot install it, listing it here
+# breaks `pip install -r requirements_updated.txt`, so it is intentionally absent.
 
 #Additional Dependencies
 PyYAML==6.0.1

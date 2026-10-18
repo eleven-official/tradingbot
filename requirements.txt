@@ -6,3 +6,7 @@ aiofiles>=23.1.0
 python-multipart>=0.0.9
 python-dotenv>=1.0.0
 structlog>=24.1.0
+# Market data for the terminal: scan, backtest, and the strategy trainer all
+# fetch historical/live prices through yfinance. Without this the deployed
+# site serves the UI but every data endpoint 500s.
+yfinance>=0.2.40
