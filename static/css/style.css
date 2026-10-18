@@ -750,3 +750,214 @@ footer {
   border-top: 1px solid var(--border-color);
   margin-top: auto;
 }
+
+/* ==========================================================================
+   v8 UPGRADES — regime monitor, monte carlo, data vault, hurdles
+   ========================================================================== */
+
+.badge-cyan {
+  background: rgba(6, 182, 212, 0.15);
+  color: #67e8f9;
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+/* --- Header pills ---------------------------------------------------------- */
+.regime-pill {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+.regime-pill > span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.4px;
+}
+.db-pill {
+  border-color: rgba(148, 163, 184, 0.3);
+}
+.db-pill > span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+/* --- Radar mini regime chip ------------------------------------------------ */
+.regime-mini {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: 0.4px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.1);
+}
+.regime-mini-strongbull { color: #10b981; border-color: rgba(16, 185, 129, 0.5); background: rgba(16, 185, 129, 0.12); }
+.regime-mini-bull { color: #34d399; border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.1); }
+.regime-mini-bear { color: #ef4444; border-color: rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.12); }
+.regime-mini-crisis { color: #fca5a5; border-color: rgba(185, 28, 28, 0.65); background: rgba(185, 28, 28, 0.2); animation: regime-crisis 1.6s ease-in-out infinite; }
+@keyframes regime-crisis { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+
+/* --- Regime monitor layout ------------------------------------------------- */
+.regime-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.regime-summary-title {
+  width: 100%;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-sub);
+  margin-bottom: 2px;
+}
+.regime-summary-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 16px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.regime-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.regime-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 18px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.regime-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.regime-card .table-header-title { margin-bottom: 12px; }
+.regime-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+.regime-desc {
+  margin: 8px 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.regime-dist-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-sub);
+  margin-bottom: 8px;
+  border-top: 1px dashed var(--border-color);
+  padding-top: 10px;
+}
+.regime-dist-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 44px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 5px;
+}
+.regime-dist-label { font-size: 10px; font-family: var(--font-mono); font-weight: 700; white-space: nowrap; }
+.regime-dist-val { font-size: 10px; font-family: var(--font-mono); text-align: right; color: var(--text-muted); }
+.regime-dist-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.regime-dist-bar > div { height: 100%; border-radius: 4px; }
+
+/* --- Generic metric bar ---------------------------------------------------- */
+.metric-bar-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 44px;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 4px;
+}
+.metric-bar-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-sub); }
+.metric-bar-val { font-size: 10px; font-family: var(--font-mono); text-align: right; color: var(--text-muted); }
+.metric-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.metric-bar > div { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+
+/* --- Trainer hurdles / consensus ------------------------------------------- */
+.hurdle-strip {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  position: relative;
+}
+.hurdle-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.hurdle-item { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); }
+.hurdle-ok .hurdle-mark { color: var(--neon-green); font-weight: 800; }
+.hurdle-ok { color: #a7f3d0; }
+.hurdle-fail { color: #fca5a5; }
+.hurdle-fail .hurdle-mark { color: var(--neon-red); font-weight: 800; }
+.consensus-card { border-color: rgba(139, 92, 246, 0.5); background: rgba(30, 27, 75, 0.35); }
+.regime-mini-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* --- Monte Carlo ----------------------------------------------------------- */
+.mc-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.mc-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 18px;
+  align-items: start;
+}
+.mc-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.mc-stats .agent-stat { margin: 0; }
+@media (max-width: 900px) {
+  .mc-grid { grid-template-columns: 1fr; }
+}

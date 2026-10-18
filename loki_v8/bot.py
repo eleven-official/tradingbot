@@ -9,6 +9,7 @@ Wires the subsystems together and exposes the three operating modes:
 Both paper and live consume the *same* live market data, so the only
 difference between the modes is where orders are routed.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,11 +17,19 @@ import time
 from typing import Dict, List, Optional
 
 from .agents import LokiAgentPipeline
-from .backtest import (BacktestResult, bars_per_year_for, monte_carlo,
-                       portfolio_backtest, run_backtest, walk_forward)
+from .backtest import (
+    BacktestResult,
+    bars_per_year_for,
+    monte_carlo,
+    portfolio_backtest,
+    run_backtest,
+    walk_forward,
+)
 from .broker import PaperBroker, make_broker
 from .config import LokiConfig, default_config
 from .data import get_provider, is_crypto
+from .persistence import get_logger as get_db_logger
+from .regime import Regime, detect_regime
 from .risk import RiskManager
 from .strategy import EnsembleStrategy, Signal
 
@@ -36,6 +45,12 @@ class LokiBot:
         self.broker = make_broker(self.cfg)
         self.mode = self.cfg.mode
         self.last_quotes: Dict[str, float] = {}
+        # Optional Supabase vault logging state (no-op unless configured)
+        self._db = get_db_logger()
+        self._db_trades_logged = 0
+        self._last_equity_log = 0.0
+        self._last_regime_check = 0.0
+        self._last_regimes: Dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Mode switching
@@ -55,7 +70,7 @@ class LokiBot:
     def scan(self, symbols: Optional[List[str]] = None) -> List[Signal]:
         """Generate current signals for a list of symbols."""
         signals: List[Signal] = []
-        for sym in (symbols or self.cfg.symbols):
+        for sym in symbols or self.cfg.symbols:
             try:
                 df = self.provider.fetch_history(sym, self.cfg.period, self.cfg.timeframe)
                 sig = self.strategy.generate_signal(df, sym)
@@ -79,8 +94,9 @@ class LokiBot:
     # ------------------------------------------------------------------
     # Backtest
     # ------------------------------------------------------------------
-    def backtest(self, symbol: str, period: Optional[str] = None,
-                 interval: Optional[str] = None) -> BacktestResult:
+    def backtest(
+        self, symbol: str, period: Optional[str] = None, interval: Optional[str] = None
+    ) -> BacktestResult:
         interval = interval or self.cfg.timeframe
         df = self.provider.fetch_history(symbol, period or self.cfg.period, interval)
         if df.empty:
@@ -90,23 +106,27 @@ class LokiBot:
 
     def backtest_all(self, symbols: Optional[List[str]] = None) -> Dict[str, BacktestResult]:
         out: Dict[str, BacktestResult] = {}
-        for sym in (symbols or self.cfg.symbols):
+        for sym in symbols or self.cfg.symbols:
             try:
                 out[sym] = self.backtest(sym)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("backtest failed for %s: %s", sym, exc)
         return out
 
-    def walk_forward(self, symbol: str, n_splits: int = 4,
-                     period: str = "10y") -> List[BacktestResult]:
+    def walk_forward(
+        self, symbol: str, n_splits: int = 4, period: str = "10y"
+    ) -> List[BacktestResult]:
         df = self.provider.fetch_history(symbol, period, self.cfg.timeframe)
         return walk_forward(df, self.cfg, symbol, n_splits=n_splits)
 
-    def portfolio_backtest(self, symbols: Optional[List[str]] = None,
-                           period: str = "5y") -> BacktestResult:
+    def portfolio_backtest(
+        self, symbols: Optional[List[str]] = None, period: str = "5y"
+    ) -> BacktestResult:
         """Backtest an equal-weight portfolio of symbols with shared capital."""
-        dfs: Dict[str, "pd.DataFrame"] = {}
-        for sym in (symbols or self.cfg.symbols):
+        dfs: Dict[str, "pd.DataFrame"] = (
+            {}
+        )  # noqa: F821 — quoted annotation, pandas unused at runtime
+        for sym in symbols or self.cfg.symbols:
             df = self.provider.fetch_history(sym, period, self.cfg.timeframe)
             if not df.empty:
                 dfs[sym] = df
@@ -168,8 +188,9 @@ class LokiBot:
                         p = self.broker.positions[sig.symbol]
                         p.stop_loss = sig.stop_loss
                         p.take_profit = sig.take_profit
-                        logger.info("BUY  %s x%.4f @ %.2f (score %.1f)",
-                                    sig.symbol, qty, price, sig.score)
+                        logger.info(
+                            "BUY  %s x%.4f @ %.2f (score %.1f)", sig.symbol, qty, price, sig.score
+                        )
                 elif pos.qty < 0:
                     self.broker.buy_to_cover(sig.symbol, -pos.qty, price)
                     logger.info("COVER %s @ %.2f (score %.1f)", sig.symbol, price, sig.score)
@@ -181,24 +202,101 @@ class LokiBot:
                             p = self.broker.positions[sig.symbol]
                             p.stop_loss = sig.stop_loss
                             p.take_profit = sig.take_profit
-                            logger.info("SHORT %s x%.4f @ %.2f (score %.1f)",
-                                        sig.symbol, qty, price, sig.score)
+                            logger.info(
+                                "SHORT %s x%.4f @ %.2f (score %.1f)",
+                                sig.symbol,
+                                qty,
+                                price,
+                                sig.score,
+                            )
                 elif pos.qty > 0:
                     self.broker.close(sig.symbol, price)
                     logger.info("SELL %s @ %.2f (score %.1f)", sig.symbol, price, sig.score)
 
         self.broker.save_state(quotes)
+        self._log_vault(quotes, signals, equity)
         return equity
+
+    def _log_vault(self, quotes: Dict[str, float], signals: List[Signal], equity: float):
+        """Best-effort Supabase logging — never touches trading behaviour."""
+        try:
+            if not self._db.configured():
+                return
+            now = time.time()
+            if now - self._last_equity_log > 60.0:
+                self._last_equity_log = now
+                self._db.log_equity_snapshot(
+                    equity=equity,
+                    cash=self.broker.cash,
+                    open_positions=len(self.broker.positions),
+                    mode=self.mode,
+                )
+            trades = self.broker.trades
+            for t in trades[self._db_trades_logged :]:
+                self._db.log_trade(
+                    symbol=t.symbol,
+                    side=t.side,
+                    qty=t.qty,
+                    entry_price=t.entry_price,
+                    exit_price=t.exit_price,
+                    pnl=t.pnl,
+                    pnl_pct=t.pnl_pct,
+                    exit_reason=t.exit_reason,
+                    mode=self.mode,
+                    source="engine",
+                )
+            self._db_trades_logged = len(trades)
+            for sig in signals[:5]:
+                if sig.action in ("BUY", "SELL"):
+                    self._db.log_signal(
+                        symbol=sig.symbol,
+                        action=sig.action,
+                        score=sig.score,
+                        confidence=sig.confidence,
+                        entry_price=sig.entry_price,
+                        stop_loss=sig.stop_loss,
+                        take_profit=sig.take_profit,
+                        timeframe=self.cfg.timeframe,
+                    )
+            # Regime-change events (throttled to every 5 minutes)
+            if now - self._last_regime_check > 300.0:
+                self._last_regime_check = now
+                for sym in self.cfg.symbols:
+                    try:
+                        r: Regime = detect_regime(
+                            self.provider.fetch_history(sym, self.cfg.period, self.cfg.timeframe)
+                        )
+                        prev = self._last_regimes.get(sym)
+                        if prev is not None and prev != r.state:
+                            self._db.log_regime_event(
+                                symbol=sym,
+                                from_state=prev,
+                                to_state=r.state,
+                                confidence=r.confidence,
+                            )
+                        self._last_regimes[sym] = r.state
+                    except Exception:  # noqa: BLE001
+                        continue
+        except Exception as exc:  # noqa: BLE001 — vault must never crash the loop
+            logger.debug("vault logging skipped: %s", exc)
 
     def run(self, interval: float = 60.0, once: bool = False):
         """Run the trading loop (paper or live)."""
-        logger.info("Starting %s loop (interval=%.0fs, %d symbols)",
-                    self.mode.upper(), interval, len(self.cfg.symbols))
+        logger.info(
+            "Starting %s loop (interval=%.0fs, %d symbols)",
+            self.mode.upper(),
+            interval,
+            len(self.cfg.symbols),
+        )
         while True:
             try:
                 equity = self.step()
-                logger.info("Equity: $%.2f | positions: %d | trades: %d",
-                            equity, len(self.broker.positions), len(self.broker.trades))
+                logger.info(
+                    "Equity: $%.2f | positions: %d | trades: %d",
+                    equity,
+                    len(self.broker.positions),
+                    len(self.broker.trades),
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("loop error: %s", exc)
             if once:

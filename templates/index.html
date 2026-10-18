@@ -37,6 +37,16 @@
         <span id="nav-engine-status">QUANTUM ENGINE LIVE</span>
       </div>
 
+      <div class="status-pill regime-pill" title="Market regime classification (updates every minute)" onclick="showTab('regime', document.getElementById('btn-tab-regime'))" style="cursor:pointer;">
+        <div class="status-dot" id="regime-pill-dot" style="background:#64748b; box-shadow:0 0 10px #64748b;"></div>
+        <span id="regime-pill-text">REGIME —</span>
+      </div>
+
+      <div class="status-pill db-pill" title="Supabase Data Vault — cloud persistence of trades, signals & training" onclick="openDbModal()" style="cursor:pointer;">
+        <div class="status-dot" id="db-pill-dot" style="background:#64748b; box-shadow:none;"></div>
+        <span id="db-pill-text">DB OFF</span>
+      </div>
+
       <div class="mode-toggle">
         <button id="btn-mode-paper" class="mode-btn active" onclick="setMode('paper')">PAPER SIM</button>
         <button id="btn-mode-live" class="mode-btn" onclick="setMode('live')">LIVE BROKER</button>
@@ -102,6 +112,15 @@
         <div class="kpi-value text-cyan" id="kpi-mode">PAPER SIM</div>
         <div class="kpi-sub" style="color:var(--text-muted);">Risk Gated & Circuit Guarded</div>
       </div>
+
+      <div class="kpi-card">
+        <div class="kpi-label">
+          <span>Market Regime</span>
+          <span>🌐</span>
+        </div>
+        <div class="kpi-value" id="kpi-regime" style="font-size:20px;">—</div>
+        <div class="kpi-sub" style="color:var(--text-muted);" id="kpi-regime-sub">5-state trend & vol engine</div>
+      </div>
     </section>
 
     <!-- Autonomous Engine Live Status Drawer -->
@@ -124,6 +143,10 @@
       <button class="tab-btn active" onclick="showTab('radar', this)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
         Live Market Radar
+      </button>
+      <button class="tab-btn" id="btn-tab-regime" onclick="showTab('regime', this)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        Market Regime Monitor
       </button>
       <button class="tab-btn" onclick="showTab('council', this)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -201,6 +224,34 @@
     </div>
 
     <!-- TAB 2: Agentic Council Deliberation -->
+    <div id="tab-regime" class="tab-content" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2 style="font-size:18px; font-weight:800;">Market Regime Monitor &mdash; Trend &amp; Volatility Engine</h2>
+          <p style="font-size:13px; color:var(--text-muted);">
+            Five-state classification &mdash; STRONG_BULL · BULL · RANGING · BEAR · CRISIS &mdash; from causal indicators only.
+            The backtester blocks longs in bear/crisis states; the Director agent sets posture from the same engine.
+          </p>
+        </div>
+        <div style="display:flex; gap:10px; align-items:flex-end;">
+          <div>
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Symbols</label>
+            <input id="regime-symbols" class="form-control" type="text" value="SPY, QQQ, NVDA, BTC-USD, ETH-USD" style="min-width:280px;">
+          </div>
+          <button class="action-btn btn-primary" onclick="loadRegime(true)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            SCAN REGIMES
+          </button>
+        </div>
+      </div>
+      <div id="regime-summary" class="regime-summary"></div>
+      <div id="regime-cards" class="regime-grid">
+        <div class="regime-card">
+          <div style="text-align:center; padding:30px; color:var(--text-muted);">Press <strong>SCAN REGIMES</strong> to classify the current market structure.</div>
+        </div>
+      </div>
+    </div>
+
     <div id="tab-council" class="tab-content" style="display:none;">
       <div class="control-bar">
         <div>
@@ -371,6 +422,34 @@
           </div>
         </div>
       </div>
+
+      <!-- Monte Carlo Survival Engine -->
+      <div class="table-card" style="margin-top:24px; padding:24px;">
+        <div class="table-header-title" style="margin-bottom:14px;">
+          <span>Monte Carlo Survival Engine &mdash; thousands of alternate lifetimes</span>
+          <span id="mc-status" style="font-size:12px; color:var(--text-muted);">Run a backtest, then stress-test the trade sequence</span>
+        </div>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+          <button class="action-btn btn-primary" onclick="runMonteCarlo()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3h-5v4"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>
+            RUN MONTE CARLO
+          </button>
+          <select id="mc-sims" class="form-control" style="width:auto; min-width:170px;">
+            <option value="2000" selected>2,000 simulated paths</option>
+            <option value="5000">5,000 simulated paths</option>
+            <option value="10000">10,000 simulated paths</option>
+          </select>
+          <span style="font-size:12px; color:var(--text-sub);">Bootstraps the completed trade sequence into new random orderings &mdash; same edge, different luck.</span>
+        </div>
+        <div id="mc-verdict" class="mc-verdict" style="display:none;"></div>
+        <div class="mc-grid" id="mc-panel" style="display:none;">
+          <div class="chart-container" style="min-height:280px;">
+            <canvas id="mcChart"></canvas>
+          </div>
+          <div id="mc-stats" class="mc-stats"
+          ></div>
+        </div>
+      </div>
     </div>
 
     <!-- TAB 5: AI Strategy Trainer -->
@@ -396,6 +475,25 @@
               <option value="10y">10 Years</option>
             </select>
           </div>
+          <div>
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Optimization Target</label>
+            <select id="train-objective" class="form-control">
+              <option value="sharpe">Profitable &amp; Smooth (Sharpe)</option>
+              <option value="win_rate" selected>🎯 90% Profitability Chase</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px; text-transform:uppercase; color:var(--text-muted);">Refine Rounds</label>
+            <select id="train-refine" class="form-control">
+              <option value="1">1 (fast)</option>
+              <option value="2">2</option>
+              <option value="3" selected>3 (thorough)</option>
+            </select>
+          </div>
+          <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); padding-bottom:8px; cursor:pointer;">
+            <input type="checkbox" id="train-weights" style="accent-color:#06b6d4;">
+            Multi-factor weights
+          </label>
           <button id="btn-run-training" class="action-btn btn-primary" onclick="runTraining()" style="height:42px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
             TRAIN ON HISTORICAL DATA
@@ -483,6 +581,7 @@
       else stopPortfolioRefresh();
       if (tabId === 'council') loadCouncil();
       if (tabId === 'trainer') loadTrainingReport();
+      if (tabId === 'regime') loadRegime(false);
     }
 
     function startPortfolioRefresh() {
@@ -507,7 +606,8 @@
 
         document.getElementById('kpi-positions').textContent = `${data.open_positions} / 4`;
         document.getElementById('kpi-trades').textContent = data.total_trades;
-        
+        updateDbPill(data.supabase || null);
+
         currentMode = data.mode;
         document.getElementById('kpi-mode').textContent = data.mode.toUpperCase() + (data.mode === 'paper' ? ' SIM' : ' BROKER');
         document.getElementById('btn-mode-paper').classList.toggle('active', data.mode === 'paper');
@@ -561,10 +661,14 @@
           const squeezeClass = s.squeeze_status === 'ON' ? 'badge-squeeze-on' : ((s.squeeze_status || '').startsWith('FIRING') ? 'badge-squeeze-fire' : 'badge-hold');
           const reasonsHtml = (s.reasons || []).map(r => `<span class="factor-tag">${escapeHtml(r)}</span>`).join(' ');
           const sym = escapeHtml(s.symbol);
+          const reg = data.regimes ? data.regimes[s.symbol] : null;
+          const regHtml = reg
+            ? `<span class="regime-mini regime-mini-${reg.state.replace('_','').toLowerCase()}">${escapeHtml(reg.state.replace('_',' '))}</span>`
+            : '';
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td style="font-weight:700; font-family:var(--font-mono); font-size:14px; color:#fff;">${sym}</td>
+            <td style="font-weight:700; font-family:var(--font-mono); font-size:14px; color:#fff;">${sym}<div style="margin-top:3px;">${regHtml}</div></td>
             <td><span class="badge ${actionClass}">${escapeHtml(s.action)}</span></td>
             <td>
               <div style="font-family:var(--font-mono); font-weight:700;">${s.score > 0 ? '+' : ''}${s.score}</div>
@@ -981,23 +1085,42 @@
       const status = document.getElementById('train-status');
       const symbols = document.getElementById('train-symbols').value.trim();
       const period = document.getElementById('train-period').value;
+      const objective = document.getElementById('train-objective').value;
+      const refine = parseInt(document.getElementById('train-refine').value, 10) || 1;
+      const weights = document.getElementById('train-weights').checked;
+      const aggressive = objective === 'win_rate';
 
       btn.disabled = true;
       status.style.display = 'block';
       status.className = 'train-status train-running';
-      status.textContent = `Training on ${period} of history — grid search on the first 70%, out-of-sample validation on the rest. This can take a minute...`;
+      status.textContent = aggressive
+        ? `AGGRESSIVE MODE — chasing the 90% profitability target on ${period} of history (up to ${refine} refinement rounds${weights ? ' with 14 factor-weight presets' : ''}). This can take several minutes...`
+        : `Training on ${period} of history — grid search on the first 70%, out-of-sample validation on the rest. This can take a minute...`;
 
       try {
-        const qs = new URLSearchParams({period});
+        const qs = new URLSearchParams({
+          period,
+          refine_rounds: String(refine),
+          objective: objective,
+        });
+        if (weights) qs.set('optimize_weights', 'true');
+        if (aggressive) {
+          qs.set('target_win_rate', '90');
+          qs.set('target_profitable_months', '50');
+          qs.set('objective', 'win_rate');
+        }
         if (symbols) qs.set('symbols', symbols);
         const res = await fetch('/api/training/run?' + qs.toString());
         const report = await res.json();
         if (!res.ok) throw new Error(report.detail || ('HTTP ' + res.status));
         renderTrainingReport(report);
         const okCount = (report.symbols || []).filter(s => s.ok).length;
-        toast(`Training complete: ${okCount}/${(report.symbols || []).length} symbols trained`, okCount ? 'success' : 'error');
+        const goodCount = (report.symbols || []).filter(s => s.ok && s.good).length;
+        toast(`Training complete: ${okCount}/${(report.symbols || []).length} symbols trained — ${goodCount} pass the good-trade hurdles`, okCount ? 'success' : 'error');
         status.className = 'train-status train-done';
-        status.textContent = `Trained ${okCount} symbol(s) at ${new Date(report.generated_at).toLocaleString()} on ${report.period} history (${report.grid_size}-combination grid).`;
+        status.textContent = `Trained ${okCount} symbol(s) at ${new Date(report.generated_at).toLocaleString()} on ${report.period} history` +
+          `${report.refine_rounds_used > 1 ? ` — ${report.refine_rounds_used} refinement rounds` : ''}` +
+          `${report.weights_tested ? `, ${report.weights_tested} factor presets` : ''}.`;
       } catch (e) {
         status.className = 'train-status train-error';
         status.textContent = 'Training failed: ' + e.message;
@@ -1026,6 +1149,24 @@
     function renderTrainingReport(report) {
       const holder = document.getElementById('train-results');
       holder.innerHTML = '';
+
+      // Cross-symbol consensus card (apply one configuration to everything)
+      const cons = report.consensus;
+      if (cons && cons.params) {
+        const consCard = document.createElement('div');
+        consCard.className = 'table-card train-card consensus-card';
+        consCard.innerHTML = `
+          <div class="table-header-title">
+            <span>⚙️ ENGINE CONSENSUS <span style="font-size:11px; color:var(--text-muted); font-weight:400;">— median of every symbol's winner · ${cons.symbols_used} symbols · ${cons.support_pct}% agreement</span></span>
+            ${cons.params.factor_preset ? `<span class="badge badge-cyan">preset: ${escapeHtml(cons.params.factor_preset)}</span>` : ''}
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono); font-size:13px; color:#fff;">${escapeHtml(paramsSummary(cons.params))}</span>
+            <button class="action-btn btn-primary" style="padding:8px 18px;" onclick="applyConsensusParams()">APPLY CONSENSUS TO ENGINE</button>
+          </div>`;
+        holder.appendChild(consCard);
+      }
+
       (report.symbols || []).forEach(s => {
         const card = document.createElement('div');
         card.className = 'table-card train-card';
@@ -1041,16 +1182,25 @@
           return;
         }
 
+        const hurdles = (s.hurdles || []).map(h => `
+          <li class="hurdle-item ${h.ok ? 'hurdle-ok' : 'hurdle-fail'}">
+            <span class="hurdle-mark">${h.ok ? '✓' : '✗'}</span> ${escapeHtml(h.label)}
+          </li>`).join('');
+        const hurdlePct = s.hurdles && s.hurdles.length
+          ? Math.round(100 * s.hurdles.filter(h => h.ok).length / s.hurdles.length) : 0;
+
         const rows = (s.leaderboard || []).slice(0, 5).map((entry, i) => {
           const t = entry.train || {};
           const v = entry.validation || {};
           const valBadge = (v.trades > 0 && v.return_pct > 0)
             ? '<span class="badge badge-buy">VALIDATED</span>'
             : '<span class="badge badge-hold">NOT VALIDATED</span>';
+          const presetNote = entry.weight_preset && entry.weight_preset !== 'config'
+            ? `<div style="font-size:10px; color:var(--accent-purple);">weights: ${escapeHtml(entry.weight_preset)}</div>` : '';
           return `
             <tr>
               <td style="font-family:var(--font-mono); font-weight:700;">#${i + 1}${i === 0 ? ' <span class="best-flag">BEST</span>' : ''}</td>
-              <td style="font-size:12px;">${escapeHtml(paramsSummary(entry.params))}</td>
+              <td style="font-size:12px;">${escapeHtml(paramsSummary(entry.params))}${presetNote}</td>
               <td style="font-family:var(--font-mono);">${fmtNum(t.sharpe, 2)}</td>
               <td style="font-family:var(--font-mono);" class="${t.return_pct >= 0 ? 'text-positive' : 'text-negative'}">${fmtNum(t.return_pct, 2)}%</td>
               <td style="font-family:var(--font-mono);">${fmtNum(t.win_rate_pct)}%</td>
@@ -1069,8 +1219,19 @@
 
         card.innerHTML = `
           <div class="table-header-title">
-            <span>${escapeHtml(s.symbol)} <span style="font-size:11px; color:var(--text-muted); font-weight:400;">— ${s.bars} bars · ${s.n_combos} combos tested · recommended: ${escapeHtml(paramsSummary(s.best_params))}</span></span>
-            ${s.validated ? '<span class="badge badge-buy">OUT-OF-SAMPLE VALIDATED</span>' : '<span class="badge badge-squeeze-on">IN-SAMPLE ONLY — TRADE WITH CAUTION</span>'}
+            <span>${escapeHtml(s.symbol)} <span style="font-size:11px; color:var(--text-muted); font-weight:400;">— ${s.bars} bars · ${s.n_combos} combos tested${s.weights_tested ? ` · ${s.weights_tested} presets` : ''}${s.refine_round > 1 ? ` · refined ×${s.refine_round}` : ''} · recommended: ${escapeHtml(paramsSummary(s.best_params))}</span></span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              ${s.factor_preset ? `<span class="badge badge-cyan">${escapeHtml(s.factor_preset)}</span>` : ''}
+              ${s.good
+                ? '<span class="badge badge-buy">90%-GOOD TRADES</span>'
+                : (s.validated ? '<span class="badge badge-squeeze-on">VALIDATED · TARGETS INCOMPLETE</span>' : '<span class="badge badge-squeeze-on">IN-SAMPLE ONLY — CAUTION</span>')}
+            </div>
+          </div>
+          <div class="hurdle-strip" title="Out-of-sample good-trade checklist">
+            <span style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Good-trade hurdles</span>
+            <div class="metric-bar" style="width:130px;"><div style="width:${hurdlePct}%; background:${hurdlePct === 100 ? 'var(--neon-green)' : 'var(--accent-cyan)'};"></div></div>
+            <span style="font-family:var(--font-mono); font-size:12px; color:${hurdlePct === 100 ? 'var(--neon-green)' : 'var(--text-muted)'};">${hurdlePct}%</span>
+            <ul class="hurdle-list">${hurdles}</ul>
           </div>
           <div style="overflow-x:auto;">
           <table>
@@ -1084,7 +1245,12 @@
             </thead>
             <tbody>${rows}</tbody>
           </table>
-          </div>`;
+          </div>
+          ${s.regime_distribution ? `<div class="regime-mini-strip">${Object.entries(s.regime_distribution).sort((a,b)=>b[1]-a[1]).map(([st, frac]) => {
+            const c = REGIME_COLORS[st] || '#64748b';
+            return `<span class="regime-summary-chip" style="border-color:${c}; color:${c}; padding:2px 8px;">${st.replace('_',' ')} ${(frac*100).toFixed(0)}%</span>`;
+          }).join('')}</div>` : ''}
+        `;
         holder.appendChild(card);
       });
     }
@@ -1104,14 +1270,315 @@
       }
     }
 
+    async function applyConsensusParams() {
+      const ok = await confirmDialog('Apply the cross-symbol consensus parameters to the running engine?');
+      if (!ok) return;
+      try {
+        const res = await fetch('/api/training/apply-consensus', {method: 'POST'});
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Consensus applied (${data.symbols_used || 'all'} symbols, ${paramsSummary(data.applied)})`, 'success');
+      } catch (e) {
+        toast('Apply consensus failed: ' + e.message, 'error');
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Market Regime Monitor
+    // ------------------------------------------------------------------
+    const REGIME_COLORS = {
+      STRONG_BULL: '#10b981',
+      BULL: '#34d399',
+      RANGING: '#64748b',
+      BEAR: '#ef4444',
+      CRISIS: '#b91c1c'
+    };
+
+    function regimePill(state) {
+      const c = REGIME_COLORS[state] || '#64748b';
+      return `<span class="badge regime-badge" style="background:${c}22; color:${c}; border-color:${c};">${state.replace('_', ' ')}</span>`;
+    }
+
+    async function loadRegime(force) {
+      const holder = document.getElementById('regime-cards');
+      const symsRaw = document.getElementById('regime-symbols').value.trim();
+      const syms = symsRaw ? symsRaw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 8) : null;
+      statusPill('Loading multi-factor regime classification...');
+
+      try {
+        const qs = new URLSearchParams({period: '5y'});
+        if (syms) qs.set('symbols', syms.join(','));
+        const res = await fetch('/api/regime?' + qs.toString());
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+
+        // summary strip
+        const summary = data.summary || {};
+        const summaryHtml = Object.entries(summary).map(([st, n]) =>
+          `<div class="regime-summary-chip" style="border-color:${REGIME_COLORS[st]}; color:${REGIME_COLORS[st]};">${st.replace('_',' ')} × ${n}</div>`
+        ).join('');
+        document.getElementById('regime-summary').innerHTML = summaryHtml
+          ? `<div class="regime-summary-title">Universe snapshot</div>${summaryHtml}` : '';
+
+        holder.innerHTML = '';
+        (data.symbols || []).forEach(r => {
+          const card = document.createElement('div');
+          card.className = 'regime-card';
+          if (r.error) {
+            card.innerHTML = `<div class="table-header-title"><span style="font-family:var(--font-mono);">${escapeHtml(r.symbol)}</span><span class="badge badge-hold">NO DATA</span></div>
+              <div class="train-error-body">${escapeHtml(r.error)}</div>`;
+            holder.appendChild(card);
+            return;
+          }
+          const color = REGIME_COLORS[r.state] || '#64748b';
+          const dist = Object.entries(r.distribution || {}).sort((a, b) => b[1] - a[1]).map(([st, frac]) => {
+            const c2 = REGIME_COLORS[st] || '#64748b';
+            return `<div class="regime-dist-row">
+              <span class="regime-dist-label" style="color:${c2};">${st.replace('_',' ')}</span>
+              <div class="regime-dist-bar"><div style="width:${(frac * 100).toFixed(1)}%; background:${c2};"></div></div>
+              <span class="regime-dist-val">${(frac * 100).toFixed(0)}%</span>
+            </div>`;
+          }).join('');
+          card.innerHTML = `
+            <div class="table-header-title">
+              <span style="font-family:var(--font-mono); font-weight:800;">${escapeHtml(r.symbol)}</span>
+              ${regimePill(r.state)}
+            </div>
+            <div class="agent-stat"><span>Trend Score:</span><span class="agent-stat-value">${r.trend_score > 0 ? '+' : ''}${r.trend_score}</span></div>
+            <div class="agent-stat"><span>ADX:</span><span class="agent-stat-value">${r.adx}</span></div>
+            <div class="agent-stat"><span>Daily ATR Vol:</span><span class="agent-stat-value">${r.volatility_pct}% (rank ${r.volatility_rank})</span></div>
+            <div class="metric-bar-row">
+              <span class="metric-bar-label">Confidence</span>
+              <div class="metric-bar"><div style="width:${r.confidence}%; background:${color};"></div></div>
+              <span class="metric-bar-val">${r.confidence}%</span>
+            </div>
+            <div class="regime-desc">${escapeHtml(r.description)}</div>
+            <div class="regime-dist-title">History distribution (${r.bars} bars)</div>
+            ${dist}
+          `;
+          holder.appendChild(card);
+        });
+
+        toast('Regime scan complete', 'success');
+      } catch (e) {
+        toast('Regime scan failed: ' + e.message, 'error');
+      }
+    }
+
+    // Header pill for the global market regime (SPY + QQQ), refresh every 60s
+    async function refreshRegimePill() {
+      try {
+        const res = await fetch('/api/regime?symbols=SPY,QQQ&period=2y');
+        const data = await res.json();
+        const spy = (data.symbols || []).find(s => s.symbol === 'SPY');
+        if (!spy || spy.error) return;
+        const color = REGIME_COLORS[spy.state] || '#64748b';
+        const dot = document.getElementById('regime-pill-dot');
+        dot.style.background = color;
+        dot.style.boxShadow = `0 0 10px ${color}`;
+        document.getElementById('regime-pill-text').textContent = `REGIME ${spy.state.replace('_', ' ')}`;
+
+        const kpiVal = document.getElementById('kpi-regime');
+        const kpiSub = document.getElementById('kpi-regime-sub');
+        kpiVal.textContent = spy.state.replace('_', ' ');
+        kpiVal.style.color = color;
+        kpiSub.textContent = spy.description || '5-state trend & vol engine';
+      } catch (e) {
+        console.warn('Regime pill error:', e);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Monte Carlo Survival Engine
+    // ------------------------------------------------------------------
+    let mcChartInstance = null;
+
+    async function runMonteCarlo() {
+      const symbol = document.getElementById('bt-symbol').value.trim().toUpperCase();
+      const period = document.getElementById('bt-period').value;
+      const nSims = document.getElementById('mc-sims').value;
+      const status = document.getElementById('mc-status');
+
+      status.textContent = `Bootstrapping ${Number(nSims).toLocaleString()} alternate lifetimes...`;
+
+      try {
+        const res = await fetch(`/api/montecarlo?symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(period)}&n_sims=${nSims}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        const mc = data.monte_carlo;
+        if (mc.verdict === 'NO_TRADES') {
+          status.textContent = 'No completed trades in the backtest window — nothing to bootstrap.';
+          toast('Monte Carlo needs at least one completed trade — widen the period.', 'info');
+          return;
+        }
+
+        const verdictColor = {ROBUST: 'var(--neon-green)', ACCEPTABLE: 'var(--accent-cyan)', FRAGILE: 'var(--neon-amber)', DANGEROUS: 'var(--neon-red)'}[mc.verdict] || 'var(--text-muted)';
+        const verdictEl = document.getElementById('mc-verdict');
+        verdictEl.style.display = 'block';
+        verdictEl.innerHTML = `
+          <span class="badge" style="background:transparent; color:${verdictColor}; border-color:${verdictColor}; font-size:13px;">${mc.verdict}</span>
+          <span style="color:var(--text-muted);"> on ${mc.n_simulated || mc.n_sims} paths of ${mc.n_trades} trades — prob profit <strong style="color:${mc.prob_profit_pct >= 55 ? 'var(--neon-green)' : 'var(--neon-amber)'}">${mc.prob_profit_pct}%</strong>,
+          median outcome <strong>${mc.final_return.p50 > 0 ? '+' : ''}${mc.final_return.p50}%</strong>,
+          VaR95 <strong style="color:var(--neon-red);">${mc.var_95_pct}%</strong></span>`;
+
+        const rows = [
+          ['Prob. Profitable', `${mc.prob_profit_pct}%`, mc.prob_profit_pct >= 55],
+          ['Median Final Return', `${mc.final_return.p50 > 0 ? '+' : ''}${mc.final_return.p50}%`, mc.final_return.p50 > 0],
+          ['Best-Decile Outcome (p95)', `${mc.final_return.p95 > 0 ? '+' : ''}${mc.final_return.p95}%`, mc.final_return.p95 > 0],
+          ['Worst-Decile Outcome (p5)', `${mc.final_return.p5 > 0 ? '+' : ''}${mc.final_return.p5}%`, mc.final_return.p5 > 0],
+          ['VaR 95% / CVaR 95%', `${mc.var_95_pct}% / ${mc.cvar_95_pct}%`, mc.var_95_pct > -20],
+          ['Median Max Drawdown', `${mc.max_drawdown.p50}%`, mc.max_drawdown.p50 > -25],
+          ['p95 Max Drawdown', `${mc.max_drawdown.p95}%`, mc.max_drawdown.p95 > -35],
+          ['Worst Simulated Drawdown', `${mc.max_drawdown.worst}%`, mc.max_drawdown.worst > -50],
+          ['P(DD deeper than -20%)', `${mc.prob_dd_worse_20_pct}%`, mc.prob_dd_worse_20_pct < 30],
+          ['Risk of Ruin (≤ -50%)', `${mc.prob_bust_pct}%`, mc.prob_bust_pct < 5],
+          ['Median Longest Losing Streak', `${mc.median_worst_streak}`, true],
+        ];
+
+        document.getElementById('mc-stats').innerHTML = rows.map(([k, v, good]) =>
+          `<div class="agent-stat"><span>${k}:</span><span class="agent-stat-value" style="color:${good ? 'var(--neon-green)' : 'var(--neon-red)'};">${v}</span></div>`
+        ).join('');
+
+        document.getElementById('mc-panel').style.display = 'grid';
+        renderMcChart(mc.fan, data.backtest.initial_capital);
+        status.textContent = `Simulation complete — ${mc.n_simulated || mc.n_sims} paths from ${mc.n_trades} historical trades.`;
+        toast(`Monte Carlo verdict: ${mc.verdict}`, mc.verdict === 'ROBUST' || mc.verdict === 'ACCEPTABLE' ? 'success' : 'info');
+      } catch (e) {
+        status.textContent = 'Monte Carlo failed.';
+        toast('Monte Carlo failed: ' + e.message, 'error');
+      }
+    }
+
+    function renderMcChart(fan, initial) {
+      const ctx = document.getElementById('mcChart').getContext('2d');
+      if (mcChartInstance) mcChartInstance.destroy();
+      const n = (fan.p50 || []).length;
+      const labels = fan.p50.map((_, i) => i === 0 ? 'start' : '#' + i);
+
+      const ds = [
+        {key: 'p5', color: 'rgba(239, 68, 68, 0.85)'},
+        {key: 'p25', color: 'rgba(245, 158, 11, 0.8)'},
+        {key: 'p50', color: 'rgba(6, 182, 212, 1)'},
+        {key: 'p75', color: 'rgba(16, 185, 129, 0.8)'},
+        {key: 'p95', color: 'rgba(16, 185, 129, 0.85)'},
+      ].map(d => ({...d, data: fan[d.key]}));
+
+      mcChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: ds.map(d => ({
+            label: d.key.toUpperCase() + ' equity',
+            data: d.data,
+            borderColor: d.color,
+            backgroundColor: 'transparent',
+            borderWidth: d.key === 'p50' ? 2.5 : 1.25,
+            pointRadius: 0,
+            tension: 0.15,
+            borderDash: d.key === 'p50' ? [] : [4, 3],
+          }))
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {labels: {color: '#94a3b8', font: {family: 'var(--font-mono)', size: 10}}},
+            tooltip: {mode: 'index', intersect: false}
+          },
+          scales: {
+            x: {grid: {color: 'rgba(255,255,255,0.05)'}, ticks: {color: '#64748b', maxTicksLimit: 12, font: {size: 10}}},
+            y: {grid: {color: 'rgba(255,255,255,0.05)'}, ticks: {color: '#64748b', callback: v => '$' + (v / 1000).toFixed(1) + 'k'}}
+          }
+        }
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // Supabase Data Vault — pill + configuration modal
+    // ------------------------------------------------------------------
+    function updateDbPill(stats) {
+      const dot = document.getElementById('db-pill-dot');
+      const text = document.getElementById('db-pill-text');
+      if (!dot || !text) return;
+      if (!stats || !stats.configured) {
+        dot.style.background = '#64748b';
+        dot.style.boxShadow = 'none';
+        text.textContent = 'DB OFF';
+      } else if (stats.muted || (stats.failures > 0 && stats.successes === 0)) {
+        dot.style.background = '#f59e0b';
+        dot.style.boxShadow = '0 0 10px #f59e0b';
+        text.textContent = 'DB ERROR';
+      } else {
+        dot.style.background = '#10b981';
+        dot.style.boxShadow = '0 0 10px #10b981';
+        text.textContent = 'DB SYNCED';
+      }
+    }
+
+    async function refreshDbStatus() {
+      try {
+        const res = await fetch('/api/supabase/status');
+        updateDbPill(await res.json());
+      } catch (e) { /* pill stays unchanged */ }
+    }
+
+    function openDbModal() {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal-box" style="text-align:left; max-width:560px;">
+          <div class="modal-msg" style="text-align:left;">
+            <strong style="color:#e9d5ff;">Supabase Data Vault</strong><br>
+            Cloud-persist every trade, signal, equity snapshot, regime change, and training report.<br><br>
+            <span style="font-size:13px; color:var(--text-muted);">
+            1. Create a free project at supabase.com<br>
+            2. Paste <code style="color:#38bdf8;">supabase_schema.sql</code> (repo root) into the SQL editor and run it<br>
+            3. Set environment variables:<br>
+            &nbsp;&nbsp;&nbsp;<code style="color:#38bdf8;">SUPABASE_URL=https://&lt;project&gt;.supabase.co</code><br>
+            &nbsp;&nbsp;&nbsp;<code style="color:#38bdf8;">SUPABASE_SERVICE_KEY=&lt;service_role key&gt;</code><br>
+            4. Restart the engine — this pill turns <span style="color:var(--neon-green);">DB SYNCED</span></span>
+          </div>
+          <div id="db-test-result" style="font-size:13px; margin-top:8px; color:var(--text-muted);"></div>
+          <div class="modal-actions">
+            <button class="action-btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+            <button class="action-btn btn-primary" id="db-test-btn">Test Connection</button>
+          </div>
+        </div>`;
+      overlay.querySelector('#db-test-btn').addEventListener('click', async () => {
+        const out = overlay.querySelector('#db-test-result');
+        out.textContent = 'Testing Write access to loki_events ...';
+        try {
+          const r = await fetch('/api/supabase/test', {method: 'POST'});
+          const j = await r.json();
+          out.innerHTML = j.ok
+            ? '<span style="color:var(--neon-green);">✓ Connection verified — a test row was written.</span>'
+            : `<span style="color:var(--neon-red);">✗ ${escapeHtml(j.error || j.reason || 'write failed')}</span>`;
+        } catch (e) {
+          out.innerHTML = `<span style="color:var(--neon-red);">✗ ${escapeHtml(e.message)}</span>`;
+        }
+      });
+      overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+      document.body.appendChild(overlay);
+    }
+
+    function statusPill(msg) {
+      // lightweight inline "working" hint on regime cards while loading
+      const holder = document.getElementById('regime-summary');
+      if (holder) holder.innerHTML = `<div style="width:100%; color:var(--accent-cyan); font-size:13px; font-weight:600;">${escapeHtml(msg)}</div>`;
+    }
+
     // Auto-update status every 10 seconds
     updateStatus();
     checkAutonomousStatus();
     renderWatchlist();
+    refreshRegimePill();
+    refreshDbStatus();
     setInterval(() => {
       updateStatus();
       checkAutonomousStatus();
     }, 10000);
+    setInterval(refreshRegimePill, 60000);
+    setInterval(refreshDbStatus, 45000);
 
     // Connect WebSocket
     connectWebSocket();

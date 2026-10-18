@@ -8,6 +8,7 @@ Regime-adaptive entries:
   * long  — allowed in BULL/RANGING (blocked in BEAR when `regime_filter`)
   * short — allowed in BEAR (requires `allow_short`), blocked in BULL
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -17,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from .config import LokiConfig
-from .regime import regime_series
+from .regime import is_bearish, regime_series
 from .risk import RiskManager
 from .strategy import EnsembleStrategy
 
@@ -25,7 +26,7 @@ from .strategy import EnsembleStrategy
 @dataclass
 class Trade:
     symbol: str
-    side: str          # "long" | "short"
+    side: str  # "long" | "short"
     entry_time: pd.Timestamp
     exit_time: pd.Timestamp
     entry_price: float
@@ -33,7 +34,7 @@ class Trade:
     qty: float
     pnl: float
     pnl_pct: float
-    exit_reason: str   # "stop" | "target" | "signal" | "trailing" | "time" | "end"
+    exit_reason: str  # "stop" | "target" | "signal" | "trailing" | "time" | "end"
 
 
 @dataclass
@@ -56,21 +57,23 @@ class BacktestResult:
     trades: List[Trade] = field(default_factory=list)
 
     def summary(self) -> str:
-        return "\n".join([
-            f"=== Backtest: {self.symbol} ===",
-            f"Initial capital : ${self.initial_capital:,.2f}",
-            f"Final equity    : ${self.final_equity:,.2f}",
-            f"Total return    : {self.total_return_pct:+.2f}%",
-            f"CAGR            : {self.cagr_pct:+.2f}%",
-            f"Trades          : {self.total_trades}",
-            f"Win rate        : {self.win_rate_pct:.1f}%",
-            f"Profit factor   : {self.profit_factor:.2f}",
-            f"Avg win / loss  : ${self.avg_win:,.2f} / ${self.avg_loss:,.2f}",
-            f"Max drawdown    : {self.max_drawdown_pct:.2f}%",
-            f"Sharpe          : {self.sharpe:.2f}",
-            f"Sortino         : {self.sortino:.2f}",
-            f"Calmar          : {self.calmar:.2f}",
-        ])
+        return "\n".join(
+            [
+                f"=== Backtest: {self.symbol} ===",
+                f"Initial capital : ${self.initial_capital:,.2f}",
+                f"Final equity    : ${self.final_equity:,.2f}",
+                f"Total return    : {self.total_return_pct:+.2f}%",
+                f"CAGR            : {self.cagr_pct:+.2f}%",
+                f"Trades          : {self.total_trades}",
+                f"Win rate        : {self.win_rate_pct:.1f}%",
+                f"Profit factor   : {self.profit_factor:.2f}",
+                f"Avg win / loss  : ${self.avg_win:,.2f} / ${self.avg_loss:,.2f}",
+                f"Max drawdown    : {self.max_drawdown_pct:.2f}%",
+                f"Sharpe          : {self.sharpe:.2f}",
+                f"Sortino         : {self.sortino:.2f}",
+                f"Calmar          : {self.calmar:.2f}",
+            ]
+        )
 
 
 def _fill(price: float, side: str, cfg: LokiConfig) -> float:
@@ -82,9 +85,16 @@ def bars_per_year_for(interval: str, crypto: bool = False) -> int:
     """Approximate bars/year for annualizing metrics at a given interval."""
     base = 365 if crypto else 252
     return {
-        "1m": base * 390, "2m": base * 195, "5m": base * 78, "15m": base * 26,
-        "30m": base * 13, "1h": base * 7, "4h": base * 2, "1d": base,
-        "1wk": 52, "1mo": 12,
+        "1m": base * 390,
+        "2m": base * 195,
+        "5m": base * 78,
+        "15m": base * 26,
+        "30m": base * 13,
+        "1h": base * 7,
+        "4h": base * 2,
+        "1d": base,
+        "1wk": 52,
+        "1mo": 12,
     }.get(interval, base)
 
 
@@ -130,11 +140,15 @@ def run_backtest(
     for i in range(warmup + 1, n):
         sig_score = float(scores.iloc[i - 1])
         action = strategy.action_for(sig_score)
-        o = float(df["open"].iloc[i]); h = float(df["high"].iloc[i])
-        l = float(df["low"].iloc[i]); c = float(df["close"].iloc[i])
+        o = float(df["open"].iloc[i])
+        h = float(df["high"].iloc[i])
+        l = float(df["low"].iloc[i])
+        c = float(df["close"].iloc[i])
         t = df.index[i]
-        atr_prev = float(atrs.iloc[i - 1]); atr_now = float(atrs.iloc[i])
+        atr_prev = float(atrs.iloc[i - 1])
+        atr_now = float(atrs.iloc[i])
         regime = str(regimes.iloc[i - 1])
+        bear = is_bearish(regime)
 
         # ------------------------------------------------------------------
         # Manage the existing position (stop / target / signal / time)
@@ -159,7 +173,11 @@ def run_backtest(
                 elif action == "BUY":
                     exit_price, reason = c, "signal"
 
-            if exit_price is None and cfg.max_hold_bars > 0 and (i - pos["entry_bar"]) >= cfg.max_hold_bars:
+            if (
+                exit_price is None
+                and cfg.max_hold_bars > 0
+                and (i - pos["entry_bar"]) >= cfg.max_hold_bars
+            ):
                 exit_price, reason = c, "time"
 
             if exit_price is not None:
@@ -174,11 +192,20 @@ def run_backtest(
                     pnl_pct = (pos["entry"] / fill - 1.0) * 100.0 if fill else 0.0
                     cash -= fill * pos["qty"] + cfg.commission_per_trade
 
-                trades.append(Trade(
-                    symbol=symbol, side=pos["side"], entry_time=pos["entry_time"], exit_time=t,
-                    entry_price=pos["entry"], exit_price=fill, qty=pos["qty"],
-                    pnl=pnl, pnl_pct=pnl_pct, exit_reason=reason or "end",
-                ))
+                trades.append(
+                    Trade(
+                        symbol=symbol,
+                        side=pos["side"],
+                        entry_time=pos["entry_time"],
+                        exit_time=t,
+                        entry_price=pos["entry"],
+                        exit_price=fill,
+                        qty=pos["qty"],
+                        pnl=pnl,
+                        pnl_pct=pnl_pct,
+                        exit_reason=reason or "end",
+                    )
+                )
                 risk.record_trade(pnl)
                 pos = None
             else:
@@ -197,10 +224,13 @@ def run_backtest(
         # New entry (regime-gated long / short)
         # ------------------------------------------------------------------
         if pos is None:
-            atr_pct_prev = float(frame["atr_pct"].iloc[i - 1]) if np.isfinite(frame["atr_pct"].iloc[i - 1]) else 0.0
+            atr_pct_prev = (
+                float(frame["atr_pct"].iloc[i - 1])
+                if np.isfinite(frame["atr_pct"].iloc[i - 1])
+                else 0.0
+            )
             above_ma = float(frame["close"].iloc[i - 1]) > float(frame["sma_200"].iloc[i - 1])
             allow_vol = not (cfg.max_atr_pct > 0 and atr_pct_prev > cfg.max_atr_pct)
-            bear = regime == "BEAR"
 
             if action == "BUY":
                 allow_trend = (not cfg.require_trend_filter) or above_ma
@@ -214,8 +244,15 @@ def run_backtest(
                     cost = qty * entry + cfg.commission_per_trade
                     if qty > 0 and cost <= cash:
                         cash -= cost
-                        pos = {"side": "long", "qty": qty, "entry": entry, "stop": stop,
-                               "target": target, "entry_time": t, "entry_bar": i}
+                        pos = {
+                            "side": "long",
+                            "qty": qty,
+                            "entry": entry,
+                            "stop": stop,
+                            "target": target,
+                            "entry_time": t,
+                            "entry_bar": i,
+                        }
 
             elif action == "SELL" and cfg.allow_short:
                 allow_regime = (not cfg.regime_filter) or bear
@@ -227,8 +264,15 @@ def run_backtest(
                     qty = risk.position_size(equity_at(entry), entry, stop)
                     if qty > 0:
                         cash += entry * qty - cfg.commission_per_trade
-                        pos = {"side": "short", "qty": qty, "entry": entry, "stop": stop,
-                               "target": target, "entry_time": t, "entry_bar": i}
+                        pos = {
+                            "side": "short",
+                            "qty": qty,
+                            "entry": entry,
+                            "stop": stop,
+                            "target": target,
+                            "entry_time": t,
+                            "entry_bar": i,
+                        }
 
         equity_curve.append(equity_at(c))
         times.append(t)
@@ -246,19 +290,29 @@ def run_backtest(
             pnl = (pos["entry"] - fill) * pos["qty"] - cfg.commission_per_trade
             pnl_pct = (pos["entry"] / fill - 1.0) * 100.0 if fill else 0.0
             cash -= fill * pos["qty"] + cfg.commission_per_trade
-        trades.append(Trade(
-            symbol=symbol, side=pos["side"], entry_time=pos["entry_time"], exit_time=df.index[-1],
-            entry_price=pos["entry"], exit_price=fill, qty=pos["qty"],
-            pnl=pnl, pnl_pct=pnl_pct, exit_reason="end",
-        ))
+        trades.append(
+            Trade(
+                symbol=symbol,
+                side=pos["side"],
+                entry_time=pos["entry_time"],
+                exit_time=df.index[-1],
+                entry_price=pos["entry"],
+                exit_price=fill,
+                qty=pos["qty"],
+                pnl=pnl,
+                pnl_pct=pnl_pct,
+                exit_reason="end",
+            )
+        )
         pos = None
 
     eq = pd.Series(equity_curve, index=times)
     return _build_result(symbol, cfg.initial_cash, eq, trades, bars_per_year)
 
 
-def _build_result(symbol: str, initial: float, equity: pd.Series,
-                  trades: List[Trade], bars_per_year: int) -> BacktestResult:
+def _build_result(
+    symbol: str, initial: float, equity: pd.Series, trades: List[Trade], bars_per_year: int
+) -> BacktestResult:
     final = float(equity.iloc[-1]) if len(equity) else initial
     total_ret = (final / initial - 1.0) * 100.0
 
@@ -275,7 +329,9 @@ def _build_result(symbol: str, initial: float, equity: pd.Series,
     win_rate = (len(wins) / len(pnls) * 100.0) if pnls else 0.0
     gross_win = sum(wins)
     gross_loss = abs(sum(losses))
-    profit_factor = (gross_win / gross_loss) if gross_loss > 0 else (float("inf") if gross_win > 0 else 0.0)
+    profit_factor = (
+        (gross_win / gross_loss) if gross_loss > 0 else (float("inf") if gross_win > 0 else 0.0)
+    )
     avg_win = (gross_win / len(wins)) if wins else 0.0
     avg_loss = (gross_loss / len(losses)) if losses else 0.0
 
@@ -286,11 +342,22 @@ def _build_result(symbol: str, initial: float, equity: pd.Series,
     calmar = (cagr / abs(max_dd)) if max_dd < 0 else 0.0
 
     return BacktestResult(
-        symbol=symbol, initial_capital=initial, final_equity=final,
-        total_return_pct=total_ret, cagr_pct=cagr, total_trades=len(trades),
-        win_rate_pct=win_rate, profit_factor=profit_factor, avg_win=avg_win,
-        avg_loss=avg_loss, max_drawdown_pct=max_dd, sharpe=sharpe, sortino=sortino,
-        calmar=calmar, equity_curve=equity, trades=trades,
+        symbol=symbol,
+        initial_capital=initial,
+        final_equity=final,
+        total_return_pct=total_ret,
+        cagr_pct=cagr,
+        total_trades=len(trades),
+        win_rate_pct=win_rate,
+        profit_factor=profit_factor,
+        avg_win=avg_win,
+        avg_loss=avg_loss,
+        max_drawdown_pct=max_dd,
+        sharpe=sharpe,
+        sortino=sortino,
+        calmar=calmar,
+        equity_curve=equity,
+        trades=trades,
     )
 
 
@@ -306,7 +373,7 @@ def _sortino(returns: pd.Series, bars_per_year: int, rf: float = 0.02) -> float:
         return 0.0
     excess = returns - rf / bars_per_year
     downside = np.minimum(excess.to_numpy(), 0.0)
-    downside_dev = float(np.sqrt((downside ** 2).mean()))
+    downside_dev = float(np.sqrt((downside**2).mean()))
     if downside_dev == 0 or np.isnan(downside_dev):
         return 0.0
     return float(np.sqrt(bars_per_year) * excess.mean() / downside_dev)

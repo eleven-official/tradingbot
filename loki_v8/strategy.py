@@ -7,10 +7,11 @@ volatility filters into one causal score in [-100, 100].
 Everything is computed with causal (rolling/ewm/shift) operators, so the
 same scoring code drives both backtests and live trading without lookahead.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,8 +23,8 @@ from . import indicators as ta
 @dataclass
 class Signal:
     symbol: str
-    action: str            # "BUY" | "SELL" | "HOLD"
-    confidence: float      # 0-100
+    action: str  # "BUY" | "SELL" | "HOLD"
+    confidence: float  # 0-100
     entry_price: float
     stop_loss: float
     take_profit: float
@@ -38,6 +39,34 @@ def _clip(v, lo=-1.0, hi=1.0):
     return np.clip(v, lo, hi)
 
 
+FACTOR_KEYS = ("trend", "momentum", "volume_flow", "squeeze", "volatility")
+
+
+def normalize_weights(weights: Optional[Dict[str, float]]) -> Dict[str, float]:
+    """Return per-factor weights normalized to sum to 1.0 (missing -> 0).
+
+    Defaults preserve the original fixed-weight ensemble when called with
+    ``None`` or an empty dict.
+    """
+    defaults: Dict[str, float] = {
+        "trend": 0.25,
+        "momentum": 0.20,
+        "volume_flow": 0.20,
+        "squeeze": 0.20,
+        "volatility": 0.15,
+    }
+    w: Dict[str, float] = {}
+    for k in FACTOR_KEYS:
+        try:
+            w[k] = max(0.0, float((weights or {}).get(k, 0.0)))
+        except (TypeError, ValueError):
+            w[k] = 0.0
+    if sum(w.values()) <= 1e-12:  # all zero -> fall back to the classic mix
+        return dict(defaults)
+    total = sum(w.values())
+    return {k: v / total for k, v in w.items()}
+
+
 class EnsembleStrategy:
     """Institutional Trend + Squeeze + Flow + Momentum + Volatility Ensemble."""
 
@@ -47,13 +76,18 @@ class EnsembleStrategy:
     # ------------------------------------------------------------------
     # Causal scoring
     # ------------------------------------------------------------------
-    def score_frame(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Return a copy of `df` with a causal `score` column in [-100, 100]."""
+    def compute_factors(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Return `df` with indicators plus one raw factor column per stack.
+
+        Each ``f_*`` column is a causal score in [-1, 1] (positive = bullish).
+        The composite score is a weighted sum of these columns, so any factor
+        weighting can be evaluated without recomputing indicators.
+        """
         df = ta.add_all_indicators(df)
         c = df["close"]
 
-        # 1) Trend (weight 0.25): EMA stack + supertrend + long-term trend
-        trend = (
+        # 1) Trend: EMA stack + supertrend + long-term trend
+        df["f_trend"] = (
             0.30 * np.sign(c - df["ema_50"])
             + 0.20 * np.sign(df["ema_21"] - df["ema_50"])
             + 0.20 * np.sign(df["ema_9"] - df["ema_21"])
@@ -61,8 +95,8 @@ class EnsembleStrategy:
             + 0.10 * np.sign(c - df["sma_200"])
         )
 
-        # 2) Momentum (weight 0.20): RSI + MACD + stochastic + ROC
-        momentum = (
+        # 2) Momentum: RSI + MACD + stochastic + ROC
+        df["f_momentum"] = (
             0.20 * _clip(df["rsi"] / 50.0 - 1.0)
             + 0.20 * np.sign(df["macd_hist"])
             + 0.15 * np.sign(df["macd"] - df["macd_signal"])
@@ -70,36 +104,43 @@ class EnsembleStrategy:
             + 0.30 * (0.5 * np.sign(df["roc_20"]) + 0.5 * np.sign(df["roc_60"]))
         )
 
-        # 3) Institutional Volume & Money Flow (weight 0.20): OBV slope + CMF + VWAP
+        # 3) Institutional Volume & Money Flow: OBV slope + CMF + VWAP
         obv_slope = np.sign(df["obv"].diff(5))
         cmf_val = _clip(df["cmf"] * 4.0)  # CMF > 0.25 is very bullish
         vwap_bias = np.sign(c - df["vwap"])
-        volume_flow = 0.40 * cmf_val + 0.30 * obv_slope + 0.30 * vwap_bias
+        df["f_volume_flow"] = 0.40 * cmf_val + 0.30 * obv_slope + 0.30 * vwap_bias
 
-        # 4) TTM Squeeze Volatility Breakout (weight 0.20):
+        # 4) TTM Squeeze Volatility Breakout:
         # Squeeze firing in momentum direction gives an explosive boost
         squeeze_mom_bias = np.sign(df["squeeze_mom"])
-        # Squeeze release (was on 1 bar ago, released now)
         squeeze_release = (~df["squeeze_on"]) & (df["squeeze_on"].shift(1).fillna(False))
         squeeze_factor = np.where(squeeze_release, squeeze_mom_bias * 1.5, squeeze_mom_bias * 0.5)
-        squeeze_factor = _clip(pd.Series(squeeze_factor, index=df.index))
+        df["f_squeeze"] = _clip(pd.Series(squeeze_factor, index=df.index))
 
-        # 5) Volatility / Structure (weight 0.15): Bollinger %B + ADX-gated DI
+        # 5) Volatility / Structure: Bollinger %B + ADX-gated DI
         pct_b = (c - df["bb_lower"]) / (df["bb_upper"] - df["bb_lower"]).replace(0.0, np.nan)
         mean_rev = 0.5 * _clip(0.5 - pct_b)
         di_spread = np.sign(df["plus_di"] - df["minus_di"])
         adx_gate = np.where(df["adx"] > 20.0, di_spread, 0.0)
-        vol_struct = 0.5 * mean_rev + 0.5 * adx_gate
+        df["f_volatility"] = 0.5 * mean_rev + 0.5 * adx_gate
 
-        raw = (
-            0.25 * trend
-            + 0.20 * momentum
-            + 0.20 * volume_flow
-            + 0.20 * squeeze_factor
-            + 0.15 * vol_struct
-        )
-        df["score"] = _clip(raw.fillna(0.0), -1.0, 1.0) * 100.0
         return df
+
+    def score_from_factors(
+        self, factors: pd.DataFrame, weights: Optional[Dict[str, float]] = None
+    ) -> pd.DataFrame:
+        """Return a copy of a factor frame with a weighted composite `score`."""
+        w = normalize_weights(weights if weights is not None else self.cfg.factor_weights)
+        frame = factors.copy()
+        raw = pd.Series(0.0, index=frame.index)
+        for k in FACTOR_KEYS:
+            raw = raw + w[k] * frame["f_" + k]
+        frame["score"] = _clip(raw.fillna(0.0), -1.0, 1.0) * 100.0
+        return frame
+
+    def score_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Return a copy of `df` with a causal `score` column in [-100, 100]."""
+        return self.score_from_factors(self.compute_factors(df))
 
     # ------------------------------------------------------------------
     # Action / signal
@@ -164,7 +205,11 @@ class EnsembleStrategy:
             elif float(last["squeeze_mom"]) < 0:
                 reasons.append("TTM Squeeze expanding downward")
 
-        squeeze_status = "ON" if bool(last["squeeze_on"]) else ("FIRING_LONG" if float(last["squeeze_mom"]) > 0 else "FIRING_SHORT")
+        squeeze_status = (
+            "ON"
+            if bool(last["squeeze_on"])
+            else ("FIRING_LONG" if float(last["squeeze_mom"]) > 0 else "FIRING_SHORT")
+        )
 
         risk_dist = abs(entry - stop)
         reward_dist = abs(target - entry)
@@ -183,4 +228,3 @@ class EnsembleStrategy:
             score=score,
             reasons=reasons,
         )
-

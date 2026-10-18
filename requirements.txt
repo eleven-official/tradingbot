@@ -10,3 +10,7 @@ structlog>=24.1.0
 # fetch historical/live prices through yfinance. Without this the deployed
 # site serves the UI but every data endpoint 500s.
 yfinance>=0.2.40
+# Direct PostgREST client for the optional Supabase Data Vault
+# (loki_v8/persistence.py yfinance already pulls requests transitively, but
+# list it explicitly so the persistence layer never relies on transitives).
+requests>=2.31.0

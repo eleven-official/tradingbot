@@ -4,6 +4,7 @@ Tests for the walk-forward strategy trainer (loki_v8.train).
 All tests are offline: synthetic OHLCV bars or canned/fake objects only, so
 the suite never depends on market data downloads.
 """
+
 import json
 from types import SimpleNamespace
 
@@ -62,8 +63,12 @@ class TestTrainSymbol:
         # Every combo carries train metrics.
         for entry in rep.leaderboard:
             assert set(entry["train"]) == {
-                "trades", "return_pct", "win_rate_pct",
-                "profit_factor", "max_drawdown_pct", "sharpe",
+                "trades",
+                "return_pct",
+                "win_rate_pct",
+                "profit_factor",
+                "max_drawdown_pct",
+                "sharpe",
             }
         # Top candidates were validated out-of-sample.
         assert "validation" in rep.leaderboard[0]
@@ -85,13 +90,24 @@ class TestTrainSymbol:
         # Every simulated trade was entered BEFORE the split, so after the
         # out-of-sample filter the validation set must be empty.
         pre_split_trade = Trade(
-            symbol="TEST", side="long", entry_time=df.index[split_idx - 40],
-            exit_time=df.index[split_idx - 30], entry_price=100.0, exit_price=103.0,
-            qty=1.0, pnl=3.0, pnl_pct=3.0, exit_reason="target",
+            symbol="TEST",
+            side="long",
+            entry_time=df.index[split_idx - 40],
+            exit_time=df.index[split_idx - 30],
+            entry_price=100.0,
+            exit_price=103.0,
+            qty=1.0,
+            pnl=3.0,
+            pnl_pct=3.0,
+            exit_reason="target",
         )
         fake = SimpleNamespace(
-            total_trades=1, total_return_pct=3.0, win_rate_pct=100.0,
-            profit_factor=9.0, max_drawdown_pct=0.0, sharpe=1.5,
+            total_trades=1,
+            total_return_pct=3.0,
+            win_rate_pct=100.0,
+            profit_factor=9.0,
+            max_drawdown_pct=0.0,
+            sharpe=1.5,
             trades=[pre_split_trade],
         )
 
@@ -104,9 +120,7 @@ class TestTrainSymbol:
 
     def test_full_history_grid_runs_without_network(self):
         """Default 24-combo grid completes on synthetic bars."""
-        rep = train_module.train_symbol(
-            synthetic_bars(), default_config(), "TEST", train_frac=0.7
-        )
+        rep = train_module.train_symbol(synthetic_bars(), default_config(), "TEST", train_frac=0.7)
         assert rep.ok, rep.error
         assert rep.n_combos == 24
 
@@ -141,10 +155,14 @@ class TestApplyBest:
         cfg = default_config()
         before = cfg.signal_threshold
         assert train_module.apply_best({"symbols": []}, "AAPL", cfg) == {}
-        assert train_module.apply_best(
-            {"symbols": [{"symbol": "AAPL", "ok": False, "best_params": {}}]},
-            "AAPL", cfg,
-        ) == {}
+        assert (
+            train_module.apply_best(
+                {"symbols": [{"symbol": "AAPL", "ok": False, "best_params": {}}]},
+                "AAPL",
+                cfg,
+            )
+            == {}
+        )
         assert cfg.signal_threshold == before
 
 
@@ -157,9 +175,7 @@ class TestReportPersistence:
         assert train_module.load_report(default_config()) == report
 
     def test_load_missing_returns_none(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(
-            train_module, "report_path", lambda cfg=None: tmp_path / "nope.json"
-        )
+        monkeypatch.setattr(train_module, "report_path", lambda cfg=None: tmp_path / "nope.json")
         assert train_module.load_report(default_config()) is None
 
 
