@@ -369,6 +369,64 @@ def real_account(request: Request, response: Response):
     return _call(account_snapshot)
 
 
+class RealOrderRequest(StrictModel):
+    symbol: Literal["BTC/USD", "ETH/USD", "SOL/USD"]
+    side: Literal["buy", "sell"]
+    quantity: float = Field(gt=0, le=1e9)
+    limit_price: float = Field(gt=0, le=1e9)
+
+
+class RealOrderAction(StrictModel):
+    identifier: str = Field(pattern=r"^[0-9a-f]{32}$")
+    confirmation: str = Field(min_length=1, max_length=40)
+
+
+@router.post("/real/orders/preview")
+def real_order_preview(payload: RealOrderRequest, request: Request, response: Response):
+    from core.fusion.real_execution import preview_order
+
+    _require_local_action(request)
+    _private_response(response)
+    order = dict(payload.model_dump(), notional=None, order_type="limit", time_in_force="gtc")
+    return _call(preview_order, order)
+
+
+@router.get("/real/orders")
+def real_orders(request: Request, response: Response):
+    from core.fusion.real_execution import list_orders
+
+    _require_local_action(request)
+    _private_response(response)
+    return _call(list_orders)
+
+
+@router.post("/real/orders/submit")
+def real_order_submit(payload: RealOrderAction, request: Request, response: Response):
+    from core.fusion.real_execution import submit_order
+
+    _require_local_action(request)
+    _private_response(response)
+    return _call(submit_order, payload.identifier, payload.confirmation)
+
+
+@router.post("/real/orders/cancel")
+def real_order_cancel(payload: RealOrderAction, request: Request, response: Response):
+    from core.fusion.real_execution import cancel_order
+
+    _require_local_action(request)
+    _private_response(response)
+    return _call(cancel_order, payload.identifier, payload.confirmation)
+
+
+@router.post("/real/orders/{identifier}/reconcile")
+def real_order_reconcile(identifier: str, request: Request, response: Response):
+    from core.fusion.real_execution import reconcile_order
+
+    _require_local_action(request)
+    _private_response(response)
+    return _call(reconcile_order, identifier)
+
+
 @router.get("/mirofish/{collection}")
 def mirofish_collection(collection: str, request: Request, response: Response):
     from core.fusion.external import MiroFishAdapter

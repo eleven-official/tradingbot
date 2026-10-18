@@ -51,10 +51,12 @@ require the local launcher, its session token and origin checks. Failed reads
 show unknown balances; totals are actual asset units, with no invented common
 USD equity. Merely configured keys are never labeled authenticated.
 
-**Real order submission is not implemented in this workspace yet.** The top
-switch therefore exposes actual connection/readiness state and cannot advertise
-an enabled live bot. A funded execution workflow, venue precision/minimums,
-reconciliation, idempotency and measured risk gates remain integration work.
+Manual Kraken spot limits now have a separately gated order workflow; see
+[manual real orders](REAL_ORDERS.md). It requires host opt-in, a fresh preview
+and typed confirmation, and records submission claims durably before transport.
+Cancellation and read-only reconciliation preserve uncertain outcomes. The top
+switch cannot advertise an enabled autonomous bot. All execution verification
+uses mocked exchanges; no funded order was placed.
 
 ## Native MiroFish council input
 

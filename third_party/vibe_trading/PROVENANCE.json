@@ -16,6 +16,13 @@
       "original_sha256": "7d39b4220b477f3a5de9051b8c19e56dd1ae55fd11c1d276fc5ea4c099a2a940",
       "runtime_adaptation": "factor_analysis.py",
       "changes": "Paired-rank Spearman IC and equal-weight quantile diagnostics ported to dict panels and stdlib statistics; deterministic symbol tie breaks replace pandas qcut."
+    },
+    {
+      "archive_path": "agent/src/live/pending_action.py",
+      "retained_original": "upstream/pending_action.py",
+      "original_sha256": "a5235d39047db96e523c668b0bcf4002244d12b8360d09b79e8c428c99960952",
+      "runtime_adaptation": "order_contracts.py",
+      "changes": "PendingOrderRequest class retained verbatim; provider-specific pending-action persistence is replaced with the Loki SQLite order journal."
     }
   ],
   "scope": "Selected source integration only. The full upstream application is not bundled or started.",

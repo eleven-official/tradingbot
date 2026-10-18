@@ -1056,7 +1056,7 @@ class LokiCopilot:
                 f"net practice P&L {_cash(metrics.get('total_pnl'))}. These are synthetic outcomes."
             )
         lines.append(
-            "Real at the top opens genuine exchange account inspection when configured. Real order submission is not implemented here yet; "
+            "Real at the top opens genuine exchange account inspection when configured. Manual Kraken spot limit orders require host opt-in, a fresh preview and typed confirmation. Automatic bot execution is disabled; "
             "a mode switch never arms a bot or places a trade. Synthetic wins, generated price paths and practice council feedback cannot establish 70% real-market winning trades."
         )
         return (

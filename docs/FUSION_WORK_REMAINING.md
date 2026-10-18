@@ -14,6 +14,10 @@ The current implementation is concrete progress, not completion of that scope.
 - The top Paper/Real controls separate practice from real-account inspection.
   Real balance reads use actual CCXT venue code, configured only by the host.
   Switching modes never authenticates, submits orders or starts trading.
+- Manual Kraken spot limits have immutable previews, typed confirmation,
+  minimum/precision/funds/quote checks, a durable SQLite journal, daily caps,
+  duplicate prevention, cancellation and read-only reconciliation. Verification
+  uses venue mocks only; no real account or funded order has been tested.
 - All 128 original supplied MiroFish files are bundled with hashes and AGPL
   license. The retained native ReportManager file reader and report data classes
   actually execute in a subprocess. Native report artifacts enter the council's
@@ -45,11 +49,12 @@ The current implementation is concrete progress, not completion of that scope.
    analytics, data/terminal and portfolio workflows beyond risk reports, within
    the user's confirmed commercial license. Keep private licensed source out of
    public source releases and preserve the intended runtime boundary.
-5. **Real execution:** implement and verify funded venue order previews, explicit
-   user order submission, precision/minimum rules, fee/quote freshness checks,
-   idempotency, cancellation, reconciliation, exposure/drawdown controls and
-   durable audit records. The current real view is read-only. No broker account
-   is authenticated or real order placed by the present verification runs.
+5. **Real execution expansion:** validate the manual Kraken workflow against
+   appropriate venue test facilities before funded use; add portfolio-wide
+   exposure/drawdown controls, authenticated multi-user operation and other
+   venues only after their actual semantics are verified. The current manual
+   limit workflow has no autonomous bot or attached protective stops. No broker
+   account is authenticated or real order placed by verification runs.
 6. **Trading research and forward evidence:** secure usable, commercially
    licensed real execution history and/or collect prospective observations,
    freeze strategy identities/settings, preserve all trials, and test costs,

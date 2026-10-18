@@ -1,4 +1,4 @@
-"""Contracts of the shipped research application, including its absent broker surface.
+"""Contracts of research routes and the separately gated local order surface.
 
 These requests exercise the real ASGI application. They never require a default
 administrator, a venue connection, or a fabricated account/market-data stream.
@@ -23,12 +23,15 @@ def test_root_serves_unified_workspace_html():
         "strategy-lab",
         "agent-council",
         "portfolio",
+        "simulated-market",
+        "real-market",
         "scenarios",
         "copilot",
         "integrations",
     ):
         assert f'data-view="{section}"' in response.text
-    assert "No broker orders submitted" in response.text
+    assert "Separate practice accounts" in response.text
+    assert 'id="real-order-fields" disabled' in response.text
     assert __version__ in response.text
 
 
@@ -84,7 +87,7 @@ def test_no_fabricated_market_data_websocket_is_exposed():
             socket.receive_json()
 
 
-def test_openapi_documents_research_and_simulated_actions_only():
+def test_openapi_separates_research_from_gated_manual_order_routes():
     response = client.get("/openapi.json")
     assert response.status_code == 200
     paths = response.json()["paths"]
@@ -97,7 +100,39 @@ def test_openapi_documents_research_and_simulated_actions_only():
         assert "post" in paths[path]
     assert "/token" not in paths
     assert not any(path.startswith("/api/v1") for path in paths)
-    assert not any("/orders" in path for path in paths)
+    order_paths = {path for path in paths if "/orders" in path}
+    assert order_paths == {
+        "/api/fusion/real/orders",
+        "/api/fusion/real/orders/preview",
+        "/api/fusion/real/orders/submit",
+        "/api/fusion/real/orders/cancel",
+        "/api/fusion/real/orders/{identifier}/reconcile",
+    }
+    assert client.get("/api/fusion/real/orders").status_code == 403
+    assert (
+        client.post(
+            "/api/fusion/real/orders/preview",
+            json={
+                "symbol": "BTC/USD",
+                "side": "buy",
+                "quantity": 0.5,
+                "limit_price": 100.0,
+            },
+        ).status_code
+        == 403
+    )
+    for action in ("submit", "cancel"):
+        assert (
+            client.post(
+                f"/api/fusion/real/orders/{action}",
+                json={
+                    "identifier": "a" * 32,
+                    "confirmation": "PLACE REAL ORDER",
+                },
+            ).status_code
+            == 403
+        )
+    assert client.post(f"/api/fusion/real/orders/{'a' * 32}/reconcile").status_code == 403
 
 
 def test_paper_account_lifecycle_is_costed_and_client_owned():

@@ -34,7 +34,7 @@ templates = Jinja2Templates(directory=str(templates_dir))
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Render the research workspace; this API never submits trading orders."""
+    """Render the workspace; real orders use separately gated local routes."""
     context = {"request": request, "version": __version__}
     return templates.TemplateResponse(request=request, name="index.html", context=context)
 

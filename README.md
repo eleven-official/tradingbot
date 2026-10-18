@@ -17,14 +17,14 @@ Open http://127.0.0.1:8000. The nine views connect research, practice and accoun
 - **Agent council:** AutoHedge-derived director/analyst role contracts with deterministic signal, evidence, cash, currency and exposure checks. Drafts are inert and blocked when checks fail; no LLM agents are silently invoked.
 - **Paper portfolio:** manual long entries, partial exits, marks, costs, lifecycle P&L, browser persistence, export and cost-aware sizing.
 - **Simulated market:** generated BTC/ETH/SOL candles, play/pause and virtual clock, six seeded scenarios, a separate practice account, market/limit paper orders, protective stops, costs, journal, export and synthetic council feedback.
-- **Real account:** the top Paper/Real switch opens a separate connection view. Genuine CCXT spot balances can be read with host-configured read-only credentials. Real order submission is not implemented here yet; a mode switch does not arm a bot.
+- **Real account:** the top Paper/Real switch opens a separate connection view. Genuine CCXT spot balances use host-configured credentials. Manual Kraken spot limit orders need separate host opt-in, a fresh preview and typed confirmation, with durable duplicate prevention, cancellation and reconciliation. A mode switch does not arm a bot. See [manual orders](docs/REAL_ORDERS.md).
 - **Scenarios:** explicit price-shock sensitivity on current paper positions, plus the actual MiroFish service workflow when configured.
 - **Talk to Loki:** grounded local explanations of research, factors, council decisions, portfolios and stress results; multi-topic questions, instrument followups, loss reviews and useful next checks. Chat has no execution authority.
 - **Integrations:** real readiness states and licensed Fincept daily-return portfolio risk reports.
 
 Upload **161–5,000 bars from a single instrument** with columns `timestamp,open,high,low,close,volume`. Use ISO 8601 timestamps (timezone recommended; naive timestamps are interpreted as UTC) in ascending order. Set bars per year to match the data frequency. All monetary values use the input data's quote currency. Historical data provenance is not independently verified.
 
-Paper journal state is saved in this browser's local storage. Research, council and stress results remain in the current page until export or reload. The workspace export includes uploaded bars and paper records; handle it as business data. Server endpoints compute from caller-supplied state and do not provide accounts, authentication, durable storage or broker orders. Default local research and chat do not call external AI providers.
+Paper journal state is saved in this browser's local storage. Research, council and stress results remain in the current page until export or reload. The workspace export includes uploaded bars and paper records; handle it as business data. Research endpoints compute from caller-supplied state. Private native-engine, real-account and manual-order routes require loopback origin checks and a local session token; this is not multi-user business authentication. Real order claims use a separate durable host-side journal. Default local research and chat do not call external AI providers.
 
 **Historical machine learning needs no personal account or key.** In Quant lab,
 click **Fetch history & train** to download Open Crypto Pricing's commercially

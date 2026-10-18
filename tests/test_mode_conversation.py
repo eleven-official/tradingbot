@@ -21,10 +21,11 @@ def test_practice_chat_uses_only_practice_metrics_and_does_not_claim_a_trade_edg
     assert "cannot establish 70%" in answer.text
 
 
-def test_real_mode_chat_does_not_imply_live_execution_is_available():
+def test_real_mode_chat_explains_manual_confirmation_without_implying_autonomous_execution():
     answer = LokiCopilot().respond("How does real mode work?")
     assert "sim_market" in answer.topics
-    assert "Real order submission is not implemented" in answer.text
+    assert "typed confirmation" in answer.text
+    assert "Automatic bot execution is disabled" in answer.text
 
 
 def test_explicit_practice_balance_does_not_use_the_main_paper_account():

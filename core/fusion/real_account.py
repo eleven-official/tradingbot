@@ -1,8 +1,8 @@
-"""Read-only real exchange access. Selecting a mode never submits an order.
+"""Real exchange readiness and read-only balances. A mode switch never orders.
 
 Use the actual CCXT venue client rather than the legacy placeholder Binance
-adapter. Credentials stay in the host environment. This workspace's real order
-submission is not implemented; do not describe connection status as execution.
+adapter. Credentials stay in the host environment. Manual orders have a separate
+host opt-in and confirmation workflow in real_execution; readiness is not authentication.
 """
 
 from __future__ import annotations
@@ -28,6 +28,8 @@ def status(environ=None):
         reasons.append("The host has not enabled real-account reads.")
     if not installed:
         reasons.append("The CCXT exchange dependency is not installed.")
+    orders_enabled = env.get("LOKI_REAL_ORDERS_ENABLED") == "1"
+    manual_orders = not reasons and orders_enabled and venue == "kraken"
     return {
         "mode": "real_account",
         "exchange": venue,
@@ -36,13 +38,30 @@ def status(environ=None):
         "dependency_ready": installed,
         "ready_to_connect": not reasons,
         "authenticated": False,
-        "order_submission_available": False,
+        "order_submission_available": manual_orders,
+        "orders_enabled_by_host": orders_enabled,
         "live_trading_enabled": False,
         "status": "ready_to_connect" if not reasons else "not_connected",
         "reasons": reasons,
         "message": "Selecting Real opens account inspection. It does not arm trading or authenticate an exchange.",
-        "execution_status": "Real order submission is not implemented in this workspace yet; synthetic and paper accounts stay separate.",
+        "execution_status": "Manual Kraken spot limit orders require host opt-in, a fresh preview and typed confirmation. Automatic bot execution is disabled; synthetic and paper accounts stay separate.",
     }
+
+
+def make_client(env):
+    import ccxt
+
+    return getattr(ccxt, env.get("LOKI_REAL_EXCHANGE", "kraken"))(
+        {
+            "apiKey": env["LOKI_REAL_API_KEY"],
+            "secret": env["LOKI_REAL_API_SECRET"],
+            "password": env.get("LOKI_REAL_API_PASSPHRASE"),
+            "enableRateLimit": True,
+            "timeout": 10000,
+            "maxRetriesOnFailure": 0,
+            "options": {"defaultType": "spot", "maxRetriesOnFailure": 0},
+        }
+    )
 
 
 def account_snapshot(environ=None):
@@ -50,18 +69,7 @@ def account_snapshot(environ=None):
     state = status(env)
     if not state["ready_to_connect"]:
         raise ValueError(" ".join(state["reasons"]))
-    import ccxt
-
-    client = getattr(ccxt, state["exchange"])(
-        {
-            "apiKey": env["LOKI_REAL_API_KEY"],
-            "secret": env["LOKI_REAL_API_SECRET"],
-            "password": env.get("LOKI_REAL_API_PASSPHRASE"),
-            "enableRateLimit": True,
-            "timeout": 10000,
-            "options": {"defaultType": "spot"},
-        }
-    )
+    client = make_client(env)
     try:
         balance = client.fetch_balance()
         if not isinstance(balance, dict) or not isinstance(balance.get("total"), dict):

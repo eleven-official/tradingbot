@@ -67,6 +67,7 @@ jobs:
               "tests/test_market_learning.py",
               "tests/test_simulated_market.py",
               "tests/test_real_account.py",
+              "tests/test_real_execution.py",
               "tests/test_miro_native.py",
               "tests/test_mode_conversation.py",
               "tests/test_research_api.py",
