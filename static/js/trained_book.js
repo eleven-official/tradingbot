@@ -13,6 +13,21 @@
       ? '—'
       : `${Number(value).toFixed(digits)}${suffix}`;
 
+  /** Hurdle verdict computed from the audited holdout itself: win ≥ 90%,
+   * months ≥ 60%, PF ≥ 1.25, trades ≥ 5. Shows failures plainly — the
+   * evidence is never dressed up. */
+  const holdoutBadge = (holdout) => {
+    const missed = [];
+    if (Number(holdout.win_rate_pct) < 90) missed.push('win');
+    if (Number(holdout.profitable_months_pct) < 60) missed.push('months');
+    if (Number(holdout.profit_factor) < 1.25) missed.push('PF');
+    if (Number(holdout.trades) < 5) missed.push('trades');
+    const base = 'font-size:11.5px;border-radius:999px;padding:3px 10px;align-self:flex-start;';
+    return missed.length === 0
+      ? `<span style="${base}color:#b8f0d8;background:rgba(184,240,216,.12)">✓ all holdout hurdles met</span>`
+      : `<span style="${base}color:#f0c98b;background:rgba(240,201,139,.1)">holdout below ${escapeHtml(missed.join(' + '))} hurdle${missed.length > 1 ? 's' : ''}</span>`;
+  };
+
   const render = (book) => {
     const grid = document.getElementById('trained-book-grid');
     if (!grid) return;
@@ -27,8 +42,10 @@
           `<span style="color:#8bdad4;font-size:12px">Final 20% never touched by training:</span>
            <span style="color:#e7f0ff;font-size:12.5px">${escapeHtml(num(holdout.win_rate_pct))} win · ${escapeHtml(num(holdout.profitable_months_pct))} months · PF ${escapeHtml(num(holdout.profit_factor, 2, ''))}</span>` :
           '<span style="color:#7f93a8;font-size:12px">Holdout audit pending</span>';
+      const badge = holdout.trades ? holdoutBadge(holdout) : '';
       return `<article style="${cardStyle}">
         <strong style="font-size:15px;color:#b8f0d8">${escapeHtml(entry.symbol)}</strong>
+        ${badge}
         <span style="font-size:13.5px"><strong>${escapeHtml(num(entry.win_rate_pct))}</strong> winning trades</span>
         <span style="font-size:13.5px"><strong>${escapeHtml(num(entry.profitable_months_pct))}</strong> profitable months</span>
         <span style="font-size:13px;color:#9fb0c2">profit factor ${escapeHtml(num(entry.profit_factor, 2, ''))} · ${escapeHtml(String(entry.trades ?? '—'))} verified trades</span>

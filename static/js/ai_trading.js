@@ -44,6 +44,13 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* storage full: ignore */ }
   }
 
+  function message(text, ok) {
+    const target = $('ai-message');
+    if (!target) return;
+    target.textContent = text || '';
+    target.style.color = ok ? '#b8f0d8' : '';
+  }
+
   function logLine(text, kind) {
     state.log.unshift({ t: new Date().toISOString(), text, kind: kind || 'info' });
     if (state.log.length > 60) state.log.length = 60;
@@ -414,6 +421,7 @@
       state.startCash = Number($('ai-capital').value) || state.startCash;
       if (!state.trades.length && !state.position) state.cash = state.startCash;
       logLine(`AI trading started on ${state.symbol} with ${fmtMoney(state.cash)} paper cash.`, 'good');
+      message(`AI is now checking ${state.symbol} every 20 seconds — paper money only.`, true);
       save();
       render();
       step();
@@ -425,6 +433,7 @@
       state.running = false;
       if (timer) { clearInterval(timer); timer = null; }
       logLine('AI trading paused.', 'warn');
+      message('Paused — the AI stopped checking the market.');
       save();
       render();
     });
@@ -435,6 +444,7 @@
       state.symbol = keepSymbol;
       if (timer) { clearInterval(timer); timer = null; }
       logLine('Paper account reset.', 'warn');
+      message('Paper account reset — fresh capital, empty journal.');
       save();
       $('ai-capital').value = state.startCash;
       render();

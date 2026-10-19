@@ -110,9 +110,9 @@
         const res = await fetch('/api/auth/session', { cache: 'no-store' });
         if (res.ok) {
           const me = await res.json();
-          if (me.nickname) {
+          if (me.enabled && (me.email || me.nickname)) {
             msg.className = 'ok';
-            msg.textContent = `Already signed in as ${me.nickname} — opening the workspace…`;
+            msg.textContent = `Already signed in as ${me.nickname || me.email} — opening the workspace…`;
             setTimeout(() => { window.location.href = '/#overview'; }, 900);
           }
         }

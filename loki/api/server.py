@@ -50,8 +50,24 @@ app.mount("/terminal", AdvancedTerminal(), name="advanced-terminal")
 # Resolve assets independently of the process working directory.
 repo_dir = Path(__file__).resolve().parents[2]
 static_dir = repo_dir / "static"
+
+
+class FreshStaticFiles(StaticFiles):
+    """Static files that ask the browser to revalidate every time.
+
+    Static-mount responses default to heuristic caching, which lets browsers
+    serve stale JavaScript after a deploy; `no-cache` forces a cheap ETag
+    revalidation so a refreshed site is always the current one.
+    """
+
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    app.mount("/static", FreshStaticFiles(directory=str(static_dir)), name="static")
 
 # Templates dir
 templates_dir = repo_dir / "templates"
