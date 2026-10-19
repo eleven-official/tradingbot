@@ -20,6 +20,8 @@
 </head>
 <body>
 
+  <a class="skip-link" href="#app-main">Skip to main content</a>
+
   <!-- Top Navigation Header -->
   <header class="top-nav">
     <div class="brand">
@@ -33,6 +35,8 @@
           <span>Autonomous Multi-Agent Trading</span>
           <span class="meta-dot">·</span>
           <span class="sync-text" id="last-sync">syncing…</span>
+          <span class="meta-dot">·</span>
+          <span class="sync-text" id="api-latency" title="Round-trip time to the engine API">— ms</span>
           <span class="meta-dot">·</span>
           <span class="sync-text" id="header-clock">--:--:--</span>
         </div>
@@ -64,6 +68,12 @@
         ▶ START 24/7 AUTO-LOOP
       </button>
 
+      <button id="btn-palette" type="button" class="palette-trigger" onclick="openPalette()" aria-label="Open command palette" title="Command palette — Ctrl/Cmd + K">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="palette-trigger-label">Quick actions</span>
+        <kbd class="palette-trigger-kbd" id="palette-kbd">Ctrl K</kbd>
+      </button>
+
       <a class="gh-link" href="https://github.com/eleven-official/tradingbot" target="_blank" rel="noopener noreferrer" aria-label="Open the trading bot repository on GitHub">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
         <span>GitHub</span>
@@ -76,7 +86,7 @@
   </div>
 
   <!-- Main Workspace -->
-  <main class="app-container">
+  <main id="app-main" class="app-container" tabindex="-1">
 
     <!-- KPI Metric Cards -->
     <section class="kpi-grid" aria-label="Portfolio overview">
@@ -150,34 +160,34 @@
 
     <!-- Navigation Tabs -->
     <nav class="tabs-nav" role="tablist" aria-label="Terminal sections">
-      <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-tab="radar" title="Live Market Radar — shortcut Alt+1" onclick="showTab('radar', this)">
+      <button class="tab-btn active" type="button" role="tab" id="btn-tab-radar" aria-selected="true" aria-controls="tab-radar" tabindex="0" data-tab="radar" title="Live Market Radar — shortcut Alt+1" onclick="showTab('radar', this)">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
         Live Market Radar
       </button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-regime" data-tab="regime" title="Market Regime Monitor — shortcut Alt+2" onclick="showTab('regime', this)">
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-regime" aria-controls="tab-regime" tabindex="-1" data-tab="regime" title="Market Regime Monitor — shortcut Alt+2" onclick="showTab('regime', this)">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
         Market Regime Monitor
       </button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="council" title="Agentic Council — shortcut Alt+3" onclick="showTab('council', this)">
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-council" aria-controls="tab-council" tabindex="-1" data-tab="council" title="Agentic Council — shortcut Alt+3" onclick="showTab('council', this)">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         Agentic Council
       </button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="portfolio" title="Portfolio & Execution Desk — shortcut Alt+4" onclick="showTab('portfolio', this)">
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-portfolio" aria-controls="tab-portfolio" tabindex="-1" data-tab="portfolio" title="Portfolio & Execution Desk — shortcut Alt+4" onclick="showTab('portfolio', this)">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7h-9M14 17H5M12 3v18"/></svg>
         Portfolio &amp; Execution
       </button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="backtest" title="Backtest Lab — shortcut Alt+5" onclick="showTab('backtest', this)">
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-backtest" aria-controls="tab-backtest" tabindex="-1" data-tab="backtest" title="Backtest Lab — shortcut Alt+5" onclick="showTab('backtest', this)">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         Honest Backtest Lab
       </button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="trainer" title="AI Strategy Trainer — shortcut Alt+6" onclick="showTab('trainer', this)">
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-trainer" aria-controls="tab-trainer" tabindex="-1" data-tab="trainer" title="AI Strategy Trainer — shortcut Alt+6" onclick="showTab('trainer', this)">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
         AI Strategy Trainer
       </button>
     </nav>
 
     <!-- TAB 1: Live Market Radar -->
-    <div id="tab-radar" class="tab-content" role="tabpanel">
+    <div id="tab-radar" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-radar" tabindex="0">
       <div class="control-bar">
         <div>
           <h2>Real-Time Institutional Alpha Radar</h2>
@@ -231,20 +241,24 @@
       <div class="table-card">
         <div class="table-header-title">
           <span>Signal Matrix</span>
-          <span class="brand-badge" id="radar-count-badge">0 signals</span>
+          <div class="table-head-actions">
+            <span class="brand-badge" id="radar-count-badge">0 signals</span>
+            <button type="button" class="icon-btn" onclick="exportRadarCsv()" title="Download radar signals as CSV" aria-label="Download radar signals as CSV">CSV</button>
+          </div>
         </div>
         <div class="table-scroll">
           <table>
+            <caption class="sr-only">Live market radar signals with entry, stop, target, and risk-reward levels</caption>
             <thead>
               <tr>
-                <th scope="col">Asset</th>
-                <th scope="col">Action</th>
-                <th scope="col">Score / Conf</th>
-                <th scope="col">TTM Squeeze</th>
-                <th scope="col">Entry Price</th>
-                <th scope="col">Stop Loss</th>
-                <th scope="col">Target 1 / 2</th>
-                <th scope="col">Risk:Reward</th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="symbol"><button type="button" class="sort-btn" onclick="sortTable('radar','symbol')">Asset<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="action"><button type="button" class="sort-btn" onclick="sortTable('radar','action')">Action<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="score"><button type="button" class="sort-btn" onclick="sortTable('radar','score')">Score / Conf<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="squeeze_status"><button type="button" class="sort-btn" onclick="sortTable('radar','squeeze_status')">TTM Squeeze<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="entry_price"><button type="button" class="sort-btn" onclick="sortTable('radar','entry_price')">Entry Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="stop_loss"><button type="button" class="sort-btn" onclick="sortTable('radar','stop_loss')">Stop Loss<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="take_profit"><button type="button" class="sort-btn" onclick="sortTable('radar','take_profit')">Target 1 / 2<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="risk_reward"><button type="button" class="sort-btn" onclick="sortTable('radar','risk_reward')">Risk:Reward<span class="sort-arrow" aria-hidden="true"></span></button></th>
                 <th scope="col">Alpha Thesis &amp; Reasons</th>
                 <th scope="col" style="text-align:right;">Execute</th>
               </tr>
@@ -266,7 +280,7 @@
     </div>
 
     <!-- TAB 2: Market Regime Monitor -->
-    <div id="tab-regime" class="tab-content" role="tabpanel" style="display:none;">
+    <div id="tab-regime" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-regime" tabindex="0" style="display:none;">
       <div class="control-bar">
         <div>
           <h2>Market Regime Monitor — Trend &amp; Volatility Engine</h2>
@@ -297,7 +311,7 @@
     </div>
 
     <!-- TAB 3: Agentic Council -->
-    <div id="tab-council" class="tab-content" role="tabpanel" style="display:none;">
+    <div id="tab-council" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-council" tabindex="0" style="display:none;">
       <div class="control-bar">
         <div>
           <h2>Autonomous Agentic Council</h2>
@@ -321,7 +335,7 @@
     </div>
 
     <!-- TAB 4: Portfolio & Execution Desk -->
-    <div id="tab-portfolio" class="tab-content" role="tabpanel" style="display:none;">
+    <div id="tab-portfolio" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-portfolio" tabindex="0" style="display:none;">
       <div class="control-bar">
         <div>
           <h2>Active Portfolio &amp; Order Routing</h2>
@@ -363,21 +377,25 @@
       <div class="table-card" style="margin-bottom:20px;">
         <div class="table-header-title">
           <span>Active Open Positions</span>
-          <span id="pos-count-badge" class="brand-badge">0 Open</span>
+          <div class="table-head-actions">
+            <span id="pos-count-badge" class="brand-badge">0 Open</span>
+            <button type="button" class="icon-btn" onclick="exportPositionsCsv()" title="Download open positions as CSV" aria-label="Download open positions as CSV">CSV</button>
+          </div>
         </div>
         <div class="table-scroll">
           <table>
+            <caption class="sr-only">Open portfolio positions with mark-to-market values and protective levels</caption>
             <thead>
               <tr>
-                <th scope="col">Symbol</th>
-                <th scope="col">Direction</th>
-                <th scope="col">Units / Qty</th>
-                <th scope="col">Avg Entry</th>
-                <th scope="col">Current Price</th>
-                <th scope="col">Market Value</th>
-                <th scope="col">Unrealized P&amp;L</th>
-                <th scope="col">Stop Loss</th>
-                <th scope="col">Take Profit</th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="symbol"><button type="button" class="sort-btn" onclick="sortTable('positions','symbol')">Symbol<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="side"><button type="button" class="sort-btn" onclick="sortTable('positions','side')">Direction<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="qty"><button type="button" class="sort-btn" onclick="sortTable('positions','qty')">Units / Qty<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="avg_entry"><button type="button" class="sort-btn" onclick="sortTable('positions','avg_entry')">Avg Entry<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="current_price"><button type="button" class="sort-btn" onclick="sortTable('positions','current_price')">Current Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="market_value"><button type="button" class="sort-btn" onclick="sortTable('positions','market_value')">Market Value<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="unrealized_pnl"><button type="button" class="sort-btn" onclick="sortTable('positions','unrealized_pnl')">Unrealized P&amp;L<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="stop_loss"><button type="button" class="sort-btn" onclick="sortTable('positions','stop_loss')">Stop Loss<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="take_profit"><button type="button" class="sort-btn" onclick="sortTable('positions','take_profit')">Take Profit<span class="sort-arrow" aria-hidden="true"></span></button></th>
                 <th scope="col" style="text-align:right;">Action</th>
               </tr>
             </thead>
@@ -400,19 +418,23 @@
       <div class="table-card">
         <div class="table-header-title">
           <span>Executed Trades Audit Trail</span>
-          <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">Last 20 fills</span>
+          <div class="table-head-actions">
+            <span class="table-meta">Last 20 fills</span>
+            <button type="button" class="icon-btn" onclick="exportTradesCsv()" title="Download trade history as CSV" aria-label="Download trade history as CSV">CSV</button>
+          </div>
         </div>
         <div class="table-scroll">
           <table>
+            <caption class="sr-only">Recent completed trades with realized profit and loss</caption>
             <thead>
               <tr>
-                <th scope="col">Symbol</th>
-                <th scope="col">Direction</th>
-                <th scope="col">Quantity</th>
-                <th scope="col">Entry Price</th>
-                <th scope="col">Exit Price</th>
-                <th scope="col">Realized P&amp;L</th>
-                <th scope="col">Return %</th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="symbol"><button type="button" class="sort-btn" onclick="sortTable('trades','symbol')">Symbol<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="side"><button type="button" class="sort-btn" onclick="sortTable('trades','side')">Direction<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="qty"><button type="button" class="sort-btn" onclick="sortTable('trades','qty')">Quantity<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="entry_price"><button type="button" class="sort-btn" onclick="sortTable('trades','entry_price')">Entry Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="exit_price"><button type="button" class="sort-btn" onclick="sortTable('trades','exit_price')">Exit Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="pnl"><button type="button" class="sort-btn" onclick="sortTable('trades','pnl')">Realized P&amp;L<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="pnl_pct"><button type="button" class="sort-btn" onclick="sortTable('trades','pnl_pct')">Return %<span class="sort-arrow" aria-hidden="true"></span></button></th>
               </tr>
             </thead>
             <tbody id="trades-table-body">
@@ -432,7 +454,7 @@
     </div>
 
     <!-- TAB 5: Honest Backtest Lab -->
-    <div id="tab-backtest" class="tab-content" role="tabpanel" style="display:none;">
+    <div id="tab-backtest" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-backtest" tabindex="0" style="display:none;">
       <div class="control-bar">
         <div>
           <h2>Honest Backtest &amp; Walk-Forward Validation Lab</h2>
@@ -541,7 +563,7 @@
     </div>
 
     <!-- TAB 6: AI Strategy Trainer -->
-    <div id="tab-trainer" class="tab-content" role="tabpanel" style="display:none;">
+    <div id="tab-trainer" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-trainer" tabindex="0" style="display:none;">
       <div class="control-bar">
         <div>
           <h2>AI Strategy Trainer — Walk-Forward Validation</h2>
@@ -597,6 +619,26 @@
     LOKI Quantitative Intelligence • Built for <strong>eleven-official</strong> • API v{{ version }} • Paper &amp; live multi-asset engine
   </footer>
 
+  <!-- Command palette -->
+  <div id="palette-overlay" class="palette-overlay" hidden>
+    <div class="palette" role="dialog" aria-modal="true" aria-labelledby="palette-title">
+      <h2 id="palette-title" class="sr-only">Command palette</h2>
+      <div class="palette-search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="palette-input" type="text" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-controls="palette-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Search tabs, symbols, and actions…">
+        <kbd>ESC</kbd>
+      </div>
+      <div id="palette-results" class="palette-results" role="listbox" aria-label="Commands"></div>
+      <div class="palette-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+        <span><kbd>↵</kbd> run</span>
+        <button type="button" class="palette-help" onclick="closePalette(); openShortcuts()">Shortcuts <kbd>?</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" id="scroll-top" class="scroll-top" onclick="scrollToTop()" aria-label="Back to top" title="Back to top">↑</button>
+
   <!-- Frontend Logic -->
   <script>
     const $ = (id) => document.getElementById(id);
@@ -621,6 +663,20 @@
     let radarSignals = [];
     let radarRegimes = {};
     let radarFilter = 'ALL';
+    let portfolioData = null;
+    let portfolioLoadedAt = null;
+    let inspectorOverlay = null;
+    let inspectorUntrap = null;
+    let inspectorReturnFocus = null;
+    let paletteUntrap = null;
+    let paletteReturnFocus = null;
+    let paletteActiveIndex = 0;
+    let paletteFiltered = [];
+    const tableSort = {
+      radar: { key: null, dir: 1 },
+      positions: { key: null, dir: 1 },
+      trades: { key: null, dir: 1 },
+    };
     const tabLoaded = { radar: true, regime: false, council: false, portfolio: false, backtest: false, trainer: false };
 
     // ------------------------------------------------------------------
@@ -673,11 +729,15 @@
       return String(v || '').replace(/[^A-Za-z0-9.\-^]/g, '');
     }
 
-    function emptyState(icon, title, hint) {
+    function emptyState(icon, title, hint, action = null) {
+      const actionHtml = action
+        ? `<button type="button" class="action-btn btn-secondary btn-compact empty-action" onclick="${action.onclick}">${escapeHtml(action.label)}</button>`
+        : '';
       return `<div class="empty-state">
         <div class="empty-icon" aria-hidden="true">${escapeHtml(icon)}</div>
         <div class="empty-title">${escapeHtml(title)}</div>
         <div class="empty-hint">${escapeHtml(hint)}</div>
+        ${actionHtml}
       </div>`;
     }
 
@@ -706,7 +766,7 @@
       }
     }
 
-    function toast(message, type = 'info') {
+    function toast(message, type = 'info', action = null) {
       let holder = $('toast-holder');
       if (!holder) {
         holder = document.createElement('div');
@@ -721,12 +781,32 @@
       const el = document.createElement('div');
       el.className = 'toast toast-' + type;
       el.innerHTML = `<span class="toast-icon" aria-hidden="true">${icons[type] || 'i'}</span><span class="toast-msg">${escapeHtml(message)}</span>`;
-      holder.appendChild(el);
-      requestAnimationFrame(() => el.classList.add('toast-show'));
-      setTimeout(() => {
+
+      let dismissed = false;
+      let timer = null;
+      const dismiss = () => {
+        if (dismissed) return;
+        dismissed = true;
+        if (timer) clearTimeout(timer);
         el.classList.remove('toast-show');
         setTimeout(() => el.remove(), 320);
-      }, 4200);
+      };
+
+      if (action) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'toast-action';
+        btn.textContent = action.label;
+        btn.addEventListener('click', () => {
+          dismiss();
+          try { action.onClick(); } catch (e) { console.error('Toast action failed:', e); }
+        });
+        el.appendChild(btn);
+      }
+
+      holder.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      timer = setTimeout(dismiss, action ? 7000 : 4200);
     }
 
     function confirmDialog(message) {
@@ -747,8 +827,10 @@
           else if (e.key === 'Enter') { e.preventDefault(); close(true); }
         };
 
+        const untrap = trapFocus(overlay);
         const close = (answer) => {
           document.removeEventListener('keydown', onKey);
+          untrap();
           overlay.remove();
           resolve(answer);
         };
@@ -770,8 +852,183 @@
     }
 
     // ------------------------------------------------------------------
-    // Connection state, clock, tabs
+    // Accessibility, live feedback, sorting & CSV helpers
     // ------------------------------------------------------------------
+    function trapFocus(container) {
+      const selector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      const handler = (e) => {
+        if (e.key !== 'Tab') return;
+        const items = Array.from(container.querySelectorAll(selector)).filter(el => el.offsetParent !== null);
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+      container.addEventListener('keydown', handler);
+      return () => container.removeEventListener('keydown', handler);
+    }
+
+    function releaseTrap(trapFn) {
+      if (typeof trapFn === 'function') trapFn();
+    }
+
+    function flashValue(el, up) {
+      if (!el) return;
+      const cls = up ? 'value-flash-up' : 'value-flash-down';
+      el.classList.remove('value-flash-up', 'value-flash-down');
+      void el.offsetWidth;
+      el.classList.add(cls);
+      setTimeout(() => el.classList.remove(cls), 950);
+    }
+
+    function setLatency(ms) {
+      const el = $('api-latency');
+      if (!el) return;
+      if (!Number.isFinite(ms)) {
+        el.textContent = '— ms';
+        el.classList.remove('latency-slow');
+        return;
+      }
+      const rounded = Math.max(0, Math.round(ms));
+      el.textContent = `${rounded} ms`;
+      el.classList.toggle('latency-slow', rounded > 800);
+      el.title = `Engine API round-trip: ${rounded} ms`;
+    }
+
+    function sortValue(item, key) {
+      const raw = item ? item[key] : null;
+      if (typeof raw === 'number') return raw;
+      const n = Number(raw);
+      if (raw !== '' && raw !== null && raw !== undefined && Number.isFinite(n)) return n;
+      return String(raw ?? '').toLowerCase();
+    }
+
+    function applySort(table, list) {
+      const st = tableSort[table];
+      if (!st || !st.key) return list;
+      return [...list].sort((a, b) => {
+        const av = sortValue(a, st.key);
+        const bv = sortValue(b, st.key);
+        if (av === bv) return 0;
+        if (av === '' || av === null || av === undefined) return 1;
+        if (bv === '' || bv === null || bv === undefined) return -1;
+        return (av > bv ? 1 : -1) * st.dir;
+      });
+    }
+
+    function updateSortIndicators() {
+      document.querySelectorAll('th[data-sort-table]').forEach(th => {
+        const st = tableSort[th.dataset.sortTable];
+        const active = st && st.key === th.dataset.sortKey;
+        th.setAttribute('aria-sort', active ? (st.dir === 1 ? 'ascending' : 'descending') : 'none');
+        th.classList.toggle('sort-active', !!active);
+        const arrow = th.querySelector('.sort-arrow');
+        if (arrow) arrow.textContent = active ? (st.dir === 1 ? '↑' : '↓') : '';
+      });
+    }
+
+    function sortTable(table, key) {
+      const st = tableSort[table];
+      if (!st) return;
+      if (st.key === key) st.dir *= -1;
+      else { st.key = key; st.dir = 1; }
+      try { localStorage.setItem('loki_sorts', JSON.stringify(tableSort)); } catch (e) { /* ignore */ }
+      updateSortIndicators();
+      if (table === 'radar') renderRadar();
+      else renderPortfolio();
+    }
+
+    function restoreSorts() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('loki_sorts') || 'null');
+        if (saved && typeof saved === 'object') {
+          ['radar', 'positions', 'trades'].forEach(k => {
+            if (saved[k] && typeof saved[k].key === 'string' && (saved[k].dir === 1 || saved[k].dir === -1)) {
+              tableSort[k] = { key: saved[k].key, dir: saved[k].dir };
+            }
+          });
+        }
+      } catch (e) { /* ignore */ }
+      updateSortIndicators();
+    }
+
+    function csvEscape(value) {
+      const s = String(value ?? '');
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    function downloadCsv(filename, headers, rows) {
+      if (!rows.length) {
+        toast('Nothing to export yet.', 'info');
+        return;
+      }
+      const lines = [headers.map(csvEscape).join(','), ...rows.map(row => row.map(csvEscape).join(','))];
+      const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      toast(`Exported ${rows.length} row${rows.length === 1 ? '' : 's'} to ${filename}.`, 'success');
+    }
+
+    function exportRadarCsv() {
+      const list = applySort('radar', radarSignals);
+      downloadCsv(
+        `loki-radar-${new Date().toISOString().slice(0, 10)}.csv`,
+        ['Symbol', 'Action', 'Score', 'Confidence %', 'Squeeze', 'Entry', 'Stop', 'Target 1', 'Target 2', 'Risk:Reward', 'Regime', 'Reasons'],
+        list.map(s => [
+          s.symbol, s.action, s.score, s.confidence, s.squeeze_status,
+          s.entry_price, s.stop_loss, s.take_profit, s.target_2, s.risk_reward,
+          radarRegimes[s.symbol] ? radarRegimes[s.symbol].state : '',
+          (s.reasons || []).join(' | '),
+        ])
+      );
+    }
+
+    function exportPositionsCsv() {
+      const list = applySort('positions', (portfolioData && portfolioData.positions) || []);
+      downloadCsv(
+        `loki-positions-${new Date().toISOString().slice(0, 10)}.csv`,
+        ['Symbol', 'Side', 'Quantity', 'Avg Entry', 'Current Price', 'Market Value', 'Unrealized P&L', 'P&L %', 'Stop Loss', 'Take Profit'],
+        list.map(p => [p.symbol, p.side, p.qty, p.avg_entry, p.current_price, p.market_value, p.unrealized_pnl, p.unrealized_pnl_pct, p.stop_loss, p.take_profit])
+      );
+    }
+
+    function exportTradesCsv() {
+      const list = applySort('trades', (portfolioData && portfolioData.recent_trades) || []);
+      downloadCsv(
+        `loki-trades-${new Date().toISOString().slice(0, 10)}.csv`,
+        ['Symbol', 'Side', 'Quantity', 'Entry Price', 'Exit Price', 'Realized P&L', 'Return %'],
+        list.map(t => [t.symbol, t.side, t.qty, t.entry_price, t.exit_price, t.pnl, t.pnl_pct])
+      );
+    }
+
+    function scrollToTop() {
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    }
+
+    function focusWatchlistInput() {
+      showTab('radar', $('btn-tab-radar'));
+      const input = $('watchlist-input');
+      if (input) { input.focus(); input.select(); }
+    }
+
+    function clearRadarFilter() {
+      setRadarFilter('ALL', document.querySelector('.filter-chip[data-filter="ALL"]'));
+    }
+
+
     function setConnection(ok) {
       const dot = $('engine-dot');
       const text = $('nav-engine-status');
@@ -798,7 +1055,7 @@
       if (el) el.textContent = new Date().toLocaleTimeString();
     }
 
-    function showTab(tabId, btn) {
+    function showTab(tabId, btn, opts = {}) {
       const targetTab = $('tab-' + tabId);
       if (!targetTab) return;
 
@@ -806,6 +1063,7 @@
       document.querySelectorAll('.tab-btn').forEach(el => {
         el.classList.remove('active');
         el.setAttribute('aria-selected', 'false');
+        el.tabIndex = -1;
       });
       targetTab.style.display = 'block';
 
@@ -813,8 +1071,13 @@
       if (target) {
         target.classList.add('active');
         target.setAttribute('aria-selected', 'true');
+        target.tabIndex = 0;
       }
       localStorage.setItem('loki_active_tab', tabId);
+      if (!opts.fromHash) {
+        const hash = '#' + tabId;
+        if (location.hash !== hash) history.replaceState(null, '', hash);
+      }
 
       if (tabId === 'portfolio') {
         loadPortfolio();
@@ -825,6 +1088,31 @@
       if (tabId === 'council' && !tabLoaded.council) loadCouncil();
       if (tabId === 'trainer' && !tabLoaded.trainer) loadTrainingReport();
       if (tabId === 'regime' && !tabLoaded.regime) loadRegime(false);
+    }
+
+    function initTabKeyboard() {
+      const nav = document.querySelector('.tabs-nav');
+      if (!nav) return;
+      nav.addEventListener('keydown', (e) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+        const tabs = Array.from(nav.querySelectorAll('.tab-btn'));
+        const current = tabs.indexOf(document.activeElement);
+        if (current === -1) return;
+        e.preventDefault();
+        let next = current;
+        if (e.key === 'ArrowLeft') next = current === 0 ? tabs.length - 1 : current - 1;
+        else if (e.key === 'ArrowRight') next = current === tabs.length - 1 ? 0 : current + 1;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        const tab = tabs[next];
+        showTab(tab.dataset.tab, tab);
+        tab.focus();
+      });
+    }
+
+    function currentTabId() {
+      const active = document.querySelector('.tab-btn.active');
+      return active ? active.dataset.tab : 'radar';
     }
 
     function startPortfolioRefresh() {
@@ -854,18 +1142,32 @@
     // Status / mode
     // ------------------------------------------------------------------
     async function updateStatus() {
+      const startedAt = performance.now();
       try {
         const res = await fetch('/api/status', { cache: 'no-store' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
 
-        $('kpi-equity').textContent = fmtMoney(data.equity);
+        const equityEl = $('kpi-equity');
+        const nextEquity = Number(data.equity);
+        const prevEquity = Number(equityEl.dataset.value);
+        equityEl.textContent = fmtMoney(data.equity);
+        if (Number.isFinite(prevEquity) && Number.isFinite(nextEquity) && prevEquity !== nextEquity) {
+          flashValue(equityEl, nextEquity >= prevEquity);
+        }
+        equityEl.dataset.value = String(nextEquity);
         $('kpi-cash').textContent = fmtMoney(data.cash);
 
         const pnlEl = $('kpi-pnl');
+        const nextPnl = Number(data.total_pnl);
+        const prevPnl = Number(pnlEl.dataset.value);
         const sign = data.total_pnl >= 0 ? '+' : '';
         pnlEl.textContent = `${sign}${fmtMoney(data.total_pnl)} (${sign}${fmtNum(data.total_pnl_pct)}%)`;
         pnlEl.className = 'kpi-sub ' + (data.total_pnl >= 0 ? 'text-positive' : 'text-negative');
+        if (Number.isFinite(prevPnl) && Number.isFinite(nextPnl) && prevPnl !== nextPnl) {
+          flashValue(pnlEl, nextPnl >= prevPnl);
+        }
+        pnlEl.dataset.value = String(nextPnl);
 
         const maxPositions = data.max_open_positions ?? 4;
         $('kpi-positions').textContent = `${data.open_positions} / ${maxPositions}`;
@@ -879,9 +1181,11 @@
 
         const sync = $('last-sync');
         if (sync) sync.textContent = 'synced ' + new Date().toLocaleTimeString();
+        setLatency(performance.now() - startedAt);
         setConnection(true);
       } catch (e) {
         console.error('Status fetch error:', e);
+        setLatency(NaN);
         setConnection(false);
       }
     }
@@ -946,7 +1250,7 @@
         if (scanMeta) scanMeta.textContent = 'Last scan: ' + new Date().toLocaleTimeString();
         setConnection(true);
       } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="10">${emptyState('⚠️', 'Scan failed', e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10">${emptyState('⚠️', 'Scan failed', e.message, { label: 'RETRY SCAN', onclick: 'triggerScan()' })}</td></tr>`;
         setConnection(false);
         if (!silent) toast('Scan failed: ' + e.message, 'error');
       } finally {
@@ -983,15 +1287,19 @@
       const badge = $('radar-count-badge');
       if (badge) badge.textContent = `${radarSignals.length} signal${radarSignals.length === 1 ? '' : 's'}`;
 
-      const list = radarFilter === 'ALL'
+      const filtered = radarFilter === 'ALL'
         ? radarSignals
         : radarSignals.filter(s => String(s.action || 'HOLD').toUpperCase() === radarFilter);
+      const list = applySort('radar', filtered);
 
       if (!list.length) {
         const hint = radarSignals.length
           ? `No ${radarFilter.toLowerCase()} signals in the last scan. Switch the filter to see the full matrix.`
           : 'The radar found no actionable setups. Try scanning again or add symbols to your watchlist.';
-        tbody.innerHTML = `<tr><td colspan="10">${emptyState('📡', 'Nothing in this view', hint)}</td></tr>`;
+        const action = radarSignals.length
+          ? { label: 'SHOW ALL SIGNALS', onclick: 'clearRadarFilter()' }
+          : { label: 'ADD SYMBOLS', onclick: 'focusWatchlistInput()' };
+        tbody.innerHTML = `<tr><td colspan="10">${emptyState('📡', 'Nothing in this view', hint, action)}</td></tr>`;
         return;
       }
 
@@ -1031,7 +1339,7 @@
         tr.className = 'row-' + action.toLowerCase();
         tr.innerHTML = `
           <td>
-            <div class="symbol-cell">${sym}</div>
+            <button type="button" class="symbol-cell symbol-link" onclick="openSymbolInspector('${jsSym}')" title="Inspect ${sym}">${sym}</button>
             <div class="cell-sub">${regHtml}</div>
           </td>
           <td><span class="badge ${actionClass}">${action}</span></td>
@@ -1086,7 +1394,21 @@
     }
 
     function removeWatchlistSymbol(sym) {
-      saveWatchlist(getWatchlist().filter(s => s !== sym));
+      const list = getWatchlist();
+      const index = list.indexOf(sym);
+      if (index === -1) return;
+      saveWatchlist(list.filter(s => s !== sym));
+      toast(`${sym} removed from your watchlist.`, 'info', {
+        label: 'UNDO',
+        onClick: () => {
+          const restored = getWatchlist();
+          if (!restored.includes(sym)) {
+            restored.splice(Math.min(index, restored.length), 0, sym);
+            saveWatchlist(restored);
+            toast(`${sym} restored to your watchlist.`, 'success');
+          }
+        }
+      });
     }
 
     function renderWatchlist() {
@@ -1094,7 +1416,7 @@
       if (!holder) return;
       const list = getWatchlist();
       holder.innerHTML = list.length
-        ? list.map(s => `<span class="watchlist-chip">${escapeHtml(s)}<button type="button" class="chip-x" title="Remove ${escapeHtml(s)}" onclick="removeWatchlistSymbol('${safeSymbol(s)}')">×</button></span>`).join('')
+        ? list.map(s => `<span class="watchlist-chip"><button type="button" class="chip-label" onclick="openSymbolInspector('${safeSymbol(s)}')" title="Inspect ${escapeHtml(s)}">${escapeHtml(s)}</button><button type="button" class="chip-x" title="Remove ${escapeHtml(s)}" aria-label="Remove ${escapeHtml(s)} from watchlist" onclick="removeWatchlistSymbol('${safeSymbol(s)}')">×</button></span>`).join('')
         : '<span class="watchlist-empty">No custom symbols yet</span>';
     }
 
@@ -1108,79 +1430,96 @@
       const posTbody = $('positions-table-body');
       const tradesTbody = $('trades-table-body');
       if (!portfolioLoaded && posTbody) posTbody.innerHTML = skeletonRows(10, 4);
+      if (!portfolioLoaded && tradesTbody) tradesTbody.innerHTML = skeletonRows(7, 3);
 
       try {
         const res = await fetch('/api/portfolio', { cache: 'no-store' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
 
-        const stamp = new Date().toLocaleTimeString();
-        $('pos-count-badge').textContent = `${data.positions.length} Open · ${stamp}`;
-
-        if (data.positions.length === 0) {
-          posTbody.innerHTML = `<tr><td colspan="10">${emptyState('🎯', 'No open positions', 'Use the Radar to launch high-conviction trades, or transmit a manual order above.')}</td></tr>`;
-        } else {
-          posTbody.innerHTML = '';
-          data.positions.forEach(p => {
-            const sideClass = p.side === 'long' ? 'badge-long' : 'badge-short';
-            const pnlColor = p.unrealized_pnl >= 0 ? 'text-positive' : 'text-negative';
-            const sign = p.unrealized_pnl >= 0 ? '+' : '';
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td class="symbol-cell">${escapeHtml(p.symbol)}</td>
-              <td><span class="badge ${sideClass}">${escapeHtml(String(p.side).toUpperCase())}</span></td>
-              <td class="num">${fmtNum(p.qty, 4)}</td>
-              <td class="num">${fmtMoney(p.avg_entry)}</td>
-              <td class="num">${fmtMoney(p.current_price)}</td>
-              <td class="num">${fmtMoney(p.market_value)}</td>
-              <td class="num ${pnlColor}" style="font-weight:700;">
-                ${sign}${fmtMoney(p.unrealized_pnl)} (${sign}${fmtNum(p.unrealized_pnl_pct)}%)
-              </td>
-              <td class="num">${fmtMoney(p.stop_loss)}</td>
-              <td class="num">${fmtMoney(p.take_profit)}</td>
-              <td style="text-align:right;">
-                <button type="button" class="action-btn btn-close btn-compact" onclick="closePosition('${safeSymbol(p.symbol)}', this)">CLOSE</button>
-              </td>
-            `;
-            posTbody.appendChild(tr);
-          });
-        }
-
-        if (data.recent_trades.length === 0) {
-          tradesTbody.innerHTML = `<tr><td colspan="7">${emptyState('📜', 'No closed trades yet', 'Completed trades will appear here with realized P&L and return.')}</td></tr>`;
-        } else {
-          tradesTbody.innerHTML = '';
-          data.recent_trades.forEach(t => {
-            const sideClass = t.side === 'long' ? 'badge-long' : 'badge-short';
-            const pnlColor = t.pnl >= 0 ? 'text-positive' : 'text-negative';
-            const sign = t.pnl >= 0 ? '+' : '';
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td class="symbol-cell">${escapeHtml(t.symbol)}</td>
-              <td><span class="badge ${sideClass}">${escapeHtml(String(t.side).toUpperCase())}</span></td>
-              <td class="num">${fmtNum(t.qty, 4)}</td>
-              <td class="num">${fmtMoney(t.entry_price)}</td>
-              <td class="num">${fmtMoney(t.exit_price)}</td>
-              <td class="num ${pnlColor}" style="font-weight:700;">${sign}${fmtMoney(t.pnl)}</td>
-              <td class="num ${pnlColor}">${sign}${fmtNum(t.pnl_pct)}%</td>
-            `;
-            tradesTbody.appendChild(tr);
-          });
-        }
-
+        portfolioData = data;
+        portfolioLoadedAt = new Date();
         portfolioLoaded = true;
         tabLoaded.portfolio = true;
+        renderPortfolio();
         setConnection(true);
       } catch (e) {
         console.error('Portfolio load error:', e);
         if (!portfolioLoaded && posTbody) {
-          posTbody.innerHTML = `<tr><td colspan="10">${emptyState('⚠️', 'Desk unavailable', e.message)}</td></tr>`;
+          posTbody.innerHTML = `<tr><td colspan="10">${emptyState('⚠️', 'Desk unavailable', e.message, { label: 'RETRY', onclick: 'loadPortfolio()' })}</td></tr>`;
+        }
+        if (!portfolioLoaded && tradesTbody) {
+          tradesTbody.innerHTML = `<tr><td colspan="7">${emptyState('⚠️', 'Trade history unavailable', e.message, { label: 'RETRY', onclick: 'loadPortfolio()' })}</td></tr>`;
         }
         toast('Portfolio refresh failed: ' + e.message, 'error');
       } finally {
         portfolioLoading = false;
+      }
+    }
+
+    function renderPortfolio() {
+      if (!portfolioData) return;
+      const posTbody = $('positions-table-body');
+      const tradesTbody = $('trades-table-body');
+      const positions = applySort('positions', portfolioData.positions || []);
+      const trades = applySort('trades', portfolioData.recent_trades || []);
+      const stamp = portfolioLoadedAt ? portfolioLoadedAt.toLocaleTimeString() : '';
+
+      $('pos-count-badge').textContent = `${positions.length} Open${stamp ? ' · ' + stamp : ''}`;
+
+      if (positions.length === 0) {
+        posTbody.innerHTML = `<tr><td colspan="10">${emptyState('🎯', 'No open positions', 'Use the Radar to launch high-conviction trades, or transmit a manual order above.', { label: 'OPEN RADAR', onclick: "showTab('radar', document.getElementById('btn-tab-radar'))" })}</td></tr>`;
+      } else {
+        posTbody.innerHTML = '';
+        positions.forEach(p => {
+          const sideClass = p.side === 'long' ? 'badge-long' : 'badge-short';
+          const pnlColor = p.unrealized_pnl >= 0 ? 'text-positive' : 'text-negative';
+          const sign = p.unrealized_pnl >= 0 ? '+' : '';
+          const sym = safeSymbol(p.symbol);
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><button type="button" class="symbol-cell symbol-link" onclick="openSymbolInspector('${sym}')" title="Inspect ${escapeHtml(p.symbol)}">${escapeHtml(p.symbol)}</button></td>
+            <td><span class="badge ${sideClass}">${escapeHtml(String(p.side).toUpperCase())}</span></td>
+            <td class="num">${fmtNum(p.qty, 4)}</td>
+            <td class="num">${fmtMoney(p.avg_entry)}</td>
+            <td class="num">${fmtMoney(p.current_price)}</td>
+            <td class="num">${fmtMoney(p.market_value)}</td>
+            <td class="num ${pnlColor}" style="font-weight:700;">
+              ${sign}${fmtMoney(p.unrealized_pnl)} (${sign}${fmtNum(p.unrealized_pnl_pct)}%)
+            </td>
+            <td class="num">${fmtMoney(p.stop_loss)}</td>
+            <td class="num">${fmtMoney(p.take_profit)}</td>
+            <td style="text-align:right;">
+              <button type="button" class="action-btn btn-close btn-compact" onclick="closePosition('${sym}', this)">CLOSE</button>
+            </td>
+          `;
+          posTbody.appendChild(tr);
+        });
+      }
+
+      if (trades.length === 0) {
+        tradesTbody.innerHTML = `<tr><td colspan="7">${emptyState('📜', 'No closed trades yet', 'Completed trades will appear here with realized P&L and return.', { label: 'OPEN BACKTEST LAB', onclick: "showTab('backtest', document.getElementById('btn-tab-backtest'))" })}</td></tr>`;
+      } else {
+        tradesTbody.innerHTML = '';
+        trades.forEach(t => {
+          const sideClass = t.side === 'long' ? 'badge-long' : 'badge-short';
+          const pnlColor = t.pnl >= 0 ? 'text-positive' : 'text-negative';
+          const sign = t.pnl >= 0 ? '+' : '';
+          const sym = safeSymbol(t.symbol);
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><button type="button" class="symbol-cell symbol-link" onclick="openSymbolInspector('${sym}')" title="Inspect ${escapeHtml(t.symbol)}">${escapeHtml(t.symbol)}</button></td>
+            <td><span class="badge ${sideClass}">${escapeHtml(String(t.side).toUpperCase())}</span></td>
+            <td class="num">${fmtNum(t.qty, 4)}</td>
+            <td class="num">${fmtMoney(t.entry_price)}</td>
+            <td class="num">${fmtMoney(t.exit_price)}</td>
+            <td class="num ${pnlColor}" style="font-weight:700;">${sign}${fmtMoney(t.pnl)}</td>
+            <td class="num ${pnlColor}">${sign}${fmtNum(t.pnl_pct)}%</td>
+          `;
+          tradesTbody.appendChild(tr);
+        });
       }
     }
 
@@ -1240,7 +1579,7 @@
             card.className = 'agent-card ' + cardClass;
             card.innerHTML = `
               <div class="agent-header">
-                <span class="agent-symbol">${escapeHtml(sym)}</span>
+                <button type="button" class="agent-symbol symbol-link" onclick="openSymbolInspector('${safeSymbol(sym)}')" title="Inspect ${escapeHtml(sym)}">${escapeHtml(sym)}</button>
                 <span class="badge ${actionClass}">${action}</span>
               </div>
               <div class="agent-thesis">${escapeHtml(director.thesis || 'Analyzing market structure.')}</div>
@@ -1270,7 +1609,7 @@
         tabLoaded.council = true;
         setConnection(true);
       } catch (e) {
-        container.innerHTML = `<div class="agent-card" style="grid-column:1 / -1;">${emptyState('⚠️', 'Council unavailable', e.message)}</div>`;
+        container.innerHTML = `<div class="agent-card" style="grid-column:1 / -1;">${emptyState('⚠️', 'Council unavailable', e.message, { label: 'RETRY DELIBERATION', onclick: 'loadCouncil()' })}</div>`;
         setConnection(false);
         toast('Council error: ' + e.message, 'error');
       }
@@ -1898,7 +2237,7 @@
         setConnection(true);
         toast('Regime scan complete.', 'success');
       } catch (e) {
-        holder.innerHTML = `<div class="regime-card" style="grid-column:1 / -1;">${emptyState('⚠️', 'Regime scan failed', e.message)}</div>`;
+        holder.innerHTML = `<div class="regime-card" style="grid-column:1 / -1;">${emptyState('⚠️', 'Regime scan failed', e.message, { label: 'RETRY SCAN', onclick: 'loadRegime(true)' })}</div>`;
         setConnection(false);
         toast('Regime scan failed: ' + e.message, 'error');
       }
@@ -2128,8 +2467,10 @@
       const onKey = (e) => {
         if (e.key === 'Escape') { e.preventDefault(); close(); }
       };
+      const untrap = trapFocus(overlay);
       const close = () => {
         document.removeEventListener('keydown', onKey);
+        untrap();
         overlay.remove();
       };
 
@@ -2158,17 +2499,630 @@
     }
 
     // ------------------------------------------------------------------
+    // Command palette
+    // ------------------------------------------------------------------
+    function paletteTabItems() {
+      return Array.from(document.querySelectorAll('.tab-btn')).map((btn, index) => {
+        const label = btn.textContent.trim().replace(/\s+/g, ' ');
+        return {
+          group: 'Navigate',
+          label: `Go to ${label}`,
+          hint: `Alt+${index + 1}`,
+          keywords: `${btn.dataset.tab} tab navigate ${label}`,
+          run: () => showTab(btn.dataset.tab, btn),
+        };
+      });
+    }
+
+    function paletteActionItems() {
+      const autoScanOn = !!($('auto-scan-toggle') && $('auto-scan-toggle').checked);
+      const items = [
+        {
+          group: 'Actions',
+          label: 'Scan the live universe now',
+          hint: 'Radar',
+          keywords: 'scan radar refresh signals',
+          run: () => { showTab('radar', $('btn-tab-radar')); triggerScan(); },
+        },
+        {
+          group: 'Actions',
+          label: autoScanOn ? 'Turn off radar auto-scan' : 'Turn on radar auto-scan (60s)',
+          hint: 'Radar',
+          keywords: 'auto scan timer refresh toggle',
+          run: () => {
+            const toggle = $('auto-scan-toggle');
+            if (toggle) {
+              toggle.checked = !toggle.checked;
+              setAutoScan(toggle.checked);
+              toast(`Radar auto-scan ${toggle.checked ? 'enabled' : 'disabled'}.`, 'info');
+            }
+          },
+        },
+        {
+          group: 'Actions',
+          label: 'Refresh the portfolio desk',
+          hint: 'Portfolio',
+          keywords: 'positions portfolio refresh desk',
+          run: () => { showTab('portfolio', $('btn-tab-portfolio')); loadPortfolio(); },
+        },
+        {
+          group: 'Actions',
+          label: 'Re-evaluate the agentic council',
+          hint: 'Council',
+          keywords: 'council agents deliberation refresh',
+          run: () => { showTab('council', $('btn-tab-council')); loadCouncil(); },
+        },
+        {
+          group: 'Actions',
+          label: 'Scan market regimes',
+          hint: 'Regime',
+          keywords: 'regime market scan classification',
+          run: () => { showTab('regime', $('btn-tab-regime')); loadRegime(true); },
+        },
+        {
+          group: 'Actions',
+          label: 'Run a backtest with the current settings',
+          hint: 'Backtest',
+          keywords: 'backtest simulate equity lab',
+          run: () => { showTab('backtest', $('btn-tab-backtest')); runBacktest(); },
+        },
+        {
+          group: 'Actions',
+          label: 'Run the Monte Carlo survival engine',
+          hint: 'Backtest',
+          keywords: 'monte carlo simulation bootstrap risk',
+          run: () => { showTab('backtest', $('btn-tab-backtest')); runMonteCarlo(); },
+        },
+        {
+          group: 'Actions',
+          label: 'Open the Supabase Data Vault',
+          hint: 'Database',
+          keywords: 'supabase database vault sync config',
+          run: () => openDbModal(),
+        },
+        {
+          group: 'Actions',
+          label: 'Manage the watchlist',
+          hint: 'Radar',
+          keywords: 'watchlist symbols add remove',
+          run: () => focusWatchlistInput(),
+        },
+        {
+          group: 'Actions',
+          label: 'Show keyboard shortcuts',
+          hint: '?',
+          keywords: 'keyboard help shortcuts hotkeys',
+          run: () => openShortcuts(),
+        },
+      ];
+
+      if (radarSignals.length) {
+        items.push({
+          group: 'Export',
+          label: 'Export radar signals as CSV',
+          hint: `${radarSignals.length} rows`,
+          keywords: 'export download csv radar signals',
+          run: () => exportRadarCsv(),
+        });
+      }
+      if (portfolioData && portfolioData.recent_trades && portfolioData.recent_trades.length) {
+        items.push({
+          group: 'Export',
+          label: 'Export trade history as CSV',
+          hint: `${portfolioData.recent_trades.length} rows`,
+          keywords: 'export download csv trades history',
+          run: () => exportTradesCsv(),
+        });
+      }
+      if (portfolioData && portfolioData.positions && portfolioData.positions.length) {
+        items.push({
+          group: 'Export',
+          label: 'Export open positions as CSV',
+          hint: `${portfolioData.positions.length} rows`,
+          keywords: 'export download csv positions portfolio',
+          run: () => exportPositionsCsv(),
+        });
+      }
+      return items;
+    }
+
+    function paletteSymbolItems() {
+      const items = [];
+      const seen = new Set();
+      getWatchlist().forEach(sym => {
+        seen.add(sym);
+        items.push({
+          group: 'Watchlist',
+          label: `Inspect ${sym}`,
+          hint: 'Symbol',
+          keywords: `inspect symbol watchlist ${sym}`,
+          run: () => openSymbolInspector(sym),
+        });
+      });
+      radarSignals.forEach(s => {
+        if (!s || !s.symbol || seen.has(s.symbol)) return;
+        seen.add(s.symbol);
+        const action = String(s.action || 'HOLD').toUpperCase();
+        items.push({
+          group: 'Radar signals',
+          label: `Inspect ${s.symbol}`,
+          hint: action,
+          keywords: `inspect symbol radar signal ${s.symbol} ${action}`,
+          run: () => openSymbolInspector(s.symbol),
+        });
+      });
+      return items;
+    }
+
+    function getPaletteItems() {
+      return [...paletteTabItems(), ...paletteActionItems(), ...paletteSymbolItems()];
+    }
+
+    function renderPalette() {
+      const results = $('palette-results');
+      const input = $('palette-input');
+      if (!results || !input) return;
+      const query = input.value.trim().toLowerCase();
+      const all = getPaletteItems();
+      paletteFiltered = all.filter(item => {
+        if (!query) return true;
+        return `${item.group} ${item.label} ${item.keywords || ''}`.toLowerCase().includes(query);
+      }).slice(0, 40);
+
+      if (!paletteFiltered.length) {
+        results.innerHTML = `<div class="palette-empty">No commands match “${escapeHtml(input.value.trim())}”.</div>`;
+        input.removeAttribute('aria-activedescendant');
+        return;
+      }
+      if (paletteActiveIndex >= paletteFiltered.length) paletteActiveIndex = 0;
+
+      let html = '';
+      let lastGroup = '';
+      paletteFiltered.forEach((item, index) => {
+        if (item.group !== lastGroup) {
+          html += `<div class="palette-group" role="presentation">${escapeHtml(item.group)}</div>`;
+          lastGroup = item.group;
+        }
+        const active = index === paletteActiveIndex;
+        html += `<button type="button" class="palette-item${active ? ' active' : ''}" id="palette-item-${index}" role="option" aria-selected="${active}" tabindex="-1" data-index="${index}">
+          <span class="palette-label">${escapeHtml(item.label)}</span>
+          ${item.hint ? `<span class="palette-hint">${escapeHtml(item.hint)}</span>` : ''}
+        </button>`;
+      });
+      results.innerHTML = html;
+      input.setAttribute('aria-activedescendant', `palette-item-${paletteActiveIndex}`);
+      const activeEl = results.querySelector('.palette-item.active');
+      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    function openPalette(prefill = '') {
+      const overlay = $('palette-overlay');
+      const input = $('palette-input');
+      if (!overlay || !input) return;
+      if (!overlay.hidden) {
+        input.focus();
+        input.select();
+        return;
+      }
+      const active = document.activeElement;
+      paletteReturnFocus = active && active !== document.body ? active : $('btn-palette');
+      overlay.hidden = false;
+      input.value = prefill;
+      input.setAttribute('aria-expanded', 'true');
+      paletteActiveIndex = 0;
+      if (!paletteUntrap) paletteUntrap = trapFocus(overlay);
+      renderPalette();
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+    }
+
+    function closePalette() {
+      const overlay = $('palette-overlay');
+      const input = $('palette-input');
+      if (!overlay || overlay.hidden) return;
+      overlay.hidden = true;
+      if (input) {
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
+      }
+      releaseTrap(paletteUntrap);
+      paletteUntrap = null;
+      const returnTo = paletteReturnFocus;
+      paletteReturnFocus = null;
+      if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
+        returnTo.focus();
+      }
+    }
+
+    function runPaletteItem(index) {
+      const item = paletteFiltered[index];
+      if (!item) return;
+      closePalette();
+      try { item.run(); }
+      catch (e) {
+        console.error('Palette action failed:', e);
+        toast('Action failed: ' + e.message, 'error');
+      }
+    }
+
+    function initPalette() {
+      const overlay = $('palette-overlay');
+      const input = $('palette-input');
+      const results = $('palette-results');
+      if (!overlay || !input || !results) return;
+
+      input.addEventListener('input', () => { paletteActiveIndex = 0; renderPalette(); });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          paletteActiveIndex = Math.min(paletteActiveIndex + 1, paletteFiltered.length - 1);
+          renderPalette();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          paletteActiveIndex = Math.max(paletteActiveIndex - 1, 0);
+          renderPalette();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          runPaletteItem(paletteActiveIndex);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closePalette();
+        }
+      });
+      results.addEventListener('click', (e) => {
+        const btn = e.target.closest('.palette-item');
+        if (btn) runPaletteItem(Number(btn.dataset.index));
+      });
+      overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) closePalette(); });
+      overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePalette(); });
+
+      input.setAttribute('aria-expanded', 'false');
+      const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+      const kbd = $('palette-kbd');
+      if (kbd) kbd.textContent = isMac ? '⌘ K' : 'Ctrl K';
+    }
+
+    // ------------------------------------------------------------------
+    // Keyboard shortcut sheet
+    // ------------------------------------------------------------------
+    function openShortcuts() {
+      const returnFocus = document.activeElement;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      const rows = [
+        ['Ctrl / ⌘ + K', 'Open the command palette'],
+        ['?', 'Show this shortcut sheet'],
+        ['Alt + 1 … 6', 'Jump between terminal sections'],
+        ['← / → / Home / End', 'Navigate tabs when the tab bar is focused'],
+        ['Esc', 'Close the palette or an open dialog'],
+        ['Enter', 'Confirm the focused action'],
+      ];
+      overlay.innerHTML = `
+        <div class="modal-box shortcuts-box" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+          <div class="inspector-head">
+            <div>
+              <h3 id="shortcuts-title">Keyboard shortcuts</h3>
+              <span class="cell-sub">Move around the terminal without reaching for the mouse</span>
+            </div>
+            <button type="button" class="icon-btn inspector-close" aria-label="Close shortcuts">×</button>
+          </div>
+          <div class="shortcuts-grid">
+            ${rows.map(([key, desc]) => `<div class="shortcut-row"><kbd>${escapeHtml(key)}</kbd><span>${escapeHtml(desc)}</span></div>`).join('')}
+          </div>
+          <p class="inspector-note">Tip: click any ticker in a table to open its symbol inspector. Click a column header to sort.</p>
+          <div class="modal-actions">
+            <button type="button" class="action-btn btn-primary" data-close>GOT IT</button>
+          </div>
+        </div>`;
+      const untrap = trapFocus(overlay);
+      const close = () => {
+        untrap();
+        overlay.remove();
+        if (returnFocus && document.contains(returnFocus) && typeof returnFocus.focus === 'function') {
+          returnFocus.focus();
+        }
+      };
+      overlay.querySelector('.inspector-close').addEventListener('click', close);
+      overlay.querySelector('[data-close]').addEventListener('click', close);
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.querySelector('.inspector-close').focus(), 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Symbol inspector
+    // ------------------------------------------------------------------
+    function closeInspector() {
+      if (!inspectorOverlay) return;
+      const returnTo = inspectorReturnFocus;
+      inspectorReturnFocus = null;
+      releaseTrap(inspectorUntrap);
+      inspectorUntrap = null;
+      inspectorOverlay.remove();
+      inspectorOverlay = null;
+      if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
+        returnTo.focus();
+      }
+    }
+
+    function inspectorTrade(symbol) {
+      closeInspector();
+      showTab('portfolio', $('btn-tab-portfolio'));
+      const input = $('order-symbol');
+      if (input) {
+        input.value = symbol;
+        input.focus();
+        input.select();
+      }
+      toast(`${symbol} loaded into the order ticket.`, 'info');
+    }
+
+    function inspectorBacktest(symbol) {
+      closeInspector();
+      showTab('backtest', $('btn-tab-backtest'));
+      const input = $('bt-symbol');
+      if (input) {
+        input.value = symbol;
+        input.focus();
+        input.select();
+      }
+      toast(`${symbol} loaded into the backtest lab.`, 'info');
+    }
+
+    function toggleWatchlistSymbol(symbol) {
+      const list = getWatchlist();
+      if (list.includes(symbol)) {
+        removeWatchlistSymbol(symbol);
+      } else {
+        list.push(symbol);
+        saveWatchlist(list);
+        toast(`${symbol} added to your watchlist.`, 'success');
+      }
+      const btn = Array.from(document.querySelectorAll('.inspector-actions button'))
+        .find(b => b.textContent.includes('WATCHLIST'));
+      if (btn) {
+        btn.textContent = getWatchlist().includes(symbol) ? 'REMOVE FROM WATCHLIST' : 'ADD TO WATCHLIST';
+      }
+    }
+
+    function renderInspector(overlay, symbol, signal, regime, position) {
+      const body = overlay.querySelector('#inspector-body');
+      const badges = overlay.querySelector('#inspector-badges');
+      if (!body || !badges) return;
+
+      const action = String((signal && signal.action) || 'HOLD').toUpperCase();
+      const actionClass = action === 'BUY' ? 'badge-buy' : (action === 'SELL' ? 'badge-sell' : 'badge-hold');
+      badges.innerHTML = `${signal ? `<span class="badge ${actionClass}">${action}</span>` : ''}${regime ? regimePill(regime.state) : ''}`;
+
+      const sections = [];
+      if (signal) {
+        const reasons = (signal.reasons || []).map(r => `<span class="factor-tag">${escapeHtml(r)}</span>`).join(' ');
+        sections.push(`
+          <section class="inspector-section">
+            <div class="inspector-section-head"><span>Signal snapshot</span><span class="badge badge-cyan">${escapeHtml(String(signal.squeeze_status || 'OFF'))}</span></div>
+            <div class="inspector-kpis">
+              <div class="inspector-kpi"><span>Score</span><strong>${Number(signal.score) > 0 ? '+' : ''}${fmtNum(signal.score, 1)}</strong></div>
+              <div class="inspector-kpi"><span>Confidence</span><strong>${fmtNum(signal.confidence, 1)}%</strong></div>
+              <div class="inspector-kpi"><span>Risk : Reward</span><strong>1 : ${fmtNum(signal.risk_reward, 2)}</strong></div>
+              <div class="inspector-kpi"><span>Entry</span><strong>${fmtMoney(signal.entry_price)}</strong></div>
+            </div>
+            <div class="inspector-plan">
+              <div><span>Entry</span><strong>${fmtMoney(signal.entry_price)}</strong></div>
+              <div><span>Stop</span><strong class="text-negative">${fmtMoney(signal.stop_loss)}</strong></div>
+              <div><span>Target 1</span><strong class="text-positive">${fmtMoney(signal.take_profit)}</strong></div>
+              <div><span>Target 2</span><strong class="text-positive">${signal.target_2 ? fmtMoney(signal.target_2) : '—'}</strong></div>
+            </div>
+            <div class="factors-list inspector-factors">${reasons || '<span class="cell-sub">No factor detail returned.</span>'}</div>
+          </section>`);
+      } else {
+        sections.push(`<section class="inspector-section"><div class="inspector-section-head"><span>Signal snapshot</span></div><div class="inspector-note">No radar signal is cached for this symbol. Run a scan to refresh the matrix.</div></section>`);
+      }
+
+      if (regime) {
+        const dist = Object.entries(regime.distribution || {}).sort((a, b) => b[1] - a[1]).map(([state, frac]) => {
+          const color = REGIME_COLORS[state] || '#64748b';
+          return `<div class="regime-dist-row">
+            <span class="regime-dist-label" style="color:${color};">${escapeHtml(cleanState(state))}</span>
+            <div class="regime-dist-bar"><div style="width:${(frac * 100).toFixed(1)}%; background:${color};"></div></div>
+            <span class="regime-dist-val">${(frac * 100).toFixed(0)}%</span>
+          </div>`;
+        }).join('');
+        sections.push(`
+          <section class="inspector-section">
+            <div class="inspector-section-head"><span>Market regime</span>${regimePill(regime.state)}</div>
+            <div class="agent-stat"><span>Trend score</span><span class="agent-stat-value">${Number(regime.trend_score) > 0 ? '+' : ''}${regime.trend_score}</span></div>
+            <div class="agent-stat"><span>ADX</span><span class="agent-stat-value">${regime.adx}</span></div>
+            <div class="agent-stat"><span>Daily ATR volatility</span><span class="agent-stat-value">${regime.volatility_pct}% · rank ${regime.volatility_rank}</span></div>
+            <div class="metric-bar-row">
+              <span class="metric-bar-label">Confidence</span>
+              <div class="metric-bar"><div style="width:${regime.confidence}%; background:${REGIME_COLORS[regime.state] || '#64748b'};"></div></div>
+              <span class="metric-bar-val">${regime.confidence}%</span>
+            </div>
+            <p class="inspector-note">${escapeHtml(regime.description || '')}</p>
+            ${dist ? `<div class="inspector-dist-title">History distribution (${regime.bars} bars)</div>${dist}` : ''}
+          </section>`);
+      }
+
+      if (position) {
+        const pnlColor = position.unrealized_pnl >= 0 ? 'text-positive' : 'text-negative';
+        const sign = position.unrealized_pnl >= 0 ? '+' : '';
+        sections.push(`
+          <section class="inspector-section">
+            <div class="inspector-section-head"><span>Open position</span><span class="badge ${position.side === 'long' ? 'badge-long' : 'badge-short'}">${escapeHtml(String(position.side).toUpperCase())}</span></div>
+            <div class="agent-stat"><span>Quantity</span><span class="agent-stat-value">${fmtNum(position.qty, 4)}</span></div>
+            <div class="agent-stat"><span>Average entry</span><span class="agent-stat-value">${fmtMoney(position.avg_entry)}</span></div>
+            <div class="agent-stat"><span>Current price</span><span class="agent-stat-value">${fmtMoney(position.current_price)}</span></div>
+            <div class="agent-stat"><span>Market value</span><span class="agent-stat-value">${fmtMoney(position.market_value)}</span></div>
+            <div class="agent-stat"><span>Unrealized P&amp;L</span><span class="agent-stat-value ${pnlColor}">${sign}${fmtMoney(position.unrealized_pnl)} (${sign}${fmtNum(position.unrealized_pnl_pct)}%)</span></div>
+            <div class="agent-stat"><span>Stop / target</span><span class="agent-stat-value">${fmtMoney(position.stop_loss)} / ${fmtMoney(position.take_profit)}</span></div>
+            <button type="button" class="action-btn btn-close btn-compact inspector-close-position" onclick="closeInspector(); closePosition('${safeSymbol(symbol)}', null)">CLOSE POSITION</button>
+          </section>`);
+      }
+
+      const inWatchlist = getWatchlist().includes(symbol);
+      sections.push(`
+        <div class="inspector-actions">
+          <button type="button" class="action-btn btn-primary btn-compact" onclick="inspectorTrade('${safeSymbol(symbol)}')">TRADE ${escapeHtml(symbol)}</button>
+          <button type="button" class="action-btn btn-secondary btn-compact" onclick="inspectorBacktest('${safeSymbol(symbol)}')">BACKTEST</button>
+          <button type="button" class="action-btn btn-secondary btn-compact" onclick="toggleWatchlistSymbol('${safeSymbol(symbol)}')">${inWatchlist ? 'REMOVE FROM WATCHLIST' : 'ADD TO WATCHLIST'}</button>
+        </div>`);
+
+      body.setAttribute('aria-busy', 'false');
+      body.innerHTML = sections.join('');
+    }
+
+    async function openSymbolInspector(rawSymbol) {
+      const symbol = safeSymbol(rawSymbol);
+      if (!symbol) return;
+      closeInspector();
+      inspectorReturnFocus = document.activeElement;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal-box inspector-box" role="dialog" aria-modal="true" aria-labelledby="inspector-title">
+          <div class="inspector-head">
+            <div>
+              <h3 id="inspector-title">${escapeHtml(symbol)}</h3>
+              <span class="cell-sub">Symbol inspector</span>
+            </div>
+            <div class="inspector-badges" id="inspector-badges"></div>
+            <button type="button" class="icon-btn inspector-close" aria-label="Close symbol inspector">×</button>
+          </div>
+          <div id="inspector-body" aria-busy="true">
+            <div class="skeleton skeleton-line short" style="margin-bottom:10px;"></div>
+            <div class="skeleton skeleton-block" style="margin-bottom:10px;"></div>
+            <div class="skeleton skeleton-line" style="margin-bottom:8px;"></div>
+            <div class="skeleton skeleton-line short"></div>
+          </div>
+        </div>`;
+      inspectorOverlay = overlay;
+      inspectorUntrap = trapFocus(overlay);
+
+      const close = () => closeInspector();
+      overlay.querySelector('.inspector-close').addEventListener('click', close);
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.querySelector('.inspector-close').focus(), 0);
+
+      const getJson = async (url) => {
+        const res = await fetch(url, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        return data;
+      };
+
+      const [scanResult, regimeResult, portfolioResult] = await Promise.allSettled([
+        getJson(`/api/scan?symbols=${encodeURIComponent(symbol)}`),
+        getJson(`/api/regime?symbols=${encodeURIComponent(symbol)}&period=5y`),
+        getJson('/api/portfolio'),
+      ]);
+
+      if (!inspectorOverlay || inspectorOverlay !== overlay) return;
+
+      let signal = null;
+      if (scanResult.status === 'fulfilled') {
+        signal = (scanResult.value.signals || []).find(s => String(s.symbol).toUpperCase() === symbol) || null;
+        radarRegimes[symbol] = (scanResult.value.regimes || {})[symbol] || radarRegimes[symbol];
+      }
+      let regime = null;
+      if (regimeResult.status === 'fulfilled') {
+        regime = (regimeResult.value.symbols || []).find(s => String(s.symbol).toUpperCase() === symbol && !s.error) || null;
+      }
+      let position = null;
+      if (portfolioResult.status === 'fulfilled') {
+        portfolioData = portfolioResult.value;
+        portfolioLoaded = true;
+        portfolioLoadedAt = new Date();
+        const portfolioPanel = $('tab-portfolio');
+        if (portfolioPanel && portfolioPanel.style.display !== 'none') renderPortfolio();
+        position = (portfolioResult.value.positions || []).find(p => String(p.symbol).toUpperCase() === symbol) || null;
+      } else if (portfolioData) {
+        position = (portfolioData.positions || []).find(p => String(p.symbol).toUpperCase() === symbol) || null;
+      }
+
+      if (!signal && !regime && !position) {
+        const body = overlay.querySelector('#inspector-body');
+        body.setAttribute('aria-busy', 'false');
+        body.innerHTML = emptyState('🔎', 'No data for ' + symbol, 'The symbol could not be resolved by the market data provider. Check the ticker and try again.', { label: 'RETRY', onclick: `openSymbolInspector('${safeSymbol(symbol)}')` });
+        return;
+      }
+      renderInspector(overlay, symbol, signal, regime, position);
+    }
+
+
+    // ------------------------------------------------------------------
     // Keyboard shortcuts + init
     // ------------------------------------------------------------------
     document.addEventListener('keydown', (e) => {
-      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      const idx = parseInt(e.key, 10);
-      if (idx >= 1 && idx <= 6) {
-        const btn = document.querySelectorAll('.tab-btn')[idx - 1];
-        if (btn && btn.dataset.tab) {
-          e.preventDefault();
-          showTab(btn.dataset.tab, btn);
+      const target = e.target;
+      const typing = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'k') {
+        e.preventDefault();
+        const overlay = $('palette-overlay');
+        if (overlay && overlay.hidden) openPalette();
+        else closePalette();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        const overlay = $('palette-overlay');
+        if (overlay && !overlay.hidden) { e.preventDefault(); closePalette(); return; }
+        if (inspectorOverlay) { e.preventDefault(); closeInspector(); return; }
+      }
+
+      if (typing) return;
+
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        const idx = parseInt(e.key, 10);
+        if (idx >= 1 && idx <= 6) {
+          const btn = document.querySelectorAll('.tab-btn')[idx - 1];
+          if (btn && btn.dataset.tab) {
+            e.preventDefault();
+            showTab(btn.dataset.tab, btn);
+          }
         }
+        return;
+      }
+
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (document.querySelector('.modal-overlay')) return;
+        e.preventDefault();
+        openShortcuts();
+      }
+    });
+
+    initPalette();
+    initTabKeyboard();
+    restoreSorts();
+
+    // Make wide tables keyboard-scrollable with an accessible name.
+    document.querySelectorAll('.table-scroll').forEach(scroll => {
+      const caption = scroll.querySelector('caption');
+      if (!caption || scroll.tabIndex >= 0) return;
+      scroll.setAttribute('role', 'region');
+      scroll.setAttribute('aria-label', caption.textContent.trim());
+      scroll.tabIndex = 0;
+    });
+
+    const scrollTopBtn = $('scroll-top');
+    if (scrollTopBtn) {
+      const updateScrollTop = () => scrollTopBtn.classList.toggle('visible', window.scrollY > 600);
+      window.addEventListener('scroll', updateScrollTop, { passive: true });
+      updateScrollTop();
+    }
+
+    window.addEventListener('hashchange', () => {
+      const tabId = location.hash.replace('#', '');
+      if ($('tab-' + tabId)) {
+        showTab(tabId, document.querySelector(`.tab-btn[data-tab="${tabId}"]`), { fromHash: true });
       }
     });
 
@@ -2197,10 +3151,11 @@
 
     connectWebSocket();
 
+    const hashTab = location.hash.replace('#', '');
     const savedTab = localStorage.getItem('loki_active_tab');
-    if (savedTab && $('tab-' + savedTab)) {
-      showTab(savedTab, document.querySelector(`.tab-btn[data-tab="${savedTab}"]`));
-    }
+    const initialTab = ($('tab-' + hashTab) && hashTab) ||
+      (savedTab && $('tab-' + savedTab) ? savedTab : 'radar');
+    showTab(initialTab, document.querySelector(`.tab-btn[data-tab="${initialTab}"]`));
 
     // Warm the radar on first load.
     triggerScan();
