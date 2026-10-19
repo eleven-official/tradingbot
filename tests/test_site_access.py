@@ -17,19 +17,19 @@ client_nofollow = TestClient(app, follow_redirects=False)
 class TestAccessCode:
     def test_default_code(self, monkeypatch):
         monkeypatch.delenv("LOKI_SITE_CODE", raising=False)
-        assert site_access.code_matches("beef jerky")
-        assert site_access.code_matches("Beef  Jerky")
-        assert site_access.code_matches("beefjerky")
-        assert site_access.code_matches("  BEEF JERKY  ")
-        assert site_access.code_matches("beef, jerky!")
-        assert site_access.code_matches("beef-jerky")
-        assert not site_access.code_matches("beef jerki")
+        assert site_access.code_matches("flat head")
+        assert site_access.code_matches("Flat  Head")
+        assert site_access.code_matches("flathead")
+        assert site_access.code_matches("  FLAT HEAD  ")
+        assert site_access.code_matches("flat, head!")
+        assert site_access.code_matches("flat-head")
+        assert not site_access.code_matches("flat hed")
         assert not site_access.code_matches("")
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("LOKI_SITE_CODE", "pineapple")
         assert site_access.code_matches("Pineapple")
-        assert not site_access.code_matches("beef jerky")
+        assert not site_access.code_matches("flat head")
 
     def test_nicknames(self, monkeypatch):
         monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
@@ -60,7 +60,7 @@ class TestGateFlow:
         rejected = client.post("/api/gate", json={"code": "chocolate"})
         assert rejected.status_code == 403
 
-        accepted = client.post("/api/gate", json={"code": "beef jerky"})
+        accepted = client.post("/api/gate", json={"code": "flat head"})
         assert accepted.status_code == 200
         cookie = accepted.cookies.get(site_access.GATE_COOKIE)
         assert cookie and site_access.verify_gate_cookie_value(cookie)
@@ -85,12 +85,12 @@ class TestGateThrottle:
         monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
         for _ in range(10):
             assert client.post("/api/gate", json={"code": "nope"}).status_code == 403
-        throttled = client.post("/api/gate", json={"code": "beef jerky"})
+        throttled = client.post("/api/gate", json={"code": "flat head"})
         assert throttled.status_code == 429
 
         monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
         assert client.post("/api/gate", json={"code": "nope"}).status_code == 403
-        accepted = client.post("/api/gate", json={"code": "beef jerky"})
+        accepted = client.post("/api/gate", json={"code": "flat head"})
         assert accepted.status_code == 200
         # A correct code clears the failure record for that client.
         assert site_access._GATE_ATTEMPTS.get("testclient") in (None, [])
