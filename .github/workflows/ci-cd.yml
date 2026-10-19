@@ -65,6 +65,9 @@ jobs:
       env:
         PYTHONPATH: .
     
+    - name: Test browser profile and research agent logic
+      run: node --test tests/test_profile.js tests/test_strategy_lab.js
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:

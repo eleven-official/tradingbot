@@ -1950,11 +1950,14 @@ window.fetch = async (input, options={}) => {
               : `BLOCKED · ${cleanState(risk.reason || 'none')}`;
             const execText = exec.executed ? `FILLED · ${currentMode.toUpperCase()}` : 'STANDBY';
             const execClass = exec.executed ? 'good' : 'muted';
-            const plan = quant.entry_price
+            const entryPrice = quant.entry ?? quant.entry_price;
+            const stopPrice = quant.stop ?? quant.stop_loss;
+            const targetPrice = quant.target ?? quant.take_profit;
+            const plan = entryPrice
               ? `<div class="agent-plan">
-                   <span>Entry <strong>${fmtMoney(quant.entry_price)}</strong></span>
-                   <span>Stop <strong>${fmtMoney(quant.stop_loss)}</strong></span>
-                   <span>Target <strong>${fmtMoney(quant.take_profit)}</strong></span>
+                   <span>Entry <strong>${fmtMoney(entryPrice)}</strong></span>
+                   <span>Stop <strong>${fmtMoney(stopPrice)}</strong></span>
+                   <span>Target <strong>${fmtMoney(targetPrice)}</strong></span>
                  </div>`
               : '';
 
