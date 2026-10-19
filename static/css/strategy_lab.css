@@ -1,0 +1,508 @@
+body.lab-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 18% 0%, rgba(27, 106, 92, 0.15), transparent 34rem),
+    #080d12;
+}
+
+.lab-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(14px);
+}
+
+.lab-shell {
+  width: min(1440px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 54px 0 76px;
+}
+
+.lab-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(350px, 0.9fr);
+  gap: clamp(32px, 6vw, 92px);
+  align-items: center;
+}
+
+.lab-title h1 {
+  margin: 18px 0 20px;
+  font-size: clamp(3rem, 6.6vw, 6.2rem);
+  line-height: 0.98;
+  letter-spacing: -0.065em;
+}
+
+.lab-title h1 em {
+  color: #7ed5ba;
+  font-family: Georgia, serif;
+  font-weight: 400;
+}
+
+.lab-lede {
+  max-width: 640px;
+  color: #a4b1b9;
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.lab-guardrails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 26px;
+}
+
+.lab-guardrails span,
+.lab-readonly,
+.chart-unit,
+.result-market {
+  border: 1px solid rgba(136, 167, 165, 0.19);
+  border-radius: 999px;
+  background: rgba(19, 33, 38, 0.72);
+  color: #a8bbb9;
+  font-size: 0.72rem;
+  letter-spacing: 0.035em;
+  padding: 8px 11px;
+}
+
+.lab-form,
+.lab-card {
+  border: 1px solid #213238;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(17, 28, 34, 0.98), rgba(12, 19, 25, 0.98));
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.22);
+}
+
+.lab-form {
+  padding: 24px;
+}
+
+.lab-form-heading,
+.lab-results-heading,
+.lab-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.lab-form-heading h2,
+.lab-results-heading h2 {
+  margin: 7px 0 0;
+  font-size: 1.55rem;
+  letter-spacing: -0.035em;
+}
+
+.lab-readonly {
+  color: #7ed5ba;
+  border-color: rgba(126, 213, 186, 0.27);
+  white-space: nowrap;
+}
+
+.lab-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px 14px;
+  margin: 23px 0 20px;
+}
+
+.lab-form-grid label {
+  display: grid;
+  gap: 8px;
+  color: #9baab1;
+  font-size: 0.78rem;
+}
+
+.lab-form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.lab-form-grid input,
+.lab-form-grid select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  border: 1px solid #2b3c43;
+  border-radius: 9px;
+  background: #0b1419;
+  color: #edf5f4;
+  padding: 0 12px;
+  font: inherit;
+}
+
+.lab-form-grid input:focus,
+.lab-form-grid select:focus {
+  outline: 2px solid rgba(126, 213, 186, 0.58);
+  outline-offset: 1px;
+}
+
+.lab-input-suffix {
+  display: flex;
+  align-items: center;
+  border: 1px solid #2b3c43;
+  border-radius: 9px;
+  background: #0b1419;
+  overflow: hidden;
+}
+
+.lab-input-suffix input {
+  border: 0;
+  background: transparent;
+}
+
+.lab-input-suffix i {
+  padding: 0 11px;
+  color: #667b80;
+  font-size: 0.72rem;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.lab-form .run-button {
+  width: 100%;
+  justify-content: center;
+  min-height: 47px;
+}
+
+.lab-form-note,
+.comparison-note,
+.lab-disclaimer {
+  color: #82939b;
+  font-size: 0.75rem;
+  line-height: 1.65;
+}
+
+.lab-form-note {
+  margin: 13px 0 0;
+  text-align: center;
+}
+
+.lab-status {
+  min-height: 24px;
+  margin: 25px 0 6px;
+  color: #94a6ad;
+  font-size: 0.88rem;
+}
+
+.lab-status[data-state="error"] {
+  color: #ff9b92;
+}
+
+.lab-status[data-state="success"] {
+  color: #7ed5ba;
+}
+
+.lab-results {
+  margin-top: 33px;
+}
+
+.lab-results-heading {
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.lab-results-heading h2 {
+  font-size: 1.8rem;
+}
+
+.result-market {
+  color: #d5e2df;
+}
+
+.holdout-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.result-metric {
+  min-height: 112px;
+  border: 1px solid #24343a;
+  border-radius: 13px;
+  background: rgba(15, 25, 30, 0.94);
+  padding: 16px;
+}
+
+.result-metric span {
+  display: block;
+  color: #82969b;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+}
+
+.result-metric strong {
+  display: block;
+  margin: 14px 0 5px;
+  color: #edf5f2;
+  font-size: clamp(1.1rem, 2vw, 1.65rem);
+  letter-spacing: -0.04em;
+}
+
+.result-metric small {
+  color: #73858b;
+  font-size: 0.68rem;
+}
+
+.result-primary {
+  border-color: rgba(126, 213, 186, 0.36);
+  background: linear-gradient(145deg, rgba(21, 64, 56, 0.72), rgba(15, 25, 30, 0.94));
+}
+
+.result-primary strong {
+  color: #8ce1c3;
+}
+
+.lab-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.lab-card {
+  padding: 21px;
+}
+
+.lab-card-heading {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.lab-card-heading h3 {
+  margin: 6px 0 0;
+  font-size: 1.03rem;
+  letter-spacing: -0.02em;
+}
+
+.lab-card-heading .section-kicker {
+  margin: 0;
+}
+
+.equity-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 160px;
+  overflow: visible;
+}
+
+.equity-chart .chart-gridline {
+  stroke: #213238;
+  stroke-width: 1;
+}
+
+.equity-chart .chart-line {
+  fill: none;
+  stroke: #7ed5ba;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.equity-chart .chart-area {
+  fill: url(#equity-fill);
+}
+
+.equity-chart .chart-zero {
+  stroke: #d8a764;
+  stroke-dasharray: 5 6;
+  stroke-width: 1;
+}
+
+.equity-caption {
+  display: flex;
+  justify-content: space-between;
+  color: #73858b;
+  font-size: 0.7rem;
+}
+
+.comparison-card .lab-card-heading {
+  margin-bottom: 22px;
+}
+
+.comparison-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #213238;
+  padding: 12px 0;
+  color: #91a2a8;
+  font-size: 0.81rem;
+}
+
+.comparison-row strong {
+  color: #e2eeeb;
+  font-variant-numeric: tabular-nums;
+}
+
+.comparison-note {
+  margin: 18px 0 0;
+}
+
+.trade-card {
+  margin-top: 14px;
+}
+
+.trade-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.trade-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.trade-table th {
+  color: #73858b;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trade-table th,
+.trade-table td {
+  border-bottom: 1px solid #203137;
+  padding: 12px 10px;
+  white-space: nowrap;
+}
+
+.trade-table td {
+  color: #d5e1de;
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-table td:first-child,
+.trade-table th:first-child {
+  padding-left: 0;
+}
+
+.trade-positive {
+  color: #7ed5ba !important;
+}
+
+.trade-negative {
+  color: #ff968c !important;
+}
+
+.trade-empty {
+  padding: 25px 0 !important;
+  color: #88999f !important;
+}
+
+.lab-disclaimer {
+  max-width: 1000px;
+  margin: 15px 2px 0;
+}
+
+@media (max-width: 1100px) {
+  .lab-topbar .workspace-nav {
+    gap: 14px;
+  }
+
+  .lab-topbar .build-tag {
+    display: none;
+  }
+
+  .holdout-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 850px) {
+  .lab-shell {
+    width: min(100% - 36px, 680px);
+    padding-top: 34px;
+  }
+
+  .lab-intro,
+  .lab-analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lab-intro {
+    gap: 30px;
+  }
+
+  .lab-title h1 {
+    font-size: clamp(3rem, 12vw, 5rem);
+  }
+
+  .lab-topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 13px;
+  }
+
+  .lab-topbar .workspace-nav {
+    order: 3;
+    width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+    padding: 6px 0 2px;
+  }
+
+  .lab-topbar .topbar-meta {
+    margin-left: auto;
+  }
+
+  .lab-readonly,
+  .lab-topbar .mode-pill {
+    font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .lab-shell {
+    width: calc(100% - 26px);
+    padding-bottom: 46px;
+  }
+
+  .lab-form,
+  .lab-card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .lab-form-grid {
+    gap: 13px 10px;
+  }
+
+  .holdout-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .result-metric {
+    min-height: 99px;
+    padding: 12px;
+  }
+
+  .result-metric strong {
+    margin-top: 11px;
+    font-size: 1.18rem;
+  }
+
+  .lab-results-heading {
+    align-items: flex-start;
+  }
+
+  .result-market {
+    max-width: 46%;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  .lab-topbar .mode-pill {
+    padding: 7px 8px;
+  }
+
+  .lab-topbar .workspace-nav a {
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+}

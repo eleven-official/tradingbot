@@ -2,13 +2,24 @@
 Loki Trading Platform - Database Models
 Production-grade SQLAlchemy models with TimescaleDB support for time-series data
 """
+
 from datetime import datetime
 from typing import Optional
 from decimal import Decimal
 
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, DateTime,
-    ForeignKey, Index, Enum as SQLEnum, Text, DECIMAL, JSON
+    Column,
+    Integer,
+    String,
+    Float,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Enum as SQLEnum,
+    Text,
+    DECIMAL,
+    JSON,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -16,16 +27,19 @@ import enum
 
 Base = declarative_base()
 
+
 # Enums
 class OrderSide(enum.Enum):
     BUY = "buy"
     SELL = "sell"
+
 
 class OrderType(enum.Enum):
     MARKET = "market"
     LIMIT = "limit"
     STOP = "stop"
     STOP_LIMIT = "stop_limit"
+
 
 class OrderStatus(enum.Enum):
     PENDING = "pending"
@@ -35,17 +49,20 @@ class OrderStatus(enum.Enum):
     CANCELLED = "cancelled"
     REJECTED = "rejected"
 
+
 class StrategyStatus(enum.Enum):
     ACTIVE = "active"
     PAUSED = "paused"
     STOPPED = "stopped"
     ERROR = "error"
 
+
 # User Management
 class User(Base):
     """User account model"""
+
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
@@ -56,16 +73,18 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = Column(DateTime)
-    
+
     # Relationships
     portfolios = relationship("Portfolio", back_populates="user")
     api_keys = relationship("APIKey", back_populates="user")
     audit_logs = relationship("AuditLog", back_populates="user")
 
+
 class APIKey(Base):
     """API key management"""
+
     __tablename__ = "api_keys"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     key_name = Column(String(100), nullable=False)
@@ -75,15 +94,17 @@ class APIKey(Base):
     last_used = Column(DateTime)
     expires_at = Column(DateTime)
     permissions = Column(JSON)  # Store permissions as JSON
-    
+
     # Relationships
     user = relationship("User", back_populates="api_keys")
+
 
 # Portfolio & Account
 class Portfolio(Base):
     """User portfolio"""
+
     __tablename__ = "portfolios"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String(100), nullable=False)
@@ -93,17 +114,19 @@ class Portfolio(Base):
     is_live = Column(Boolean, default=False)  # Live vs Paper trading
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     user = relationship("User", back_populates="portfolios")
     positions = relationship("Position", back_populates="portfolio")
     orders = relationship("Order", back_populates="portfolio")
     strategies = relationship("Strategy", back_populates="portfolio")
 
+
 class Position(Base):
     """Open trading position"""
+
     __tablename__ = "positions"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
     strategy_id = Column(Integer, ForeignKey("strategies.id"))
@@ -116,19 +139,19 @@ class Position(Base):
     take_profit = Column(DECIMAL(20, 8))
     opened_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     portfolio = relationship("Portfolio", back_populates="positions")
     strategy = relationship("Strategy", back_populates="positions")
-    
-    __table_args__ = (
-        Index('idx_portfolio_symbol', 'portfolio_id', 'symbol'),
-    )
+
+    __table_args__ = (Index("idx_portfolio_symbol", "portfolio_id", "symbol"),)
+
 
 class Order(Base):
     """Trading order (historical and pending)"""
+
     __tablename__ = "orders"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
     strategy_id = Column(Integer, ForeignKey("strategies.id"))
@@ -146,21 +169,23 @@ class Order(Base):
     submitted_at = Column(DateTime)
     filled_at = Column(DateTime)
     metadata = Column(JSON)  # Additional order metadata
-    
+
     # Relationships
     portfolio = relationship("Portfolio", back_populates="orders")
     strategy = relationship("Strategy", back_populates="orders")
-    
+
     __table_args__ = (
-        Index('idx_portfolio_status', 'portfolio_id', 'status'),
-        Index('idx_created_at', 'created_at'),
+        Index("idx_portfolio_status", "portfolio_id", "status"),
+        Index("idx_created_at", "created_at"),
     )
+
 
 # Strategy Management
 class Strategy(Base):
     """Trading strategy configuration"""
+
     __tablename__ = "strategies"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), nullable=False)
     name = Column(String(100), nullable=False)
@@ -174,23 +199,25 @@ class Strategy(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     started_at = Column(DateTime)
     stopped_at = Column(DateTime)
-    
+
     # Performance metrics (cached)
     total_trades = Column(Integer, default=0)
     winning_trades = Column(Integer, default=0)
     total_pnl = Column(DECIMAL(20, 2), default=0)
-    
+
     # Relationships
     portfolio = relationship("Portfolio", back_populates="strategies")
     positions = relationship("Position", back_populates="strategy")
     orders = relationship("Order", back_populates="strategy")
     performance = relationship("StrategyPerformance", back_populates="strategy")
 
+
 # Time-series data (use TimescaleDB hypertables)
 class MarketData(Base):
     """Market data time-series (TimescaleDB hypertable)"""
+
     __tablename__ = "market_data"
-    
+
     time = Column(DateTime, primary_key=True, index=True)
     symbol = Column(String(20), primary_key=True, index=True)
     open = Column(DECIMAL(20, 8), nullable=False)
@@ -198,15 +225,15 @@ class MarketData(Base):
     low = Column(DECIMAL(20, 8), nullable=False)
     close = Column(DECIMAL(20, 8), nullable=False)
     volume = Column(DECIMAL(30, 8), nullable=False)
-    
-    __table_args__ = (
-        Index('idx_symbol_time', 'symbol', 'time'),
-    )
+
+    __table_args__ = (Index("idx_symbol_time", "symbol", "time"),)
+
 
 class PortfolioSnapshot(Base):
     """Portfolio value snapshots (TimescaleDB hypertable)"""
+
     __tablename__ = "portfolio_snapshots"
-    
+
     time = Column(DateTime, primary_key=True, index=True)
     portfolio_id = Column(Integer, ForeignKey("portfolios.id"), primary_key=True, index=True)
     total_value = Column(DECIMAL(20, 2), nullable=False)
@@ -215,15 +242,15 @@ class PortfolioSnapshot(Base):
     daily_pnl = Column(DECIMAL(20, 2))
     total_pnl = Column(DECIMAL(20, 2))
     positions_count = Column(Integer)
-    
-    __table_args__ = (
-        Index('idx_portfolio_time', 'portfolio_id', 'time'),
-    )
+
+    __table_args__ = (Index("idx_portfolio_time", "portfolio_id", "time"),)
+
 
 class StrategyPerformance(Base):
     """Strategy performance metrics (TimescaleDB hypertable)"""
+
     __tablename__ = "strategy_performance"
-    
+
     time = Column(DateTime, primary_key=True, index=True)
     strategy_id = Column(Integer, ForeignKey("strategies.id"), primary_key=True, index=True)
     pnl = Column(DECIMAL(20, 2), nullable=False)
@@ -231,19 +258,19 @@ class StrategyPerformance(Base):
     sharpe_ratio = Column(Float)
     max_drawdown = Column(Float)
     trades_count = Column(Integer)
-    
+
     # Relationships
     strategy = relationship("Strategy", back_populates="performance")
-    
-    __table_args__ = (
-        Index('idx_strategy_time', 'strategy_id', 'time'),
-    )
+
+    __table_args__ = (Index("idx_strategy_time", "strategy_id", "time"),)
+
 
 # Audit & Compliance
 class AuditLog(Base):
     """Audit trail for compliance"""
+
     __tablename__ = "audit_logs"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     action = Column(String(100), nullable=False, index=True)
@@ -253,33 +280,35 @@ class AuditLog(Base):
     ip_address = Column(String(45))
     user_agent = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    
+
     # Relationships
     user = relationship("User", back_populates="audit_logs")
-    
+
     __table_args__ = (
-        Index('idx_user_action', 'user_id', 'action'),
-        Index('idx_created_at', 'created_at'),
+        Index("idx_user_action", "user_id", "action"),
+        Index("idx_created_at", "created_at"),
     )
+
 
 class SystemMetric(Base):
     """System performance metrics (TimescaleDB hypertable)"""
+
     __tablename__ = "system_metrics"
-    
+
     time = Column(DateTime, primary_key=True, index=True)
     metric_name = Column(String(100), primary_key=True, index=True)
     metric_value = Column(Float, nullable=False)
     labels = Column(JSON)  # Additional metric labels
-    
-    __table_args__ = (
-        Index('idx_metric_time', 'metric_name', 'time'),
-    )
+
+    __table_args__ = (Index("idx_metric_time", "metric_name", "time"),)
+
 
 # Broker Credentials (encrypted)
 class BrokerCredential(Base):
     """Encrypted broker API credentials"""
+
     __tablename__ = "broker_credentials"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     broker_name = Column(String(50), nullable=False)  # alpaca, ib, td_ameritrade, etc.
@@ -290,7 +319,5 @@ class BrokerCredential(Base):
     is_paper = Column(Boolean, default=True)  # Paper vs Live
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    __table_args__ = (
-        Index('idx_user_broker', 'user_id', 'broker_name'),
-    )
+
+    __table_args__ = (Index("idx_user_broker", "user_id", "broker_name"),)

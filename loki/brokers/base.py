@@ -2,6 +2,7 @@
 Base broker interface for multi-broker support
 Unified API for all brokers
 """
+
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ class OrderStatus(Enum):
 @dataclass
 class BrokerCapabilities:
     """Broker feature support"""
+
     supports_stocks: bool = True
     supports_options: bool = False
     supports_crypto: bool = False
@@ -50,6 +52,7 @@ class BrokerCapabilities:
 @dataclass
 class Position:
     """Position data"""
+
     symbol: str
     quantity: float
     avg_entry_price: float
@@ -62,6 +65,7 @@ class Position:
 @dataclass
 class Order:
     """Order data"""
+
     order_id: str
     symbol: str
     side: OrderSide
@@ -78,6 +82,7 @@ class Order:
 @dataclass
 class AccountInfo:
     """Account information"""
+
     account_id: str
     cash_balance: float
     portfolio_value: float
@@ -90,7 +95,7 @@ class AccountInfo:
 class BaseBroker(ABC):
     """
     Base broker interface - all brokers must implement this
-    
+
     This provides a unified API across all supported brokers:
     - Alpaca
     - Interactive Brokers
@@ -98,19 +103,19 @@ class BaseBroker(ABC):
     - Binance
     - etc.
     """
-    
+
     def __init__(self, api_key: str, api_secret: str, paper: bool = True):
         self.api_key = api_key
         self.api_secret = api_secret
         self.paper = paper
         self._connected = False
-    
+
     @property
     @abstractmethod
     def capabilities(self) -> BrokerCapabilities:
         """Return broker capabilities"""
         pass
-    
+
     @abstractmethod
     async def connect(self) -> bool:
         """
@@ -118,27 +123,27 @@ class BaseBroker(ABC):
         Returns True if successful
         """
         pass
-    
+
     @abstractmethod
     async def disconnect(self) -> bool:
         """Disconnect from broker"""
         pass
-    
+
     @abstractmethod
     async def get_account_info(self) -> AccountInfo:
         """Get account information"""
         pass
-    
+
     @abstractmethod
     async def get_positions(self) -> List[Position]:
         """Get all open positions"""
         pass
-    
+
     @abstractmethod
     async def get_position(self, symbol: str) -> Optional[Position]:
         """Get position for specific symbol"""
         pass
-    
+
     @abstractmethod
     async def place_order(
         self,
@@ -148,69 +153,59 @@ class BaseBroker(ABC):
         order_type: OrderType = OrderType.MARKET,
         limit_price: Optional[float] = None,
         stop_price: Optional[float] = None,
-        time_in_force: str = "day"
+        time_in_force: str = "day",
     ) -> Order:
         """Place a new order"""
         pass
-    
+
     @abstractmethod
     async def cancel_order(self, order_id: str) -> bool:
         """Cancel an order"""
         pass
-    
+
     @abstractmethod
     async def get_order(self, order_id: str) -> Order:
         """Get order status"""
         pass
-    
+
     @abstractmethod
     async def get_orders(
-        self,
-        status: Optional[OrderStatus] = None,
-        limit: int = 100
+        self, status: Optional[OrderStatus] = None, limit: int = 100
     ) -> List[Order]:
         """Get all orders"""
         pass
-    
+
     @abstractmethod
-    async def close_position(
-        self,
-        symbol: str,
-        quantity: Optional[float] = None
-    ) -> Order:
+    async def close_position(self, symbol: str, quantity: Optional[float] = None) -> Order:
         """Close a position"""
         pass
-    
+
     @abstractmethod
     async def close_all_positions(self) -> List[Order]:
         """Close all open positions"""
         pass
-    
+
     @abstractmethod
     async def get_market_price(self, symbol: str) -> float:
         """Get current market price"""
         pass
-    
+
     @abstractmethod
     async def get_historical_data(
-        self,
-        symbol: str,
-        start_date: datetime,
-        end_date: datetime,
-        timeframe: str = "1D"
+        self, symbol: str, start_date: datetime, end_date: datetime, timeframe: str = "1D"
     ) -> List[Dict[str, Any]]:
         """Get historical price data"""
         pass
-    
+
     def is_connected(self) -> bool:
         """Check if broker is connected"""
         return self._connected
-    
+
     async def __aenter__(self):
         """Async context manager entry"""
         await self.connect()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         await self.disconnect()

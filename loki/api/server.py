@@ -22,6 +22,25 @@ app = FastAPI(
 )
 app.include_router(fusion_router)
 app.include_router(broker_workspace_router)
+from loki.api.paper_tools import router as paper_tools_router
+
+app.include_router(paper_tools_router)
+
+
+# Load the larger optional strategy engine only for terminal requests.
+class AdvancedTerminal:
+    def __init__(self):
+        self.application = None
+
+    async def __call__(self, scope, receive, send):
+        if self.application is None:
+            from loki.api.terminal_v8 import app as terminal_app
+
+            self.application = terminal_app
+        await self.application(scope, receive, send)
+
+
+app.mount("/terminal", AdvancedTerminal(), name="advanced-terminal")
 
 # Resolve assets independently of the process working directory.
 repo_dir = Path(__file__).resolve().parents[2]

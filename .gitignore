@@ -3,7 +3,8 @@ config.yaml
 .env
 .env.*
 !.env.example
-rag_service.py
+# rag_service.py is required by trading_bot.py / agents.py / langgraph_agent.py
+# at import time - it must be committed or a fresh clone crashes on import.
 test_order.py
 test_fno_order.py
 
@@ -20,6 +21,9 @@ ngrok
 output/
 *.log
 logs/
+
+# Incoming third-party repos being mined for ideas (not part of Loki)
+_incoming/
 
 # Cache folders
 cache/
@@ -46,6 +50,10 @@ __pycache__/
 build/
 dist/
 
+# JavaScript / Next.js build output
+.next/
+node_modules/
+
 # IDE & OS-specific files
 .idea/
 .vscode/
@@ -68,3 +76,6 @@ components/mirofish/upstream/backend/uploads/
 components/mirofish/upstream/frontend/node_modules/
 components/mirofish/upstream/frontend/dist/
 components/mirofish/upstream/backend/.venv/
+
+# Private strategy-engine state and account snapshots
+state/

@@ -1,90 +1,87 @@
-# Loki Fusion — research and paper trading
+# Loki Trading Workspace
 
-Loki brings strategy research, factor diagnostics, a role-based council, paper accounts, a simulated market, stress scenarios and conversation into one workspace. Selected Vibe-Trading and AutoHedge engines run inside Loki. The complete supplied MiroFish source is bundled, and its native report code feeds the council directly. Licensed Fincept analytics connect locally. No strategy has established the requested 70% future winning-trade rate or improved future profitability.
+One Python application combines Loki Fusion research, the v8 strategy engine,
+market planning, broker sessions and Supabase persistence.
 
-## Start the unified workspace
+## Run locally
+
+Requires Python 3.12. From the repository root:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python launch_loki_fusion.py
+.\.venv\Scripts\python.exe -m pip install -r requirements_desktop.txt
+.\.venv\Scripts\python.exe launch_loki_fusion.py --port 8123
 ```
 
-Open http://127.0.0.1:8000. The nine views connect research, practice and account readiness:
+Open http://127.0.0.1:8123/. The local launcher enables private native tools and
+broker sessions only for loopback, same-origin requests with its session token.
+Use `--config fusion.config.local.json` for optional private engine settings;
+copy the example file and keep local settings outside Git.
 
-- **Overview:** forward-test equity versus buy-and-hold, costs, uncertainty and evidence gaps.
-- **Quant lab:** CSV walk-forward trend research, Vibe-derived causal factors, fixed-rule replay, a separate pullback hypothesis and supervised learning on public historical market factors.
-- **Agent council:** AutoHedge-derived director/analyst role contracts with deterministic signal, evidence, cash, currency and exposure checks. Drafts are inert and blocked when checks fail; no LLM agents are silently invoked.
-- **Paper portfolio:** manual long entries, partial exits, marks, costs, lifecycle P&L, browser persistence, export and cost-aware sizing.
-- **Simulated market:** generated BTC/ETH/SOL candles, play/pause and virtual clock, six seeded scenarios, a separate practice account, market/limit paper orders, protective stops, costs, journal, export and synthetic council feedback.
-- **Real account:** the top Paper/Real switch opens a separate connection view. Genuine CCXT spot balances use host-configured credentials. Manual Kraken spot limit orders need separate host opt-in, a fresh preview and typed confirmation, with durable duplicate prevention, cancellation and reconciliation. A mode switch does not arm a bot. See [manual orders](docs/REAL_ORDERS.md).
-- **Scenarios:** explicit price-shock sensitivity on current paper positions, plus the actual MiroFish service workflow when configured.
-- **Talk to Loki:** grounded local explanations of research, factors, council decisions, portfolios and stress results; multi-topic questions, instrument followups, loss reviews and useful next checks. Chat has no execution authority.
-- **Integrations:** real readiness states and licensed Fincept daily-return portfolio risk reports.
+## Integrated features
 
-Upload **161–5,000 bars from a single instrument** with columns `timestamp,open,high,low,close,volume`. Use ISO 8601 timestamps (timezone recommended; naive timestamps are interpreted as UTC) in ascending order. Set bars per year to match the data frequency. All monetary values use the input data's quote currency. Historical data provenance is not independently verified.
+- Quant lab: imported OHLCV, factor diagnostics, purged walk-forward evaluation,
+  pullback research, cost assumptions and benchmark comparisons.
+- Agent council: inspect deterministic reviews and provenance. Viewing a council
+  never places an order.
+- Paper portfolio and simulated market: practice ledgers, synthetic regimes,
+  limits/stops and scenario stress. Synthetic results cannot establish an edge.
+- Broker connection: Alpaca paper/live keys and supported exchange inspection
+  keys stay in local server memory for up to four hours, outside browser storage,
+  exports and source control.
+- Alpaca paper AI: explicitly train on 5 or 10 years of completed daily history,
+  inspect training/validation/test dates, then Start/Pause the runner. It pauses
+  when its page is hidden; venue orders and positions remain until reconciled or
+  explicitly canceled. Live automation is disabled.
+- Advanced terminal: the merged v8 multi-factor engine, TTM Squeeze, CMF, regime
+  monitor, backtests, Monte Carlo scenarios and parameter trainer. Its explicit
+  paper loop manages stops/risk against an independent local simulated balance.
+- Market planner: public Binance snapshots, six-role paper council, daily
+  loss-cap estimates, risk sizing and a context-aware local coach.
+- Research desk: preserved CSV paper agent, versioned strategies and local
+  profile at `/research-desk`.
+- Supabase vault: shared server-only transport for the engine and domain manager.
+  See [setup](SUPABASE_SETUP.md).
 
-Paper journal state is saved in this browser's local storage. Research, council and stress results remain in the current page until export or reload. The workspace export includes uploaded bars and paper records; handle it as business data. Research endpoints compute from caller-supplied state. Private native-engine, real-account and manual-order routes require loopback origin checks and a local session token; this is not multi-user business authentication. Real order claims use a separate durable host-side journal. Default local research and chat do not call external AI providers.
+Manual Kraken real orders use the separate host-enabled preview/confirmation
+workflow and journal. Selecting Real places no order. Broker credentials and
+market entitlements are necessary for actual account access.
 
-**Historical machine learning needs no personal account or key.** In Quant lab,
-click **Fetch history & train** to download Open Crypto Pricing's commercially
-reusable CC BY 4.0 daily factor series and fit a fixed logistic market-direction
-model. Training, validation and later evaluation dates stay separate. Exports
-include weights, source attribution, model/data hashes, baseline comparisons and
-limitations. Prediction accuracy is separate from trading win rate. The offline
-trainer accepts up to 250,000 dated returns; the browser OHLCV upload retains its
-5,000-bar limit. See [historical learning](docs/research/HISTORICAL_LEARNING.md).
+## Evidence and limits
 
-## Use the supplied external engines
+**A 70% closed-trade win rate has not been proven. Future returns are not
+guaranteed.** The v8 trainer reserves the final 20% of downloaded history before
+development search/refinement. Reports label validation reuse, final-holdout
+metrics, fingerprints and trade counts. Repeated inspection and multiple
+experiments mean a strong holdout remains exploratory. Costs, profit factor,
+losses and drawdown matter alongside win rate. Applying parameters changes the
+running engine globally. A cross-symbol consensus is a research proposal.
 
-Copy `fusion.config.example.json` to the ignored `fusion.config.local.json`, set local installation paths, then run:
+The optional Yahoo/yfinance feed supplies observations, not commercial data
+rights or brokerage streaming. Use entitled data or appropriately licensed
+imports for commercial deployment. Installation creates no paid data account.
+
+The private Supabase vault is single-server storage, not customer authentication
+or tenant isolation. Native broker tools are unavailable to public/Vercel
+clients. A customer-facing account service needs owner-scoped authentication and
+database policies before private remote operations are enabled.
+
+Provenance/license boundaries remain in `components/` and `third_party/`.
+Fincept loads from a separately configured licensed private installation.
+Retained MiroFish code carries AGPL notices. Optional model/graph/simulation jobs
+need their configured dependencies and provider credentials.
+
+## Tests and deployment
 
 ```powershell
-.\.venv\Scripts\python launch_loki_fusion.py --config fusion.config.local.json --check
-.\.venv\Scripts\python launch_loki_fusion.py --config fusion.config.local.json
+python -m pip install -r requirements_test.txt
+python -m pytest -o addopts= tests/ -q
 ```
 
-| Component | Included integration | Runtime and license boundary |
-| --- | --- | --- |
-| Vibe-Trading | Adapted RSI, factor IC/rank-group math, causal factor diagnostics and replay | Selected MIT source and attribution in `third_party/vibe_trading`; no hosted Vibe or Qlib runtime |
-| AutoHedge | Adapted role contracts and evidence pipeline | Selected MIT source in `third_party/autohedge`; deterministic local implementation, not Swarms/LLM agents |
-| Fincept | Original portfolio-risk CLI, invoked in a separate local Python process | Requires the user's commercially licensed private installation and NumPy/pandas/SciPy; original source is not redistributed |
-| MiroFish | Complete supplied source retained under `components/mirofish/upstream`; original ReportManager and data classes executed directly to feed council scenarios; optional service workflow also retained | AGPL source and exact extraction provenance supplied; native artifact reads need no project API. New provider simulations still need the backend dependencies and LLM/Zep configuration |
+GitHub checks run offline; broker/database transports are mocked. `vercel.json`
+explicitly selects FastAPI with `main:app` and bundles templates/static assets.
+The historical Next.js prototype remains in `app/`; it is not the deployed
+application. Long-running local paper loops are not serverless jobs.
 
-The Fincept commercial license was confirmed for this installation. Distribution rights are not inferred from that confirmation. Keep its installation and agreement outside public source control. MiroFish jobs can incur provider usage and require an explicit host flag; Loki never starts them automatically. Simulation opinions and risk statistics do not certify a trading edge.
-
-Native engine reads and jobs require the loopback launcher, same-origin session token and explicit host configuration. They are disabled on Vercel. A hosted preview supports the pure research/paper features; it cannot reach your desktop engines. See [external engine setup and contracts](docs/FUSION_EXTERNAL_ENGINES.md) and [MiroFish's concrete readiness check](docs/MIROFISH_SETUP.md).
-
-See [simulated market, modes and native council evidence](docs/SIMULATED_MARKET.md)
-for order-fill assumptions, account separation and the direct MiroFish report
-path. The [remaining integration work](docs/FUSION_WORK_REMAINING.md) records the
-broader source-merger objective; bundling native code is not a claim that every
-upstream feature is already operating in Loki.
-
-## Desktop paper terminal
-
-```powershell
-.\.venv\Scripts\python -m pip install -r requirements_desktop.txt
-.\.venv\Scripts\python loki_desktop.py
-```
-
-The primary desktop supports simulated paper trading, optional public crypto market data, charting, risk settings, paper portfolio analytics, strategy comparison, walk-forward research, and the same read-only copilot. Data provenance and quote freshness are shown. Live execution is unavailable in this terminal. Changing data sources with open positions requires closing those paper positions first.
-
-Other legacy launchers and engines remain in the repository; these instructions target `main.py` and `loki_desktop.py`.
-
-## Command-line strategy evaluation
-
-```powershell
-python run_strategy_lab.py history.csv --output reports/research.json --periods-per-year 365 --fee-bps 10 --slippage-bps 5
-```
-
-This command needs only Python's standard library. See [Strategy Lab methodology](docs/STRATEGY_LAB.md) for configuration, assumptions and limitations. Passing research criteria means only that a strategy is a candidate for further paper evaluation. Repeated research on the same holdout can overfit; use a fresh dataset for confirmation.
-
-## Verification and strategy evidence
-
-```powershell
-.\.venv\Scripts\python -m pip install -r requirements_test.txt
-.\.venv\Scripts\python -m pytest tests -o addopts= -q
-```
-
-The regression suite tests software behavior with synthetic or mocked data. Separately, local Fincept reports verify the original licensed analytics. No paid MiroFish provider run is part of CI. See [frozen strategy validation](docs/research/VALIDATION.md) for an immutable training/holdout protocol using operator-supplied licensed data. Trading profitability remains unproven; a 70% observed win rate can still lose money when losses and costs outweigh gains.
+See [the integration inventory](docs/GITHUB_UNIFICATION.md) for branch provenance,
+conflict resolutions and environment-dependent checks.

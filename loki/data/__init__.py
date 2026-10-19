@@ -4,12 +4,12 @@ from loki.data.real_market_data import (
     RealMarketDataProvider,
     get_market_data_provider,
     get_stock_data,
-    get_multiple_stocks
+    get_multiple_stocks,
 )
 
 __all__ = [
-    'RealMarketDataProvider',
-    'get_market_data_provider',
-    'get_stock_data',
-    'get_multiple_stocks'
+    "RealMarketDataProvider",
+    "get_market_data_provider",
+    "get_stock_data",
+    "get_multiple_stocks",
 ]

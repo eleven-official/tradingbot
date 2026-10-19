@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class Order:
     fill_timestamp: Optional[datetime] = None
     commission: float = 0.0
     slippage: float = 0.0
+    spread: float = 0.0
 
 
 @dataclass
@@ -55,6 +57,9 @@ class Position:
     current_price: float = 0.0
     unrealized_pnl: float = 0.0
     realized_pnl: float = 0.0
+    entry_commission: float = 0.0
+    entry_slippage: float = 0.0
+    entry_spread: float = 0.0
 
 
 @dataclass
@@ -71,6 +76,8 @@ class Trade:
     pnl_percent: float
     commission: float
     slippage: float
+    spread: float
+    gross_pnl: float
     duration: timedelta
     mae: float = 0.0  # Maximum Adverse Excursion
     mfe: float = 0.0  # Maximum Favorable Excursion
@@ -111,6 +118,9 @@ class BacktestResult:
     # Execution metrics
     total_commission: float
     total_slippage: float
+    total_spread: float
+    total_net_pnl: float
+    expectancy: float
     
     # Time series data
     equity_curve: pd.Series = field(default_factory=pd.Series)
@@ -125,10 +135,15 @@ class ExecutionModel:
         self,
         commission_pct: float = 0.001,  # 0.1% commission
         slippage_pct: float = 0.0005,    # 0.05% slippage
-        use_realistic_fills: bool = True
+        use_realistic_fills: bool = True,
+        spread_pct: float = 0.0002       # 0.02% full spread, half charged per side
     ):
+        rates = (commission_pct, slippage_pct, spread_pct)
+        if any(not math.isfinite(rate) or rate < 0 for rate in rates):
+            raise ValueError("execution cost percentages must be finite and non-negative")
         self.commission_pct = commission_pct
         self.slippage_pct = slippage_pct
+        self.spread_pct = spread_pct
         self.use_realistic_fills = use_realistic_fills
     
     def execute_order(
@@ -144,24 +159,34 @@ class ExecutionModel:
         Returns:
             (filled, fill_price, commission, slippage)
         """
+        prices = (current_price, bar_high, bar_low)
+        if any(not math.isfinite(price) or price <= 0 for price in prices):
+            raise ValueError("market prices must be finite and positive")
+        if bar_high < bar_low:
+            raise ValueError("bar_high must be greater than or equal to bar_low")
+        if not math.isfinite(order.quantity) or order.quantity <= 0:
+            raise ValueError("order quantity must be finite and positive")
+        if order.order_type == OrderType.LIMIT and (
+            order.price is None or not math.isfinite(order.price) or order.price <= 0
+        ):
+            raise ValueError("limit price must be finite and positive")
+        if order.order_type == OrderType.STOP and (
+            order.stop_price is None or not math.isfinite(order.stop_price) or order.stop_price <= 0
+        ):
+            raise ValueError("stop price must be finite and positive")
+
         filled = False
         fill_price = 0.0
         commission = 0.0
         slippage = 0.0
+        spread = 0.0
         
         if order.order_type == OrderType.MARKET:
             # Market orders always fill
             filled = True
-            
-            # Add slippage
-            if order.side == OrderSide.BUY:
-                slippage_amount = current_price * self.slippage_pct
-                fill_price = current_price + slippage_amount
-            else:
-                slippage_amount = current_price * self.slippage_pct
-                fill_price = current_price - slippage_amount
-            
-            slippage = abs(fill_price - current_price) * order.quantity
+            fill_price = current_price
+            slippage = (current_price * self.slippage_pct * order.quantity
+                        if self.use_realistic_fills else 0.0)
             
         elif order.order_type == OrderType.LIMIT:
             # Limit orders only fill if price reaches limit
@@ -179,17 +204,31 @@ class ExecutionModel:
             if order.side == OrderSide.BUY:
                 if bar_high >= order.stop_price:
                     filled = True
-                    fill_price = max(order.stop_price, current_price)
-                    slippage = (fill_price - order.stop_price) * order.quantity
+                    fill_price = order.stop_price
+                    if self.use_realistic_fills:
+                        gap = max(0.0, current_price - order.stop_price)
+                        slippage = (gap + fill_price * self.slippage_pct) * order.quantity
             else:
                 if bar_low <= order.stop_price:
                     filled = True
-                    fill_price = min(order.stop_price, current_price)
-                    slippage = (order.stop_price - fill_price) * order.quantity
+                    fill_price = order.stop_price
+                    if self.use_realistic_fills:
+                        gap = max(0.0, order.stop_price - current_price)
+                        slippage = (gap + fill_price * self.slippage_pct) * order.quantity
+
+        # Keep fill prices at the bar/limit reference and charge assumed spread
+        # and slippage as separate cash costs. OHLC backtests do not contain the
+        # historical bid/ask. This avoids hiding or double-counting execution
+        # costs in the reported gross P&L. Limit fills never violate their limit.
+        if filled and self.use_realistic_fills:
+            half_spread = fill_price * self.spread_pct / 2.0
+            spread = half_spread * order.quantity
         
         # Calculate commission
         if filled:
             commission = fill_price * order.quantity * self.commission_pct
+
+        order.spread = spread
         
         return filled, fill_price, commission, slippage
 
@@ -209,13 +248,19 @@ class BacktestingEngine:
         initial_capital: float = 100000.0,
         commission_pct: float = 0.001,
         slippage_pct: float = 0.0005,
-        use_realistic_fills: bool = True
+        use_realistic_fills: bool = True,
+        spread_pct: float = 0.0002
     ):
+        if not math.isfinite(initial_capital) or initial_capital <= 0:
+            raise ValueError("initial_capital must be finite and positive")
         self.initial_capital = initial_capital
         self.capital = initial_capital
         
         self.execution_model = ExecutionModel(
-            commission_pct, slippage_pct, use_realistic_fills
+            commission_pct=commission_pct,
+            slippage_pct=slippage_pct,
+            use_realistic_fills=use_realistic_fills,
+            spread_pct=spread_pct
         )
         
         self.positions: Dict[str, Position] = {}
@@ -285,6 +330,11 @@ class BacktestingEngine:
         
         # Close all positions at end
         self._close_all_positions(data.iloc[-1]['close'], data.index[-1])
+        # The final mark above was captured before liquidation. Replace it with
+        # post-fill cash so terminal commissions, spread and slippage are in the
+        # reported return and drawdown series.
+        if self.equity_curve:
+            self.equity_curve[-1] = self._calculate_equity()
         
         # Calculate final metrics
         result = self._calculate_metrics(data.index[0], data.index[-1])
@@ -344,6 +394,9 @@ class BacktestingEngine:
                 total_quantity = pos.quantity + order.quantity
                 pos.entry_price = total_cost / total_quantity
                 pos.quantity = total_quantity
+                pos.entry_commission += order.commission
+                pos.entry_slippage += order.slippage
+                pos.entry_spread += order.spread
             else:
                 # New position
                 self.positions[symbol] = Position(
@@ -351,11 +404,15 @@ class BacktestingEngine:
                     quantity=order.quantity,
                     entry_price=order.fill_price,
                     entry_timestamp=order.fill_timestamp,
-                    current_price=order.fill_price
+                    current_price=order.fill_price,
+                    entry_commission=order.commission,
+                    entry_slippage=order.slippage,
+                    entry_spread=order.spread
                 )
             
             # Deduct cost from capital
-            cost = order.fill_price * order.quantity + order.commission + order.slippage
+            cost = (order.fill_price * order.quantity + order.commission
+                    + order.slippage + order.spread)
             self.capital -= cost
         
         else:  # SELL
@@ -365,9 +422,18 @@ class BacktestingEngine:
                 # Close position (full or partial)
                 quantity_to_close = min(order.quantity, pos.quantity)
                 
-                # Calculate P&L
-                pnl = (order.fill_price - pos.entry_price) * quantity_to_close
-                pnl -= (order.commission + order.slippage)
+                # Allocate opening costs to this closed portion, then include
+                # closing costs. This makes each trade's net P&L reconcile with
+                # account equity, including entry and exit execution costs.
+                cost_ratio = quantity_to_close / pos.quantity if pos.quantity else 0.0
+                entry_commission = pos.entry_commission * cost_ratio
+                entry_slippage = pos.entry_slippage * cost_ratio
+                entry_spread = pos.entry_spread * cost_ratio
+                total_commission = entry_commission + order.commission
+                total_slippage = entry_slippage + order.slippage
+                total_spread = entry_spread + order.spread
+                gross_pnl = (order.fill_price - pos.entry_price) * quantity_to_close
+                pnl = gross_pnl - total_commission - total_slippage - total_spread
                 
                 # Record trade
                 trade = Trade(
@@ -379,9 +445,12 @@ class BacktestingEngine:
                     quantity=quantity_to_close,
                     side=OrderSide.BUY,  # Original side
                     pnl=pnl,
-                    pnl_percent=(order.fill_price / pos.entry_price - 1) * 100,
-                    commission=order.commission,
-                    slippage=order.slippage,
+                    pnl_percent=(pnl / (pos.entry_price * quantity_to_close) * 100
+                                 if pos.entry_price and quantity_to_close else 0.0),
+                    commission=total_commission,
+                    slippage=total_slippage,
+                    spread=total_spread,
+                    gross_pnl=gross_pnl,
                     duration=order.fill_timestamp - pos.entry_timestamp
                 )
                 self.trades.append(trade)
@@ -389,9 +458,13 @@ class BacktestingEngine:
                 # Update position
                 pos.quantity -= quantity_to_close
                 pos.realized_pnl += pnl
+                pos.entry_commission -= entry_commission
+                pos.entry_slippage -= entry_slippage
+                pos.entry_spread -= entry_spread
                 
                 # Add proceeds to capital
-                proceeds = order.fill_price * quantity_to_close - order.commission - order.slippage
+                proceeds = (order.fill_price * quantity_to_close - order.commission
+                            - order.slippage - order.spread)
                 self.capital += proceeds
                 
                 # Remove if fully closed
@@ -421,12 +494,18 @@ class BacktestingEngine:
                 symbol=symbol,
                 side=OrderSide.SELL,
                 order_type=OrderType.MARKET,
-                quantity=pos.quantity,
-                filled=True,
-                fill_price=final_price,
-                fill_timestamp=timestamp
+                quantity=pos.quantity
             )
-            
+            filled, fill_price, commission, slippage = self.execution_model.execute_order(
+                order, final_price, final_price, final_price
+            )
+            if not filled:
+                continue
+            order.filled = True
+            order.fill_price = fill_price
+            order.fill_timestamp = timestamp
+            order.commission = commission
+            order.slippage = slippage
             self._update_position_from_order(order)
     
     def _calculate_metrics(
@@ -448,12 +527,14 @@ class BacktestingEngine:
         win_rate = winning_trades / total_trades * 100 if total_trades > 0 else 0
         
         # P&L metrics
-        gross_profit = sum(t.pnl for t in self.trades if t.pnl > 0)
-        gross_loss = abs(sum(t.pnl for t in self.trades if t.pnl < 0))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
-        
-        average_win = gross_profit / winning_trades if winning_trades > 0 else 0
-        average_loss = gross_loss / losing_trades if losing_trades > 0 else 0
+        gross_profit = sum(t.gross_pnl for t in self.trades if t.gross_pnl > 0)
+        gross_loss = abs(sum(t.gross_pnl for t in self.trades if t.gross_pnl < 0))
+        net_wins = sum(t.pnl for t in self.trades if t.pnl > 0)
+        net_losses = abs(sum(t.pnl for t in self.trades if t.pnl < 0))
+        profit_factor = net_wins / net_losses if net_losses > 0 else 0
+
+        average_win = net_wins / winning_trades if winning_trades > 0 else 0
+        average_loss = net_losses / losing_trades if losing_trades > 0 else 0
         
         largest_win = max([t.pnl for t in self.trades], default=0)
         largest_loss = min([t.pnl for t in self.trades], default=0)
@@ -472,6 +553,9 @@ class BacktestingEngine:
         # Execution costs
         total_commission = sum(t.commission for t in self.trades)
         total_slippage = sum(t.slippage for t in self.trades)
+        total_spread = sum(t.spread for t in self.trades)
+        total_net_pnl = sum(t.pnl for t in self.trades)
+        expectancy = total_net_pnl / total_trades if total_trades else 0.0
         
         # Drawdown series
         running_max = equity_series.expanding().max()
@@ -502,6 +586,9 @@ class BacktestingEngine:
             max_drawdown_duration=max_dd_duration,
             total_commission=total_commission,
             total_slippage=total_slippage,
+            total_spread=total_spread,
+            total_net_pnl=total_net_pnl,
+            expectancy=expectancy,
             equity_curve=equity_series,
             drawdown_series=drawdown_series,
             trades=self.trades
@@ -549,7 +636,8 @@ class BacktestingEngine:
 def monte_carlo_simulation(
     backtest_result: BacktestResult,
     n_simulations: int = 1000,
-    confidence_level: float = 0.95
+    confidence_level: float = 0.95,
+    random_seed: Optional[int] = None,
 ) -> Dict:
     """
     Run Monte Carlo simulation on backtest results
@@ -562,6 +650,11 @@ def monte_carlo_simulation(
     Returns:
         Dict with simulation results
     """
+    if not isinstance(n_simulations, int) or isinstance(n_simulations, bool) or n_simulations < 1:
+        raise ValueError("n_simulations must be a positive integer")
+    if not math.isfinite(confidence_level) or not 0.0 < confidence_level < 1.0:
+        raise ValueError("confidence_level must be finite and between 0 and 1")
+
     logger.info(f"🎲 Running {n_simulations} Monte Carlo simulations...")
     
     # Extract trade returns
@@ -574,9 +667,10 @@ def monte_carlo_simulation(
     final_returns = []
     max_drawdowns = []
     
+    rng = np.random.default_rng(random_seed)
     for _ in range(n_simulations):
         # Randomly sample trades with replacement
-        simulated_returns = np.random.choice(trade_returns, size=len(trade_returns), replace=True)
+        simulated_returns = rng.choice(trade_returns, size=len(trade_returns), replace=True)
         
         # Calculate equity curve
         equity = [100]  # Start with 100
@@ -602,6 +696,7 @@ def monte_carlo_simulation(
     results = {
         'n_simulations': n_simulations,
         'confidence_level': confidence_level,
+        'random_seed': random_seed,
         'final_return': {
             'mean': float(np.mean(final_returns)),
             'median': float(np.median(final_returns)),
@@ -678,3 +773,5 @@ def simple_ma_crossover_strategy(data: pd.DataFrame, positions: Dict, capital: f
             ))
     
     return orders
+
+

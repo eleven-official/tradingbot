@@ -60,6 +60,7 @@ $('#train-history').addEventListener('click',async()=>{
 // Every section uses the same in-memory dataset and paper journal.
 function navigate(){const aliases={'risk-studio':'portfolio'};const hash=location.hash.slice(1)||'overview';let view=aliases[hash]||hash;if(!$('#'+CSS.escape(view))?.classList.contains('workspace-view'))view='overview';
   $$('.workspace-view').forEach(section=>{section.hidden=section.id!==view;});
+  const frame=$('#'+CSS.escape(view)+' iframe[data-src]');if(frame&&!frame.getAttribute('src'))frame.src=frame.dataset.src;
   $$('.sidebar nav a').forEach(link=>{const active=link.dataset.view===view;link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');});
   $('#page-name').textContent=$(`.sidebar nav a[data-view="${view}"]`).textContent.trim().replace(/^\S+\s+/,'');document.title=`Loki · ${$('#page-name').textContent}`;
   requestAnimationFrame(()=>{if(hash==='risk-studio')$('#risk-studio').scrollIntoView();else window.scrollTo({top:0,behavior:'instant'});drawChart();});

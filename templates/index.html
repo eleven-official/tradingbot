@@ -20,6 +20,8 @@
       <a href="#real-market" data-view="real-market"><span aria-hidden="true">↗</span> Real account</a>
       <a href="#scenarios" data-view="scenarios"><span aria-hidden="true">◇</span> Scenarios</a>
       <a href="#copilot" data-view="copilot"><span aria-hidden="true">✧</span> Talk to Loki</a>
+      <a href="#advanced-terminal" data-view="advanced-terminal"><span aria-hidden="true">⌘</span> Advanced terminal</a>
+      <a href="#paper-planner" data-view="paper-planner"><span aria-hidden="true">⌁</span> Market planner</a>
       <a href="#integrations" data-view="integrations"><span aria-hidden="true">⊞</span> Integrations</a>
     </nav>
     <div class="sidebar-context"><p class="eyebrow">CURRENT RESEARCH</p><strong id="sidebar-symbol">No asset loaded</strong><span id="sidebar-data">Import history in Quant lab</span></div>
@@ -112,6 +114,17 @@
     <section id="copilot" class="workspace-view" aria-label="Talk to Loki" hidden>
       <div class="page-heading"><p class="eyebrow">A CONVERSATION WITH CONTEXT</p><h1>Talk it through.</h1><p class="muted">Your research, sizing, council review, and paper portfolio come with you.</p></div>
       <section class="panel copilot-panel"><div class="section-title"><div><p class="eyebrow">TALK TO LOKI</p><h2>A clearer second opinion.</h2></div><span class="tag" id="chat-context-status">No research loaded</span></div><div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-label="Conversation with Loki"><div class="chat-message assistant"><span>LOKI</span><p>Let’s work from evidence. Import history in Quant lab, bring an idea to the council, or record a paper position. I can explain what the results mean and help you decide what to test next.</p></div></div><div id="chat-prompts" class="chat-prompts"><button type="button" data-prompt="Explain the strategy">Explain the strategy</button><button type="button" data-prompt="What evidence do I need for a 70% win rate?">The 70% win-rate target</button><button type="button" data-prompt="What should I test next?">What to test next</button></div><form id="chat-form" class="chat-form"><label class="sr-only" for="chat-input">Message Loki</label><input id="chat-input" maxlength="2000" placeholder="Ask about your research, portfolio, or next test…" required autocomplete="off"><button class="button primary" type="submit" aria-label="Send message">↑</button></form><p class="caption">Local evidence-based explanations · no external AI service for this chat · no trade execution</p></section>
+    </section>
+    <section id="advanced-terminal" class="workspace-view" aria-label="Advanced terminal" hidden>
+      <div class="section-title"><div><p class="eyebrow">YOUR NEW STRATEGY ENGINE</p><h1>Advanced terminal</h1></div><a class="button secondary" href="/terminal/" target="_blank" rel="noopener">Open full terminal ↗</a></div>
+      <p class="muted">Multi-factor signals, regime monitoring, historical training, Monte Carlo risk and Supabase persistence. The engine uses an independent local paper balance. Start the paper loop explicitly when ready.</p>
+      <iframe class="integrated-terminal" data-src="/terminal/" title="Loki advanced paper terminal"></iframe>
+    </section>
+    <section id="paper-planner" class="workspace-view" aria-label="Market planner" hidden>
+      <div class="section-title"><div><p class="eyebrow">MARKET STRUCTURE &amp; RISK</p><h1>Market planner</h1></div><a class="button secondary" href="/paper-tools" target="_blank" rel="noopener">Open full planner ↗</a></div>
+      <p class="muted">Public market snapshots, strategy replays, the six-role council, a paper journal and daily loss-cap estimates.</p>
+      <p><a class="text-link" href="/research-desk" target="_blank" rel="noopener">Open CSV agent and versioned rule workbench ↗</a> · <a class="text-link" href="/strategy-lab" target="_blank" rel="noopener">Open public-candle strategy lab ↗</a></p>
+      <iframe class="integrated-terminal" data-src="/paper-tools" title="Loki market planner"></iframe>
     </section>
     <section id="integrations" class="workspace-view" aria-label="Integrations" hidden>
       <div class="page-heading"><p class="eyebrow">ONE LOKI WORKSPACE / EXPLICIT CAPABILITIES</p><h1>Know what’s connected.</h1><p class="muted">Research and paper tools work locally. Optional engines show their real setup and source boundaries here.</p></div>

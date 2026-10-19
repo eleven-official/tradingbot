@@ -2,4 +2,4 @@
 
 from loki.ai.autonomous_agent import AutonomousAIAgent, AIDecision, ThoughtProcess
 
-__all__ = ['AutonomousAIAgent', 'AIDecision', 'ThoughtProcess']
+__all__ = ["AutonomousAIAgent", "AIDecision", "ThoughtProcess"]

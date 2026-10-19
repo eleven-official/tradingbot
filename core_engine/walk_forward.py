@@ -5,6 +5,7 @@ never assumes that an in-sample score is evidence of live profitability. The
 gap between train and test windows is a purge/embargo period that prevents
 features or labels near the boundary from leaking across folds.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
@@ -50,9 +51,22 @@ class PurgedWalkForwardValidator:
         test_size: Optional[int] = None,
         gap: int = 1,
         min_train_size: int = 100,
-        min_positive_folds: int = 3,
+        min_positive_folds: Optional[int] = None,
         min_median_sharpe: float = 0.0,
     ) -> None:
+        for name, value in (
+            ("n_splits", n_splits),
+            ("gap", gap),
+            ("min_train_size", min_train_size),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{name} must be an integer")
+        if test_size is not None and (
+            isinstance(test_size, bool) or not isinstance(test_size, int) or test_size < 1
+        ):
+            raise ValueError("test_size must be a positive integer")
+        if min_positive_folds is None:
+            min_positive_folds = min(3, n_splits)
         if n_splits < 2:
             raise ValueError("n_splits must be at least 2")
         if gap < 0 or min_train_size < 1:
@@ -103,13 +117,13 @@ class PurgedWalkForwardValidator:
         if not isinstance(data, pd.DataFrame):
             raise TypeError("data must be a pandas DataFrame")
         if not data.index.is_monotonic_increasing or not data.index.is_unique:
-            raise ValueError("data index must be sorted and unique")
+            raise ValueError("data index must be sorted and unique (sorted chronologically)")
         folds = list(self.split(len(data)))
         results: List[Dict[str, Any]] = []
         reasons: List[str] = []
         for fold in folds:
-            train = data.iloc[fold.train_start:fold.train_end].copy()
-            test = data.iloc[fold.test_start:fold.test_end].copy()
+            train = data.iloc[fold.train_start : fold.train_end].copy()
+            test = data.iloc[fold.test_start : fold.test_end].copy()
             output = dict(evaluator(train, test, fold.fold))
             output["fold"] = fold.fold
             for key in ("total_return", "sharpe_ratio"):
@@ -135,7 +149,9 @@ class PurgedWalkForwardValidator:
             if values.size:
                 summary[f"{key}_median"] = float(np.median(values))
                 summary[f"{key}_mean"] = float(np.mean(values))
-                summary[f"{key}_worst"] = float(np.min(values) if key != "max_drawdown" else np.min(values))
+                summary[f"{key}_worst"] = float(
+                    np.min(values) if key != "max_drawdown" else np.min(values)
+                )
 
         positive_returns = 0
         for result in results:
