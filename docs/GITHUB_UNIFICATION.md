@@ -22,6 +22,9 @@ Next.js prototype does not replace the FastAPI deployment.
 ## Repaired defects
 
 - Duplicate TOML tables/dependencies and missing deployment assets.
+- Broken Docker packaging: include the actual core/strategy/UI sources, use a
+  non-root runtime with readable dependencies, and smoke-test before release.
+  Container publication targets this repository and occurs only on a release.
 - Council GET placing paper orders; default-password/arbitrary-bearer auth;
   mock strategy controls; fabricated fallback order prices; fake live fallback.
 - Unbounded order/loop inputs, missing exit management in the background loop,

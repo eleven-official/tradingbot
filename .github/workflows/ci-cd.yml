@@ -12,7 +12,7 @@ on:
 env:
   PYTHON_VERSION: '3.12'
   REGISTRY: ghcr.io
-  IMAGE_NAME: lokitrading/loki
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   test:
@@ -96,38 +96,93 @@ jobs:
       continue-on-error: true
   
   build-docker:
-    name: Build Docker Image
+    name: Build and smoke-test unified container
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' || github.event_name == 'release'
-    
+    permissions:
+      contents: read
+      packages: write
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-    
-    - name: Log in to Container Registry
+
+    - name: Build the complete web runtime
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.production
+        load: true
+        tags: loki-ci:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Verify container startup, assets and private API boundary
+      run: |
+        docker run -d --name loki-smoke -p 127.0.0.1:8000:8000 loki-ci:${{ github.sha }}
+        python - <<'PY'
+        import json
+        import time
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError, URLError
+        base = "http://127.0.0.1:8000"
+        for attempt in range(30):
+            try:
+                with urlopen(base + "/health", timeout=2) as response:
+                    assert json.load(response)["status"] == "ok"
+                break
+            except (OSError, URLError):
+                if attempt == 29:
+                    raise
+                time.sleep(1)
+        for path in ("/", "/paper-tools", "/research-desk", "/terminal/",
+                     "/static/css/style.css", "/static/css/v8_terminal.css",
+                     "/static/css/paper_tools.css", "/static/js/workspace.js",
+                     "/static/vendor/chartjs/chart.umd.js"):
+            with urlopen(Request(base + path, headers={"Accept": "text/html"}), timeout=10) as response:
+                assert response.status == 200, path
+        with urlopen(base + "/api/fusion/capabilities") as response:
+            capabilities = json.load(response)
+            assert not capabilities["local_actions_enabled"]
+            assert "local_token" not in capabilities
+        try:
+            urlopen(base + "/terminal/api/status")
+            raise AssertionError("Private account endpoint was public")
+        except HTTPError as error:
+            assert error.code == 403
+        print("Container startup, all interface assets and private API boundary passed.")
+        PY
+
+    - name: Container diagnostics and cleanup
+      if: always()
+      run: |
+        docker logs loki-smoke || true
+        docker rm -f loki-smoke || true
+
+    # Registry publication remains a deliberate release action, not a PR/main push.
+    - name: Log in to Container Registry for release
+      if: github.event_name == 'release'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Extract metadata
+
+    - name: Extract release metadata
+      if: github.event_name == 'release'
       id: meta
       uses: docker/metadata-action@v5
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
           type=sha
-    
-    - name: Build and push Docker image
+
+    - name: Publish release image
+      if: github.event_name == 'release'
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -136,8 +191,7 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
-        cache-to: type=gha,mode=max
-  
+
   build-windows-installer:
     name: Build Windows Installer
     runs-on: windows-latest
