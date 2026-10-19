@@ -3,11 +3,11 @@ LOKI v8 — walk-forward strategy trainer with multi-factor optimization.
 
 "Fits" the ensemble's factor weights and execution parameters on historical
 data and, crucially, verifies them out-of-sample before recommending them.
-This is honest grid-search training, not curve-fitting:
+The full train() workflow reserves the last 20% before development search.
+train_symbol() evaluates development train/validation windows:
 
 1. Bars are split chronologically into a TRAIN segment (default first 70%)
-   and a VALIDATION segment (last 30%). Nothing from the validation segment
-   ever influences parameter selection.
+   and a VALIDATION segment (last 30%). Validation can guide refinement in the full workflow; it is not an untouched final test.
 2. Every candidate combination is backtested on the TRAIN segment.
    Factor weighting and execution tuning are evaluated in layers:
 
@@ -43,6 +43,7 @@ import itertools
 import json
 import logging
 import math
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -716,7 +717,7 @@ def train(
     ``objective="win_rate"`` with ``target_win_rate=90`` is the aggressive
     mode that keeps optimizing until the 90% profitability target is met (or
     the refinement budget is exhausted — the result then states plainly what
-    the best verified configuration achieved).
+    the best development configuration achieved; final holdout is reported separately).
     """
     cfg = base_cfg or LokiConfig()
     provider = get_provider()
@@ -734,10 +735,15 @@ def train(
         hurdle_targets["month_profit_rate_pct"] = float(target_profitable_months)
 
     datasets: Dict[str, pd.DataFrame] = {}
+    full_history: Dict[str, pd.DataFrame] = {}
     errors: Dict[str, str] = {}
     for sym in syms:
         try:
-            datasets[sym] = provider.fetch_history(sym, period, timeframe)
+            history = provider.fetch_history(sym, period, timeframe)
+            full_history[sym] = history
+            # Reserve the last 20% before any grid/refinement is evaluated.
+            # Validation can guide refinement; this final segment cannot.
+            datasets[sym] = history.iloc[: int(len(history) * 0.8)].copy()
         except Exception as exc:  # noqa: BLE001 - e.g. yfinance offline
             errors[sym] = f"data fetch failed: {exc}"
 
@@ -810,6 +816,45 @@ def train(
 
     report = interim
     report["refine_rounds_used"] = rounds_used
+    report["evaluation_protocol"] = {
+        "development_fraction": 0.8,
+        "final_holdout_fraction": 0.2,
+        "validation_used_for_refinement": True,
+        "final_holdout_used_for_selection": False,
+        "target_70_percent_proven": False,
+        "consensus_evaluated_on_final_holdout": False,
+        "note": "Exploratory research. Repeated runs, prior inspection and multiple symbols prevent treating this as independent proof of future win rates.",
+    }
+    for entry in report.get("symbols", []):
+        history = full_history.get(entry["symbol"])
+        if history is None or history.empty or not entry.get("ok"):
+            continue
+        split = len(datasets[entry["symbol"]])
+        try:
+            candidate = _cfg_with(cfg, entry["best_params"])
+            start = max(0, split - max(candidate.lookback_bars, 250))
+            frame = EnsembleStrategy(candidate).score_frame(history)
+            frame.loc[frame.index < history.index[split], "score"] = 0.0
+            result = run_backtest(
+                history.iloc[start:],
+                candidate,
+                symbol=entry["symbol"],
+                bars_per_year=bars_per_year_for(timeframe, crypto=is_crypto(entry["symbol"])),
+                frame=frame.iloc[start:],
+            )
+            trades = [t for t in result.trades if t.entry_time >= history.index[split]]
+            entry["final_holdout"] = {
+                "start": str(history.index[split]),
+                "end": str(history.index[-1]),
+                "bars": len(history) - split,
+                "metrics": _oos_metrics(trades, candidate.initial_cash),
+                "used_for_selection": False,
+                "data_sha256": hashlib.sha256(
+                    pd.util.hash_pandas_object(history, index=True).values.tobytes()
+                ).hexdigest(),
+            }
+        except Exception as exc:
+            entry["final_holdout"] = {"error": str(exc), "used_for_selection": False}
     _preserve_missing_symbols(report, cfg)
     save_report(report, cfg)
     return report

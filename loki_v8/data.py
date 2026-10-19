@@ -5,10 +5,12 @@ crypto, and NSE instruments. yfinance is the default (free) source; the
 provider is structured so Alpaca/Binance/Kite adapters can be dropped in
 later without touching the rest of the engine.
 """
+
 from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -18,12 +20,14 @@ import pandas as pd
 # this machine; data still flows without it, but this keeps it clean).
 try:
     import truststore  # type: ignore
+
     truststore.inject_into_ssl()
 except Exception:  # noqa: BLE001
     pass
 
 try:
     import certifi  # type: ignore
+
     os.environ.setdefault("SSL_CERT_FILE", certifi.where())
     os.environ.setdefault("CURL_CA_BUNDLE", certifi.where())
     os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
@@ -42,8 +46,10 @@ _CRYPTO_BASE = {"BTC", "ETH", "SOL", "ADA", "XRP", "DOGE", "LINK", "MATIC", "AVA
 def normalize_symbol(symbol: str) -> str:
     """Normalize a user-supplied symbol to the yfinance ticker."""
     s = symbol.strip().upper()
-    if s.endswith("USDT") or s.endswith("USD"):
-        return s[:-3] + "-USD" if s.endswith("USDT") else s
+    if s.endswith("USDT"):
+        return s[:-4].rstrip("/-") + "-USD"
+    if s.endswith("/USD"):
+        return s[:-4] + "-USD"
     if s in _CRYPTO_BASE:
         return f"{s}-USD"
     return s
@@ -62,16 +68,16 @@ class MarketDataProvider:
 
     def __init__(self):
         self._cache: Dict[str, pd.DataFrame] = {}
+        self._cached_at: Dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Historical bars
     # ------------------------------------------------------------------
-    def fetch_history(self, symbol: str, period: str = "2y",
-                      interval: str = "1d") -> pd.DataFrame:
+    def fetch_history(self, symbol: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
         """Return normalized OHLCV DataFrame (datetime index)."""
         ticker = normalize_symbol(symbol)
         cache_key = f"{ticker}:{period}:{interval}"
-        if cache_key in self._cache:
+        if cache_key in self._cache and time.monotonic() - self._cached_at.get(cache_key, 0) < 60:
             return self._cache[cache_key].copy()
 
         try:
@@ -91,6 +97,7 @@ class MarketDataProvider:
         df.index.name = "datetime"
         df = df[~df.index.duplicated(keep="last")].sort_index()
         self._cache[cache_key] = df
+        self._cached_at[cache_key] = time.monotonic()
         return df.copy()
 
     # ------------------------------------------------------------------
@@ -101,6 +108,7 @@ class MarketDataProvider:
         ticker = normalize_symbol(symbol)
         try:
             import yfinance as yf
+
             data = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=False)
             if data is not None and not data.empty:
                 return float(data["Close"].iloc[-1])
@@ -111,11 +119,18 @@ class MarketDataProvider:
     def get_quotes(self, symbols: List[str]) -> Dict[str, float]:
         """Batch-fetch latest prices for many symbols."""
         import yfinance as yf
+
         tickers = [normalize_symbol(s) for s in symbols]
         quotes: Dict[str, float] = {}
         try:
-            data = yf.download(tickers, period="5d", interval="1d",
-                               group_by="ticker", auto_adjust=False, progress=False)
+            data = yf.download(
+                tickers,
+                period="5d",
+                interval="1d",
+                group_by="ticker",
+                auto_adjust=False,
+                progress=False,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Batch quote fetch failed: %s", exc)
             return quotes
@@ -124,6 +139,8 @@ class MarketDataProvider:
             try:
                 if len(tickers) == 1:
                     series = data["Close"]
+                    if isinstance(series, pd.DataFrame):
+                        series = series[ticker] if ticker in series.columns else series.iloc[:, 0]
                 else:
                     series = data[ticker]["Close"]
                 if series is not None and not series.dropna().empty:

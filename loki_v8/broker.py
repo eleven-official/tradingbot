@@ -6,6 +6,7 @@ long, qty < 0 is short, so one code path handles both directions. Live
 adapters (Alpaca/Binance/Kite) implement the same interface and are selected
 by `LokiConfig.mode`.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Position:
     symbol: str
-    qty: float          # > 0 long, < 0 short
+    qty: float  # > 0 long, < 0 short
     avg_entry: float
     stop_loss: float = 0.0
     take_profit: float = 0.0
@@ -44,7 +45,7 @@ class Position:
 @dataclass
 class Trade:
     symbol: str
-    side: str          # "long" | "short"
+    side: str  # "long" | "short"
     qty: float
     entry_price: float
     exit_price: float
@@ -79,7 +80,11 @@ class PaperBroker:
                         take_profit=float(p_data.get("take_profit", 0.0)),
                         opened_at=float(p_data.get("opened_at", time.time())),
                     )
-                logger.info("Restored paper broker state: cash=$%.2f, positions=%d", self.cash, len(self.positions))
+                logger.info(
+                    "Restored paper broker state: cash=$%.2f, positions=%d",
+                    self.cash,
+                    len(self.positions),
+                )
             except Exception as exc:
                 logger.warning("Could not load paper state: %s", exc)
 
@@ -88,16 +93,27 @@ class PaperBroker:
         slip = self.cfg.slippage_bps / 10_000.0
         return price * (1 + slip) if side == "buy" else price * (1 - slip)
 
-    def _record_trade(self, symbol: str, side: str, qty: float,
-                      entry: float, exit_price: float):
+    def _record_trade(self, symbol: str, side: str, qty: float, entry: float, exit_price: float):
         pnl = (exit_price - entry) * qty if side == "long" else (entry - exit_price) * qty
         pnl -= self.cfg.commission_per_trade
-        pnl_pct = (exit_price / entry - 1.0) * 100.0 if side == "long" else (entry / exit_price - 1.0) * 100.0
-        self.trades.append(Trade(
-            symbol=symbol, side=side, qty=qty, entry_price=entry,
-            exit_price=exit_price, pnl=pnl, pnl_pct=pnl_pct,
-            entered_at=time.time(), exited_at=time.time(),
-        ))
+        pnl_pct = (
+            (exit_price / entry - 1.0) * 100.0
+            if side == "long"
+            else (entry / exit_price - 1.0) * 100.0
+        )
+        self.trades.append(
+            Trade(
+                symbol=symbol,
+                side=side,
+                qty=qty,
+                entry_price=entry,
+                exit_price=exit_price,
+                pnl=pnl,
+                pnl_pct=pnl_pct,
+                entered_at=time.time(),
+                exited_at=time.time(),
+            )
+        )
         return pnl
 
     # ------------------------------------------------------------------
@@ -159,7 +175,9 @@ class PaperBroker:
         pos = self.positions.get(symbol)
         if not pos:
             return False
-        return self.buy(symbol, -pos.qty, price) if pos.qty < 0 else self.sell(symbol, pos.qty, price)
+        return (
+            self.buy(symbol, -pos.qty, price) if pos.qty < 0 else self.sell(symbol, pos.qty, price)
+        )
 
     # ------------------------------------------------------------------
     # Short operations
@@ -219,15 +237,9 @@ class PaperBroker:
 # Broker factory (live adapters plug in here later)
 # ---------------------------------------------------------------------------
 def make_broker(cfg: LokiConfig) -> "PaperBroker":
-    """Return a broker for the configured mode.
-
-    Live adapters (Alpaca/Binance/Kite) are added as they become available;
-    until then `live` falls back to the local simulator with a loud warning
-    so nobody mistakes it for a real-money account.
-    """
-    if cfg.mode == "live":
-        logger.warning(
-            "LIVE mode requested but no broker credentials are configured; "
-            "falling back to the local paper simulator (no real orders)."
+    """Create a paper broker; unsupported real execution fails closed."""
+    if cfg.mode != "paper":
+        raise ValueError(
+            "The v8 engine supports local paper execution only. Use the connected broker workspace for real-account review."
         )
     return PaperBroker(cfg)

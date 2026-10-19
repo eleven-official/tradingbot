@@ -1,0 +1,9 @@
+# Desktop terminal dependencies (Tk is provided by the Python installer).
+-r requirements.txt
+numpy>=1.24
+pandas>=2.0
+customtkinter>=5.2
+matplotlib>=3.7
+mplfinance>=0.12.10b0
+# Optional public crypto price feed; simulation works without credentials.
+ccxt>=4.0

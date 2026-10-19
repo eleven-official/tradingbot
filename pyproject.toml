@@ -3,19 +3,6 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "loki-trading-platform"
-dynamic = ["version"]
-description = "Enterprise-grade AI-powered algorithmic trading platform"
-readme = "README.md"
-requires-python = ">=3.12"
-license = {text = "Proprietary"}
-authors = [
-    {name = "Loki Trading Systems", email = "support@lokitrading.ai"}
-]
-keywords = ["trading", "algorithmic-trading", "machine-learning", "finance", "quantitative-finance"]
-
-# Runtime dependencies for the deployed site. Vercel's Python runtime installs
-# from THIS table (not requirements.txt) — keep the two lists in sync.
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",
@@ -27,12 +14,31 @@ dependencies = [
     "yfinance>=0.2.40",
     "requests>=2.31.0",
 ]
+name = "loki-trading-platform"
+dynamic = ["version"]
+description = "Enterprise-grade AI-powered algorithmic trading platform"
+readme = "README.md"
+requires-python = ">=3.12"
+
+license = {text = "Proprietary"}
+authors = [
+    {name = "Loki Trading Systems", email = "support@lokitrading.ai"}
+]
+keywords = ["trading", "algorithmic-trading", "machine-learning", "finance", "quantitative-finance"]
+
+
+# Runtime dependencies for the deployed site. Vercel's Python runtime installs
+# from THIS table (not requirements.txt) — keep the two lists in sync.
+
 
 [project.urls]
 Homepage = "https://lokitrading.ai"
 Documentation = "https://docs.lokitrading.ai"
 Repository = "https://github.com/lokitrading/loki"
 Issues = "https://github.com/lokitrading/loki/issues"
+
+[tool.vercel]
+entrypoint = "main:app"
 
 [tool.setuptools]
 packages = ["loki"]
@@ -59,9 +65,6 @@ extend-exclude = '''
 '''
 
 # Point Vercel at the lightweight ASGI entrypoint (avoids desktop launchers).
-[tool.vercel]
-entrypoint = "main:app"
-
 [tool.isort]
 profile = "black"
 line_length = 100
@@ -121,3 +124,5 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "@abstractmethod",
 ]
+
+# Explicitly select the lightweight ASGI entrypoint rather than a desktop launcher.

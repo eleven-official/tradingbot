@@ -190,13 +190,15 @@ class TestReportPersistence:
 class TestTrainingAPI:
     @pytest.fixture
     def client(self, tmp_path, monkeypatch):
-        from loki.api.server import app, get_bot
+        from loki.api.terminal_v8 import app, get_bot
+        from loki.api.fusion import _LOCAL_TOKEN
+        monkeypatch.setenv("LOKI_FUSION_LOCAL", "1")
 
         path = tmp_path / "training_report.json"
         monkeypatch.setattr(train_module, "report_path", lambda cfg=None: path)
         bot = get_bot()
         saved = (bot.cfg.signal_threshold, bot.cfg.stop_loss_atr)
-        yield TestClient(app), bot, path
+        yield TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 51000), headers={"X-Loki-Local-Token": _LOCAL_TOKEN}), bot, path
         bot.cfg.signal_threshold, bot.cfg.stop_loss_atr = saved
 
     def test_report_endpoint_empty_without_run(self, client, monkeypatch):

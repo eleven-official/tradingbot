@@ -317,18 +317,21 @@ class TestPersistence:
     def _post_capture(self, monkeypatch, status=201, raise_exc=None):
         calls = []
 
-        def fake_post(url, json, headers, timeout):
-            calls.append({"url": url, "row": json[0], "apikey": headers.get("apikey")})
+        def fake_post(method, url, json, headers, timeout, params, allow_redirects):
+            calls.append({"method": method, "url": url, "row": json[0] if json else None, "apikey": headers.get("apikey")})
             if raise_exc:
                 raise raise_exc
 
             class R:
                 status_code = status
                 text = "ok"
+                content = b"[]"
+                def json(self):
+                    return []
 
             return R()
 
-        monkeypatch.setattr("requests.post", fake_post)
+        monkeypatch.setattr("requests.request", fake_post)
         return calls
 
     def test_not_configured_is_noop(self, monkeypatch):
@@ -347,7 +350,7 @@ class TestPersistence:
         from loki_v8.persistence import SupabaseLogger
 
         monkeypatch.setenv("SUPABASE_URL", "https://xyz.supabase.co")
-        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "svc-key")
+        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "sb_secret_test_key")
         calls = self._post_capture(monkeypatch)
         lg = SupabaseLogger()
         lg.log_trade(
@@ -364,25 +367,25 @@ class TestPersistence:
         row = calls[0]["row"]
         assert calls[0]["url"].endswith("/rest/v1/loki_trades")
         assert row["symbol"] == "AAPL" and row["pnl_pct"] == 10.0
-        assert calls[0]["apikey"] == "svc-key"
+        assert calls[0]["apikey"] == "sb_secret_test_key"
 
     def test_network_failure_never_raises(self, monkeypatch):
         from loki_v8.persistence import SupabaseLogger
 
         monkeypatch.setenv("SUPABASE_URL", "https://xyz.supabase.co")
-        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "svc-key")
+        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "sb_secret_test_key")
         self._post_capture(monkeypatch, raise_exc=ConnectionError("boom"))
         lg = SupabaseLogger()
         r = lg.test_connection()
         assert r["ok"] is False
         st = lg.status()
-        assert st["failures"] >= 1 and "ConnectionError" in (st["last_error"] or "")
+        assert st["failures"] >= 1 and "Vault connection failed" in (st["last_error"] or "")
 
     def test_http_error_counted(self, monkeypatch):
         from loki_v8.persistence import SupabaseLogger
 
         monkeypatch.setenv("SUPABASE_URL", "https://xyz.supabase.co")
-        monkeypatch.setenv("SUPABASE_KEY", "anon-key")
+        monkeypatch.setenv("SUPABASE_KEY", "sb_secret_test_key")
         self._post_capture(monkeypatch, status=401)
         lg = SupabaseLogger()
         r = lg.test_connection()

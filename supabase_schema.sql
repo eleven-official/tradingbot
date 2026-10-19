@@ -87,3 +87,19 @@ create table if not exists loki_events (
   payload           jsonb
 );
 create index if not exists idx_loki_events_kind on loki_events (kind, created_at desc);
+
+-- Server-private vault. No browser role can read or write global trading data.
+-- This is not a multi-tenant user schema; add owner-scoped policies before any
+-- direct browser/user access. Service secrets stay exclusively on the server.
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array['loki_trades','loki_signals','loki_equity_snapshots',
+                                    'loki_regime_events','loki_training_reports','loki_events']
+  loop
+    execute format('alter table public.%I enable row level security', table_name);
+    execute format('revoke all on table public.%I from anon, authenticated', table_name);
+    execute format('grant select, insert on table public.%I to service_role', table_name);
+    execute format('grant usage, select on sequence public.%I to service_role', table_name || '_id_seq');
+  end loop;
+end $$;

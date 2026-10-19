@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import replace as dataclass_replace
+import logging
+import time
+from dataclasses import replace
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -61,6 +64,8 @@ class LokiBot:
         self._last_equity_log = 0.0
         self._last_regime_check = 0.0
         self._last_regimes: Dict[str, str] = {}
+        self._risk_day = datetime.now(timezone.utc).date()
+        self._risk_trades_recorded = 0
 
     # ------------------------------------------------------------------
     # Mode switching
@@ -69,9 +74,14 @@ class LokiBot:
         """Switch between 'paper' and 'live'. Live fails closed without keys."""
         if mode not in ("paper", "live"):
             raise ValueError(f"unknown mode: {mode}")
+        if mode == self.mode:
+            return
+        if self.broker.positions:
+            raise ValueError("Close paper positions before switching mode")
+        candidate = make_broker(replace(self.cfg, mode=mode))
+        self.broker = candidate
         self.mode = mode
         self.cfg.mode = mode
-        self.broker = make_broker(self.cfg)
         logger.info("Switched to %s mode", mode.upper())
 
     # ------------------------------------------------------------------
@@ -97,14 +107,16 @@ class LokiBot:
         signals.sort(key=lambda s: -abs(s.score))
         return signals
 
-    def agent_scan(self, symbols: Optional[List[str]] = None) -> Dict:
+    def agent_scan(self, symbols: Optional[List[str]] = None, *, execute: bool = False) -> Dict:
         """Run the full Director→Quant→Risk→Execution pipeline.
 
         Returns a structured decision trail per symbol (auditable JSON),
-        and executes approved orders on the bot's own broker.
+        and executes paper orders only when explicitly requested.
         """
         pipeline = LokiAgentPipeline(self.cfg, broker=self.broker)
-        report = pipeline.run_universe(symbols, equity=self.broker.equity(self.last_quotes))
+        report = pipeline.run_universe(
+            symbols, equity=self.broker.equity(self.last_quotes), execute=execute
+        )
         return report
 
     # ------------------------------------------------------------------
@@ -135,7 +147,7 @@ class LokiBot:
         df = self.provider.fetch_history(symbol, period or self.cfg.period, interval)
         if df.empty:
             raise RuntimeError(f"no data for {symbol}")
-        cfg = dataclass_replace(self.cfg)
+        cfg = replace(self.cfg)
         applied: Dict[str, Any] = {}
         try:
             report = _train_load_report(cfg)
@@ -284,21 +296,32 @@ class LokiBot:
                         pos.stop_loss,
                     )
 
-    def step(self):
+    def step(self, continue_trading=None):
         """One iteration: fetch live data, act on signals, manage risk."""
         quotes = self._refresh_quotes()
+        if continue_trading is not None and not continue_trading():
+            return self.broker.equity(quotes)
         self._manage_exits(quotes)
 
         equity = self.broker.equity(quotes)
+        today = datetime.now(timezone.utc).date()
+        if today != self._risk_day:
+            self.risk.reset_day(equity)
+            self._risk_day = today
+        for closed in self.broker.trades[self._risk_trades_recorded :]:
+            self.risk.record_trade(closed.pnl)
+        self._risk_trades_recorded = len(self.broker.trades)
         self.risk.day_start_equity = self.risk.day_start_equity or equity
 
         signals = self.scan(self.cfg.symbols)
         for sig in signals:
+            if continue_trading is not None and not continue_trading():
+                break
             price = quotes.get(sig.symbol, sig.entry_price)
             if price <= 0:
                 continue
             ok, reason = self.risk.can_trade(equity, len(self.broker.positions))
-            if not ok:
+            if not ok and sig.symbol not in self.broker.positions:
                 logger.info("skip %s: %s", sig.symbol, reason)
                 continue
 
@@ -365,7 +388,7 @@ class LokiBot:
                     exit_price=t.exit_price,
                     pnl=t.pnl,
                     pnl_pct=t.pnl_pct,
-                    exit_reason=t.exit_reason,
+                    exit_reason=getattr(t, "exit_reason", "paper_close"),
                     mode=self.mode,
                     source="engine",
                 )

@@ -1,0 +1,3610 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Loki Quantum Terminal — autonomous multi-agent algorithmic trading command center." />
+  <meta name="color-scheme" content="dark" />
+  <title>Loki Quantum Trading Terminal</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/favicon.png">
+  <meta name="theme-color" content="#060a12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="/static/css/v8_terminal.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js via CDN for interactive equity curves -->
+  <script src="/static/vendor/chartjs/chart.umd.js"></script>
+<script>
+const nativeFetch = window.fetch.bind(window);
+const localSession = nativeFetch('/api/fusion/capabilities', {cache:'no-store'})
+  .then(r => r.json()).then(c => c.local_token || '');
+window.fetch = async (input, options={}) => {
+  if (typeof input === 'string' && input.startsWith('/api/')) {
+    const token = await localSession;
+    const headers = new Headers(options.headers || {});
+    if (token) headers.set('X-Loki-Local-Token', token);
+    const response = await nativeFetch('/terminal'+input, {...options, headers});
+    if (!response.ok) {
+      const error = await response.clone().json().catch(() => ({}));
+      throw new Error(typeof error.detail === 'string' ? error.detail : `Request failed (${response.status})`);
+    }
+    return response;
+  }
+  return nativeFetch(input, options);
+};
+</script>
+</head>
+<body>
+<div style="padding:12px 24px;background:#172437;color:#dce9ff;font:13px sans-serif">Advanced paper engine · Independent local paper balance. Historical results are research evidence; a 70% trade win rate is unproven. <a style="color:#8bdad4" href="/#overview" target="_top">Return to Loki workspace ↗</a></div>
+
+  <a class="skip-link" href="#app-main">Skip to main content</a>
+
+  <!-- Top Navigation Header -->
+  <header class="top-nav">
+    <div class="brand">
+      <div class="brand-logo" aria-hidden="true">⚡</div>
+      <div>
+        <div class="brand-line">
+          <span class="brand-title">LOKI QUANTUM TERMINAL</span>
+          <span class="brand-badge">v{{ version }}</span>
+        </div>
+        <div class="brand-sub">
+          <span>Autonomous Multi-Agent Trading</span>
+          <span class="meta-dot">·</span>
+          <span class="sync-text" id="last-sync">syncing…</span>
+          <span class="meta-dot">·</span>
+          <span class="sync-text" id="api-latency" title="Round-trip time to the engine API">— ms</span>
+          <span class="meta-dot">·</span>
+          <span class="sync-text" id="header-clock">--:--:--</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <div class="status-pill" id="engine-pill" title="Connection to the Loki engine API">
+        <div class="status-dot" id="engine-dot"></div>
+        <span id="nav-engine-status">CONNECTING…</span>
+      </div>
+
+      <div class="status-pill regime-pill" title="Market regime classification (updates every minute)" onclick="showTab('regime', document.getElementById('btn-tab-regime'))" style="cursor:pointer;">
+        <div class="status-dot" id="regime-pill-dot" style="background:#64748b; box-shadow:0 0 10px #64748b;"></div>
+        <span id="regime-pill-text">REGIME —</span>
+      </div>
+
+      <div class="status-pill db-pill" title="Supabase Data Vault — cloud persistence of trades, signals & training" onclick="openDbModal()" style="cursor:pointer;">
+        <div class="status-dot" id="db-pill-dot" style="background:#64748b; box-shadow:none;"></div>
+        <span id="db-pill-text">DB OFF</span>
+      </div>
+
+      <div class="mode-toggle" role="group" aria-label="Trading mode">
+        <button id="btn-mode-paper" type="button" class="mode-btn active" onclick="setMode('paper')">PAPER SIM</button>
+        <button id="btn-mode-live" type="button" class="mode-btn" onclick="window.top.location.hash='real-market'">REAL ACCOUNT ↗</button>
+      </div>
+
+      <button id="btn-toggle-auto" type="button" class="action-btn" style="padding:6px 13px; font-size:11px; background:rgba(139, 92, 246, 0.2); border:1px solid #8b5cf6; color:#c084fc; font-weight:700;" onclick="toggleAutonomousLoop()">
+        ▶ START PAPER LOOP
+      </button>
+
+      <button id="btn-palette" type="button" class="palette-trigger" onclick="openPalette()" aria-label="Open command palette" title="Command palette — Ctrl/Cmd + K">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="palette-trigger-label">Quick actions</span>
+        <kbd class="palette-trigger-kbd" id="palette-kbd">Ctrl K</kbd>
+      </button>
+
+      <a class="gh-link" href="https://github.com/eleven-official/tradingbot" target="_blank" rel="noopener noreferrer" aria-label="Open the trading bot repository on GitHub">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <div id="offline-banner" class="offline-banner" role="status" hidden>
+    ⚠ Engine API unreachable — reconnecting automatically. Trading actions are disabled until the connection returns.
+  </div>
+
+  <!-- Main Workspace -->
+  <main id="app-main" class="app-container" tabindex="-1">
+
+    <!-- KPI Metric Cards -->
+    <section class="kpi-grid" aria-label="Portfolio overview">
+      <div class="kpi-card kpi-equity">
+        <div class="kpi-label">
+          <span>Total Portfolio Equity</span>
+          <span class="kpi-icon" aria-hidden="true">📈</span>
+        </div>
+        <div class="kpi-value" id="kpi-equity">$100,000.00</div>
+        <div class="kpi-sub text-positive" id="kpi-pnl">+$0.00 (+0.00%)</div>
+        <div class="kpi-spark" id="kpi-spark" hidden>
+          <svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="spark-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="currentColor" stop-opacity="0.32"></stop>
+                <stop offset="100%" stop-color="currentColor" stop-opacity="0.02"></stop>
+              </linearGradient>
+            </defs>
+            <path class="spark-area" d="" fill="url(#spark-grad)"></path>
+            <path class="spark-line" d="" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></path>
+          </svg>
+          <span class="spark-meta" id="kpi-spark-meta"></span>
+        </div>
+      </div>
+
+      <div class="kpi-card kpi-cash">
+        <div class="kpi-label">
+          <span>Available Cash</span>
+          <span class="kpi-icon" aria-hidden="true">💵</span>
+        </div>
+        <div class="kpi-value" id="kpi-cash">$100,000.00</div>
+        <div class="kpi-sub">Unencumbered liquidity</div>
+      </div>
+
+      <div class="kpi-card kpi-positions">
+        <div class="kpi-label">
+          <span>Active Positions</span>
+          <span class="kpi-icon" aria-hidden="true">🎯</span>
+        </div>
+        <div class="kpi-value" id="kpi-positions">0 / 4</div>
+        <div class="kpi-sub">Dynamic ATR sizing</div>
+      </div>
+
+      <div class="kpi-card kpi-trades">
+        <div class="kpi-label">
+          <span>Completed Trades</span>
+          <span class="kpi-icon" aria-hidden="true">📜</span>
+        </div>
+        <div class="kpi-value" id="kpi-trades">0</div>
+        <div class="kpi-sub">Zero-lookahead causal</div>
+      </div>
+
+      <div class="kpi-card kpi-mode">
+        <div class="kpi-label">
+          <span>Operating Mode</span>
+          <span class="kpi-icon" aria-hidden="true">🛡️</span>
+        </div>
+        <div class="kpi-value text-cyan" id="kpi-mode">PAPER SIM</div>
+        <div class="kpi-sub">Risk gated &amp; circuit guarded</div>
+      </div>
+
+      <div class="kpi-card kpi-regime">
+        <div class="kpi-label">
+          <span>Market Regime</span>
+          <span class="kpi-icon" aria-hidden="true">🌐</span>
+        </div>
+        <div class="kpi-value" id="kpi-regime" style="font-size:19px;">—</div>
+        <div class="kpi-sub" id="kpi-regime-sub">5-state trend &amp; vol engine</div>
+      </div>
+    </section>
+
+    <!-- Autonomous Engine Live Status Drawer -->
+    <section id="auto-engine-panel" class="kpi-card auto-panel" style="display:none;" aria-live="polite">
+      <div class="auto-panel-head">
+        <div class="auto-panel-title">
+          <div class="status-dot" style="background:#a855f7; box-shadow:0 0 10px #a855f7;"></div>
+          <strong>24/7 AUTONOMOUS TRADING ENGINE ACTIVE</strong>
+          <span id="auto-cycle-badge" class="brand-badge purple-badge">Cycle #0</span>
+        </div>
+        <span id="auto-last-run" class="auto-last-run">Idle</span>
+      </div>
+      <div id="auto-logs-box" class="auto-logs">Waiting for next scan cycle...</div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs-nav" role="tablist" aria-label="Terminal sections">
+      <button class="tab-btn active" type="button" role="tab" id="btn-tab-radar" aria-selected="true" aria-controls="tab-radar" tabindex="0" data-tab="radar" title="Live Market Radar — shortcut Alt+1" onclick="showTab('radar', this)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4M12 16V8"/></svg>
+        Live Market Radar
+      </button>
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-regime" aria-controls="tab-regime" tabindex="-1" data-tab="regime" title="Market Regime Monitor — shortcut Alt+2" onclick="showTab('regime', this)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        Market Regime Monitor
+      </button>
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-council" aria-controls="tab-council" tabindex="-1" data-tab="council" title="Agentic Council — shortcut Alt+3" onclick="showTab('council', this)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Agentic Council
+      </button>
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-portfolio" aria-controls="tab-portfolio" tabindex="-1" data-tab="portfolio" title="Portfolio & Execution Desk — shortcut Alt+4" onclick="showTab('portfolio', this)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7h-9M14 17H5M12 3v18"/></svg>
+        Portfolio &amp; Execution
+      </button>
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-backtest" aria-controls="tab-backtest" tabindex="-1" data-tab="backtest" title="Backtest Lab — shortcut Alt+5" onclick="showTab('backtest', this)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Honest Backtest Lab
+      </button>
+      <button class="tab-btn" type="button" role="tab" aria-selected="false" id="btn-tab-trainer" aria-controls="tab-trainer" tabindex="-1" data-tab="trainer" title="AI Strategy Trainer — shortcut Alt+6" onclick="showTab('trainer', this)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
+        AI Strategy Trainer
+      </button>
+    </nav>
+
+    <!-- TAB 1: Live Market Radar -->
+    <div id="tab-radar" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-radar" tabindex="0">
+      <div class="control-bar">
+        <div>
+          <h2>Real-Time Institutional Alpha Radar</h2>
+          <p>Vectorized ensemble: trend stack + TTM Squeeze + Chaikin Money Flow + dynamic ATR channels.</p>
+        </div>
+        <div class="control-bar-actions">
+          <span class="scan-meta" id="scan-meta">Last scan: —</span>
+          <span class="countdown-chip" id="auto-scan-countdown" hidden title="Time until the next automatic watchlist scan"></span>
+          <label class="toggle-inline" title="Rescan your watchlist every 60 seconds">
+            <input type="checkbox" id="auto-scan-toggle"> AUTO 60s
+          </label>
+          <button id="btn-scan" type="button" class="action-btn btn-primary" onclick="triggerScan()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            SCAN LIVE UNIVERSE NOW
+          </button>
+        </div>
+      </div>
+
+      <!-- Custom Watchlist -->
+      <div class="watchlist-bar">
+        <span class="watchlist-label">MY WATCHLIST</span>
+        <div id="watchlist-chips" class="watchlist-chips"></div>
+        <div class="watchlist-add">
+          <input id="watchlist-input" class="form-control watchlist-input" type="text"
+                 placeholder="Add symbol (e.g. TSLA)" maxlength="20" aria-label="Add a symbol to your watchlist"
+                 onkeydown="if(event.key==='Enter') addWatchlistSymbol()">
+          <button type="button" class="action-btn btn-secondary watchlist-add-btn" onclick="addWatchlistSymbol()">+ ADD</button>
+        </div>
+        <span id="watchlist-hint" class="watchlist-hint">
+          Scans use your watchlist when it has symbols; otherwise the engine universe.
+        </span>
+      </div>
+
+      <!-- Signal filters -->
+      <div class="radar-toolbar" role="group" aria-label="Filter radar signals">
+        <span class="radar-filter-label">FILTER</span>
+        <button type="button" class="filter-chip active" data-filter="ALL" onclick="setRadarFilter('ALL', this)">
+          All <span class="count" id="filter-count-all">0</span>
+        </button>
+        <button type="button" class="filter-chip f-buy" data-filter="BUY" onclick="setRadarFilter('BUY', this)">
+          Buy <span class="count" id="filter-count-buy">0</span>
+        </button>
+        <button type="button" class="filter-chip f-sell" data-filter="SELL" onclick="setRadarFilter('SELL', this)">
+          Sell <span class="count" id="filter-count-sell">0</span>
+        </button>
+        <button type="button" class="filter-chip" data-filter="HOLD" onclick="setRadarFilter('HOLD', this)">
+          Hold <span class="count" id="filter-count-hold">0</span>
+        </button>
+        <span class="radar-filter-note" id="radar-filter-note">Signals refresh with each scan</span>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header-title">
+          <span>Signal Matrix</span>
+          <div class="table-head-actions">
+            <span class="brand-badge" id="radar-count-badge">0 signals</span>
+            <button type="button" class="icon-btn" onclick="exportRadarCsv()" title="Download radar signals as CSV" aria-label="Download radar signals as CSV">CSV</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <caption class="sr-only">Live market radar signals with entry, stop, target, and risk-reward levels</caption>
+            <thead>
+              <tr>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="symbol"><button type="button" class="sort-btn" onclick="sortTable('radar','symbol')">Asset<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="action"><button type="button" class="sort-btn" onclick="sortTable('radar','action')">Action<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="score"><button type="button" class="sort-btn" onclick="sortTable('radar','score')">Score / Conf<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="squeeze_status"><button type="button" class="sort-btn" onclick="sortTable('radar','squeeze_status')">TTM Squeeze<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="entry_price"><button type="button" class="sort-btn" onclick="sortTable('radar','entry_price')">Entry Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="stop_loss"><button type="button" class="sort-btn" onclick="sortTable('radar','stop_loss')">Stop Loss<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="take_profit"><button type="button" class="sort-btn" onclick="sortTable('radar','take_profit')">Target 1 / 2<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="radar" data-sort-key="risk_reward"><button type="button" class="sort-btn" onclick="sortTable('radar','risk_reward')">Risk:Reward<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col">Alpha Thesis &amp; Reasons</th>
+                <th scope="col" style="text-align:right;">Execute</th>
+              </tr>
+            </thead>
+            <tbody id="radar-table-body">
+              <tr>
+                <td colspan="10">
+                  <div class="empty-state">
+                    <div class="empty-icon" aria-hidden="true">📡</div>
+                    <div class="empty-title">Radar is warming up…</div>
+                    <div class="empty-hint">The live universe is scanned automatically on load. Use <strong>SCAN LIVE UNIVERSE NOW</strong> to refresh.</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Market Regime Monitor -->
+    <div id="tab-regime" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-regime" tabindex="0" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2>Market Regime Monitor — Trend &amp; Volatility Engine</h2>
+          <p>Five-state classification — STRONG_BULL · BULL · RANGING · BEAR · CRISIS — from causal indicators only.
+            The backtester blocks longs in bear/crisis states; the Director agent sets posture from the same engine.</p>
+        </div>
+        <div class="control-bar-actions">
+          <div class="field-inline">
+            <label for="regime-symbols">Symbols</label>
+            <input id="regime-symbols" class="form-control" type="text" value="{{ symbols[:5] | join(', ') }}" style="min-width:280px;">
+          </div>
+          <button type="button" class="action-btn btn-primary" onclick="loadRegime(true)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            SCAN REGIMES
+          </button>
+        </div>
+      </div>
+      <div id="regime-summary" class="regime-summary" aria-live="polite"></div>
+      <div id="regime-cards" class="regime-grid">
+        <div class="regime-card" style="grid-column:1 / -1;">
+          <div class="empty-state">
+            <div class="empty-icon" aria-hidden="true">🌐</div>
+            <div class="empty-title">Regime engine standing by</div>
+            <div class="empty-hint">Press <strong>SCAN REGIMES</strong> to classify the current market structure across your universe.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Agentic Council -->
+    <div id="tab-council" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-council" tabindex="0" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2>Autonomous Agentic Council</h2>
+          <p>Director (macro regime) → Quant (multi-factor alpha) → Sentinel (risk &amp; Kelly sizing) → Hermes (execution router).</p>
+        </div>
+        <button type="button" class="action-btn btn-secondary" onclick="loadCouncil()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          RE-EVALUATE DELIBERATION
+        </button>
+      </div>
+
+      <div id="council-container" class="council-grid">
+        <div class="agent-card" style="grid-column:1 / -1;">
+          <div class="empty-state">
+            <div class="empty-icon" aria-hidden="true">🏛️</div>
+            <div class="empty-title">Council awaiting deliberation</div>
+            <div class="empty-hint">Press <strong>RE-EVALUATE DELIBERATION</strong> to inspect the full multi-agent decision trail.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: Portfolio & Execution Desk -->
+    <div id="tab-portfolio" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-portfolio" tabindex="0" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2>Active Portfolio &amp; Order Routing</h2>
+          <p>Real-time mark-to-market positions with dynamic ATR trailing stops and auto-hedged exit rules.</p>
+        </div>
+        <button type="button" class="action-btn btn-secondary" onclick="loadPortfolio()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+          REFRESH DESK
+        </button>
+      </div>
+
+      <!-- Closed-trade performance summary -->
+      <div class="perf-strip" id="perf-strip" hidden aria-label="Closed-trade performance summary"></div>
+
+      <!-- Manual order ticket -->
+      <div class="kpi-card order-ticket">
+        <h3><span aria-hidden="true">⚡</span> MANUAL INSTANT ORDER TICKET</h3>
+        <div class="order-ticket-grid">
+          <div class="form-group">
+            <label for="order-symbol">Symbol</label>
+            <input id="order-symbol" class="form-control" type="text" placeholder="e.g. AAPL, BTC-USD" value="AAPL" autocomplete="off" list="order-symbol-list">
+            <datalist id="order-symbol-list"></datalist>
+          </div>
+          <div class="form-group">
+            <label for="order-action">Action</label>
+            <select id="order-action" class="form-control">
+              <option value="BUY">BUY (Long)</option>
+              <option value="SELL">SELL (Short / Exit)</option>
+              <option value="CLOSE">CLOSE ALL</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="order-qty">Shares / Units (0 = Auto-Size)</label>
+            <input id="order-qty" class="form-control" type="number" placeholder="0 = Auto ATR" value="0" min="0" step="any" inputmode="decimal">
+          </div>
+          <button id="btn-submit-order" type="button" class="action-btn btn-primary" onclick="submitManualOrder()">
+            TRANSMIT ORDER
+          </button>
+        </div>
+        <div class="order-ticket-extras">
+          <div class="size-presets" role="group" aria-label="Quick position sizing by share of available cash">
+            <span class="size-presets-label">QUICK SIZE</span>
+            <button type="button" class="size-preset" onclick="applySizePreset(0.25)" title="Spend 25% of available cash">25%</button>
+            <button type="button" class="size-preset" onclick="applySizePreset(0.5)" title="Spend 50% of available cash">50%</button>
+            <button type="button" class="size-preset" onclick="applySizePreset(0.75)" title="Spend 75% of available cash">75%</button>
+            <button type="button" class="size-preset" onclick="applySizePreset(0.95)" title="Spend 95% of available cash, leaving fee headroom">MAX</button>
+          </div>
+          <div class="order-est" id="order-est" role="status">Auto-size: the engine sizes the order by ATR risk at transmission.</div>
+        </div>
+      </div>
+
+      <!-- Active Positions -->
+      <div class="table-card" style="margin-bottom:20px;">
+        <div class="table-header-title">
+          <span>Active Open Positions</span>
+          <div class="table-head-actions">
+            <span id="pos-count-badge" class="brand-badge">0 Open</span>
+            <button type="button" class="icon-btn" onclick="exportPositionsCsv()" title="Download open positions as CSV" aria-label="Download open positions as CSV">CSV</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <caption class="sr-only">Open portfolio positions with mark-to-market values and protective levels</caption>
+            <thead>
+              <tr>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="symbol"><button type="button" class="sort-btn" onclick="sortTable('positions','symbol')">Symbol<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="side"><button type="button" class="sort-btn" onclick="sortTable('positions','side')">Direction<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="qty"><button type="button" class="sort-btn" onclick="sortTable('positions','qty')">Units / Qty<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="avg_entry"><button type="button" class="sort-btn" onclick="sortTable('positions','avg_entry')">Avg Entry<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="current_price"><button type="button" class="sort-btn" onclick="sortTable('positions','current_price')">Current Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="market_value"><button type="button" class="sort-btn" onclick="sortTable('positions','market_value')">Market Value<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="unrealized_pnl"><button type="button" class="sort-btn" onclick="sortTable('positions','unrealized_pnl')">Unrealized P&amp;L<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col">Risk Lane<span class="cell-sub" style="display:block; letter-spacing:0;">stop ↔ mark ↔ target</span></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="stop_loss"><button type="button" class="sort-btn" onclick="sortTable('positions','stop_loss')">Stop Loss<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="take_profit"><button type="button" class="sort-btn" onclick="sortTable('positions','take_profit')">Take Profit<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" style="text-align:right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="positions-table-body">
+              <tr>
+                <td colspan="11">
+                  <div class="empty-state">
+                    <div class="empty-icon" aria-hidden="true">🎯</div>
+                    <div class="empty-title">No open positions</div>
+                    <div class="empty-hint">Use the Radar to launch high-conviction trades, or transmit a manual order above.</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Trade History Journal -->
+      <div class="table-card">
+        <div class="table-header-title">
+          <span>Executed Trades Audit Trail</span>
+          <div class="table-head-actions">
+            <span class="table-meta">Last 20 fills</span>
+            <button type="button" class="icon-btn" onclick="exportTradesCsv()" title="Download trade history as CSV" aria-label="Download trade history as CSV">CSV</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <caption class="sr-only">Recent completed trades with realized profit and loss</caption>
+            <thead>
+              <tr>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="symbol"><button type="button" class="sort-btn" onclick="sortTable('trades','symbol')">Symbol<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="side"><button type="button" class="sort-btn" onclick="sortTable('trades','side')">Direction<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="qty"><button type="button" class="sort-btn" onclick="sortTable('trades','qty')">Quantity<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="entry_price"><button type="button" class="sort-btn" onclick="sortTable('trades','entry_price')">Entry Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="exit_price"><button type="button" class="sort-btn" onclick="sortTable('trades','exit_price')">Exit Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="pnl"><button type="button" class="sort-btn" onclick="sortTable('trades','pnl')">Realized P&amp;L<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col" aria-sort="none" data-sort-table="trades" data-sort-key="pnl_pct"><button type="button" class="sort-btn" onclick="sortTable('trades','pnl_pct')">Return %<span class="sort-arrow" aria-hidden="true"></span></button></th>
+              </tr>
+            </thead>
+            <tbody id="trades-table-body">
+              <tr>
+                <td colspan="7">
+                  <div class="empty-state">
+                    <div class="empty-icon" aria-hidden="true">📜</div>
+                    <div class="empty-title">No closed trades yet</div>
+                    <div class="empty-hint">Completed trades will appear here with realized P&amp;L and return.</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: Honest Backtest Lab -->
+    <div id="tab-backtest" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-backtest" tabindex="0" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2>Honest Backtest &amp; Walk-Forward Validation Lab</h2>
+          <p>Zero-lookahead event-driven backtesting with slippage, commission, intraday stops, and Monte Carlo confidence intervals.</p>
+        </div>
+      </div>
+
+      <div class="lab-grid">
+        <div class="table-card" style="padding:20px;">
+          <h3 style="font-size:14px; font-weight:700; margin-bottom:15px;">Configure Simulation</h3>
+          <div class="form-group">
+            <label for="bt-symbol">Symbol / Ticker</label>
+            <input id="bt-symbol" class="form-control" type="text" value="AAPL" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="bt-period">Historical Period</label>
+            <select id="bt-period" class="form-control">
+              <option value="1y">1 Year</option>
+              <option value="2y" selected>2 Years</option>
+              <option value="5y">5 Years</option>
+              <option value="10y">10 Years (Institutional)</option>
+            </select>
+          </div>
+          <button id="btn-run-backtest" type="button" class="action-btn btn-primary" style="width:100%; justify-content:center; margin-top:10px;" onclick="runBacktest()">
+            EXECUTE HONEST SIMULATION
+          </button>
+
+          <div id="bt-results-card" style="margin-top:18px; display:none;">
+            <div style="border-top:1px solid var(--border-color); padding-top:14px;">
+              <h4 style="font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:var(--accent-cyan); margin-bottom:11px; font-weight:800;">Performance Metrics</h4>
+              <div class="stat-grid">
+                <div class="stat-tile">
+                  <span class="stat-label">Total Return</span>
+                  <strong class="stat-value text-positive" id="bt-return">--</strong>
+                </div>
+                <div class="stat-tile">
+                  <span class="stat-label">Final Equity</span>
+                  <strong class="stat-value" id="bt-final">--</strong>
+                </div>
+                <div class="stat-tile">
+                  <span class="stat-label">CAGR</span>
+                  <strong class="stat-value" id="bt-cagr">--</strong>
+                </div>
+                <div class="stat-tile">
+                  <span class="stat-label">Win Rate</span>
+                  <strong class="stat-value" id="bt-winrate">--</strong>
+                </div>
+                <div class="stat-tile">
+                  <span class="stat-label">Profit Factor</span>
+                  <strong class="stat-value" id="bt-pf">--</strong>
+                </div>
+                <div class="stat-tile">
+                  <span class="stat-label">Max Drawdown</span>
+                  <strong class="stat-value text-negative" id="bt-maxdd">--</strong>
+                </div>
+                <div class="stat-tile">
+                  <span class="stat-label">Sharpe Ratio</span>
+                  <strong class="stat-value" id="bt-sharpe">--</strong>
+                </div>
+                <div class="stat-tile">
+                  <span class="stat-label">Total Trades</span>
+                  <strong class="stat-value" id="bt-trades">--</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-header-title">
+            <span>Simulation Equity Growth Curve</span>
+            <span id="bt-chart-status" style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">Ready to run</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="equityChart" aria-label="Backtest equity curve"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monte Carlo Survival Engine -->
+      <div class="table-card" style="margin-top:20px; padding:20px;">
+        <div class="table-header-title" style="padding:0 0 12px; border-bottom:none;">
+          <span>Monte Carlo Survival Engine — thousands of alternate lifetimes</span>
+          <span id="mc-status" style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">Run a backtest, then stress-test the trade sequence</span>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px;">
+          <button id="btn-run-mc" type="button" class="action-btn btn-primary" onclick="runMonteCarlo()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3h-5v4"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>
+            RUN MONTE CARLO
+          </button>
+          <select id="mc-sims" class="form-control" style="width:auto; min-width:170px;" aria-label="Number of simulated paths">
+            <option value="2000" selected>2,000 simulated paths</option>
+            <option value="5000">5,000 simulated paths</option>
+            <option value="10000">10,000 simulated paths</option>
+          </select>
+          <span style="font-size:11px; color:var(--text-sub);">Bootstraps the completed trade sequence into new random orderings — same edge, different luck.</span>
+        </div>
+        <div id="mc-verdict" class="mc-verdict" style="display:none;" role="status"></div>
+        <div class="mc-grid" id="mc-panel" style="display:none;">
+          <div class="chart-container" style="min-height:280px;">
+            <canvas id="mcChart" aria-label="Monte Carlo percentile fan chart"></canvas>
+          </div>
+          <div id="mc-stats" class="mc-stats"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 6: AI Strategy Trainer -->
+    <div id="tab-trainer" class="tab-content" role="tabpanel" aria-labelledby="btn-tab-trainer" tabindex="0" style="display:none;">
+      <div class="control-bar">
+        <div>
+          <h2>AI Strategy Trainer — Walk-Forward Validation</h2>
+          <p>Trains execution parameters (signal threshold, ATR stops/targets, trend filter) on the first 70% of history,
+            then verifies the winners on the remaining 30% — out-of-sample, no lookahead.</p>
+        </div>
+        <div class="control-bar-actions">
+          <div class="field-inline">
+            <label for="train-symbols">Symbols (blank = engine universe)</label>
+            <input id="train-symbols" class="form-control" type="text" placeholder="AAPL, MSFT, BTC-USD" style="min-width:230px;">
+          </div>
+          <div class="field-inline">
+            <label for="train-period">History</label>
+            <select id="train-period" class="form-control">
+              <option value="2y">2 Years</option>
+              <option value="5y" selected>5 Years</option>
+              <option value="10y">10 Years</option>
+            </select>
+          </div>
+          <div class="field-inline">
+            <label for="train-objective">Optimization Target</label>
+            <select id="train-objective" class="form-control">
+              <option value="sharpe">Profitable &amp; Smooth (Sharpe)</option>
+              <option value="win_rate" selected>🎯 Win-rate research target</option>
+            </select>
+          </div>
+          <div class="field-inline">
+            <label for="train-refine">Refine Rounds</label>
+            <select id="train-refine" class="form-control">
+              <option value="1">1 (fast)</option>
+              <option value="2">2</option>
+              <option value="3" selected>3 (thorough)</option>
+            </select>
+          </div>
+          <label class="toggle-inline" style="margin-bottom:1px;">
+            <input type="checkbox" id="train-weights">
+            Multi-factor weights
+          </label>
+          <button id="btn-run-training" type="button" class="action-btn btn-primary" onclick="runTraining()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
+            TRAIN ON HISTORICAL DATA
+          </button>
+        </div>
+      </div>
+
+      <div id="train-status" class="train-status" style="display:none;" role="status"></div>
+      <div id="train-results"></div>
+    </div>
+
+  </main>
+
+  <footer>
+    LOKI Quantitative Intelligence • Built for <strong>eleven-official</strong> • API v{{ version }} • Local paper multi-asset engine
+  </footer>
+
+  <!-- Command palette -->
+  <div id="palette-overlay" class="palette-overlay" hidden>
+    <div class="palette" role="dialog" aria-modal="true" aria-labelledby="palette-title">
+      <h2 id="palette-title" class="sr-only">Command palette</h2>
+      <div class="palette-search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="palette-input" type="text" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-controls="palette-results" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Search tabs, symbols, and actions…">
+        <kbd>ESC</kbd>
+      </div>
+      <div id="palette-results" class="palette-results" role="listbox" aria-label="Commands"></div>
+      <div class="palette-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+        <span><kbd>↵</kbd> run</span>
+        <button type="button" class="palette-help" onclick="closePalette(); openShortcuts()">Shortcuts <kbd>?</kbd></button>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" id="scroll-top" class="scroll-top" onclick="scrollToTop()" aria-label="Back to top" title="Back to top">↑</button>
+
+  <!-- Frontend Logic -->
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const REGIME_COLORS = {
+      STRONG_BULL: '#10b981',
+      BULL: '#34d399',
+      RANGING: '#94a3b8',
+      BEAR: '#ef4444',
+      CRISIS: '#b91c1c'
+    };
+
+    let currentMode = 'paper';
+    let equityChartInstance = null;
+    let mcChartInstance = null;
+    let portfolioRefreshTimer = null;
+    let autoScanTimer = null;
+    let scanInFlight = false;
+    let portfolioLoading = false;
+    let portfolioLoaded = false;
+    let connectionLost = false;
+    let radarSignals = [];
+    let radarRegimes = {};
+    let radarFilter = 'ALL';
+    let portfolioData = null;
+    let portfolioLoadedAt = null;
+    let inspectorOverlay = null;
+    let inspectorUntrap = null;
+    let inspectorReturnFocus = null;
+    let paletteUntrap = null;
+    let paletteReturnFocus = null;
+    let paletteActiveIndex = 0;
+    let paletteFiltered = [];
+    let lastStatus = null;
+    let autoScanNextAt = 0;
+    let equityHistory = [];
+    const lastKnownPrices = {};
+    const EQUITY_HISTORY_KEY = 'loki_equity_history';
+    const EQUITY_HISTORY_MAX = 180;
+    const EQUITY_POINT_MIN_GAP_MS = 15000;
+    const tableSort = {
+      radar: { key: null, dir: 1 },
+      positions: { key: null, dir: 1 },
+      trades: { key: null, dir: 1 },
+    };
+    const tabLoaded = { radar: true, regime: false, council: false, portfolio: false, backtest: false, trainer: false };
+
+    // ------------------------------------------------------------------
+    // Formatting + UI helpers
+    // ------------------------------------------------------------------
+    function escapeHtml(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function fmtMoney(v, digits = 2) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      const sign = n < 0 ? '-' : '';
+      return sign + '$' + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    }
+
+    function fmtNum(v, digits = 2) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      return n.toFixed(digits);
+    }
+
+    function fmtPct(v, digits = 2, withSign = false) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      return (withSign && n >= 0 ? '+' : '') + n.toFixed(digits) + '%';
+    }
+
+    function compactMoney(v) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '$0';
+      if (Math.abs(n) >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
+      if (Math.abs(n) >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'k';
+      return '$' + n.toFixed(0);
+    }
+
+    function fmtDate(iso) {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+    }
+
+    function cleanState(state) {
+      return String(state || '').replace(/_/g, ' ');
+    }
+
+    function safeSymbol(v) {
+      return String(v || '').replace(/[^A-Za-z0-9.\-^]/g, '');
+    }
+
+    function emptyState(icon, title, hint, action = null) {
+      const actionHtml = action
+        ? `<button type="button" class="action-btn btn-secondary btn-compact empty-action" onclick="${action.onclick}">${escapeHtml(action.label)}</button>`
+        : '';
+      return `<div class="empty-state">
+        <div class="empty-icon" aria-hidden="true">${escapeHtml(icon)}</div>
+        <div class="empty-title">${escapeHtml(title)}</div>
+        <div class="empty-hint">${escapeHtml(hint)}</div>
+        ${actionHtml}
+      </div>`;
+    }
+
+    function skeletonRows(cols, rows = 5) {
+      let out = '';
+      for (let i = 0; i < rows; i++) {
+        out += `<tr class="skeleton-row"><td colspan="${cols}"><div class="skeleton skeleton-line ${i % 2 ? 'short' : ''}"></div></td></tr>`;
+      }
+      return out;
+    }
+
+    function setBusy(btn, busy, label) {
+      if (!btn) return;
+      if (busy) {
+        if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.classList.add('is-busy');
+        btn.innerHTML = `<span class="spinner" aria-hidden="true"></span>${escapeHtml(label || 'WORKING…')}`;
+      } else {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+        if (btn.dataset.originalHtml) {
+          btn.innerHTML = btn.dataset.originalHtml;
+          delete btn.dataset.originalHtml;
+        }
+      }
+    }
+
+    function toast(message, type = 'info', action = null) {
+      let holder = $('toast-holder');
+      if (!holder) {
+        holder = document.createElement('div');
+        holder.id = 'toast-holder';
+        holder.setAttribute('role', 'status');
+        holder.setAttribute('aria-live', 'polite');
+        document.body.appendChild(holder);
+      }
+      while (holder.children.length >= 4) holder.firstElementChild.remove();
+
+      const icons = { success: '✓', error: '✕', info: 'i' };
+      const el = document.createElement('div');
+      el.className = 'toast toast-' + type;
+      el.innerHTML = `<span class="toast-icon" aria-hidden="true">${icons[type] || 'i'}</span><span class="toast-msg">${escapeHtml(message)}</span>`;
+
+      let dismissed = false;
+      let timer = null;
+      const dismiss = () => {
+        if (dismissed) return;
+        dismissed = true;
+        if (timer) clearTimeout(timer);
+        el.classList.remove('toast-show');
+        setTimeout(() => el.remove(), 320);
+      };
+
+      if (action) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'toast-action';
+        btn.textContent = action.label;
+        btn.addEventListener('click', () => {
+          dismiss();
+          try { action.onClick(); } catch (e) { console.error('Toast action failed:', e); }
+        });
+        el.appendChild(btn);
+      }
+
+      holder.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('toast-show'));
+      timer = setTimeout(dismiss, action ? 7000 : 4200);
+    }
+
+    function confirmDialog(message) {
+      return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = `
+          <div class="modal-box" role="dialog" aria-modal="true">
+            <div class="modal-msg">${escapeHtml(message)}</div>
+            <div class="modal-actions">
+              <button type="button" class="action-btn btn-secondary" data-ans="0">Cancel</button>
+              <button type="button" class="action-btn btn-primary" data-ans="1">Confirm</button>
+            </div>
+          </div>`;
+
+        const onKey = (e) => {
+          if (e.key === 'Escape') { e.preventDefault(); close(false); }
+          else if (e.key === 'Enter') { e.preventDefault(); close(true); }
+        };
+
+        const untrap = trapFocus(overlay);
+        const close = (answer) => {
+          document.removeEventListener('keydown', onKey);
+          untrap();
+          overlay.remove();
+          resolve(answer);
+        };
+
+        overlay.addEventListener('click', e => {
+          const ans = e.target && e.target.dataset ? e.target.dataset.ans : null;
+          if (ans !== undefined && ans !== null) {
+            close(ans === '1');
+          } else if (e.target === overlay) {
+            close(false);
+          }
+        });
+
+        document.addEventListener('keydown', onKey);
+        document.body.appendChild(overlay);
+        const confirmBtn = overlay.querySelector('[data-ans="1"]');
+        if (confirmBtn) confirmBtn.focus();
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // Accessibility, live feedback, sorting & CSV helpers
+    // ------------------------------------------------------------------
+    function trapFocus(container) {
+      const selector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      const handler = (e) => {
+        if (e.key !== 'Tab') return;
+        const items = Array.from(container.querySelectorAll(selector)).filter(el => el.offsetParent !== null);
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+      container.addEventListener('keydown', handler);
+      return () => container.removeEventListener('keydown', handler);
+    }
+
+    function releaseTrap(trapFn) {
+      if (typeof trapFn === 'function') trapFn();
+    }
+
+    function flashValue(el, up) {
+      if (!el) return;
+      const cls = up ? 'value-flash-up' : 'value-flash-down';
+      el.classList.remove('value-flash-up', 'value-flash-down');
+      void el.offsetWidth;
+      el.classList.add(cls);
+      setTimeout(() => el.classList.remove(cls), 950);
+    }
+
+    function setLatency(ms) {
+      const el = $('api-latency');
+      if (!el) return;
+      if (!Number.isFinite(ms)) {
+        el.textContent = '— ms';
+        el.classList.remove('latency-slow');
+        return;
+      }
+      const rounded = Math.max(0, Math.round(ms));
+      el.textContent = `${rounded} ms`;
+      el.classList.toggle('latency-slow', rounded > 800);
+      el.title = `Engine API round-trip: ${rounded} ms`;
+    }
+
+    function sortValue(item, key) {
+      const raw = item ? item[key] : null;
+      if (typeof raw === 'number') return raw;
+      const n = Number(raw);
+      if (raw !== '' && raw !== null && raw !== undefined && Number.isFinite(n)) return n;
+      return String(raw ?? '').toLowerCase();
+    }
+
+    function applySort(table, list) {
+      const st = tableSort[table];
+      if (!st || !st.key) return list;
+      return [...list].sort((a, b) => {
+        const av = sortValue(a, st.key);
+        const bv = sortValue(b, st.key);
+        if (av === bv) return 0;
+        if (av === '' || av === null || av === undefined) return 1;
+        if (bv === '' || bv === null || bv === undefined) return -1;
+        return (av > bv ? 1 : -1) * st.dir;
+      });
+    }
+
+    function updateSortIndicators() {
+      document.querySelectorAll('th[data-sort-table]').forEach(th => {
+        const st = tableSort[th.dataset.sortTable];
+        const active = st && st.key === th.dataset.sortKey;
+        th.setAttribute('aria-sort', active ? (st.dir === 1 ? 'ascending' : 'descending') : 'none');
+        th.classList.toggle('sort-active', !!active);
+        const arrow = th.querySelector('.sort-arrow');
+        if (arrow) arrow.textContent = active ? (st.dir === 1 ? '↑' : '↓') : '';
+      });
+    }
+
+    function sortTable(table, key) {
+      const st = tableSort[table];
+      if (!st) return;
+      if (st.key === key) st.dir *= -1;
+      else { st.key = key; st.dir = 1; }
+      try { localStorage.setItem('loki_sorts', JSON.stringify(tableSort)); } catch (e) { /* ignore */ }
+      updateSortIndicators();
+      if (table === 'radar') renderRadar();
+      else renderPortfolio();
+    }
+
+    function restoreSorts() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('loki_sorts') || 'null');
+        if (saved && typeof saved === 'object') {
+          ['radar', 'positions', 'trades'].forEach(k => {
+            if (saved[k] && typeof saved[k].key === 'string' && (saved[k].dir === 1 || saved[k].dir === -1)) {
+              tableSort[k] = { key: saved[k].key, dir: saved[k].dir };
+            }
+          });
+        }
+      } catch (e) { /* ignore */ }
+      updateSortIndicators();
+    }
+
+    function csvEscape(value) {
+      const s = String(value ?? '');
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    function downloadCsv(filename, headers, rows) {
+      if (!rows.length) {
+        toast('Nothing to export yet.', 'info');
+        return;
+      }
+      const lines = [headers.map(csvEscape).join(','), ...rows.map(row => row.map(csvEscape).join(','))];
+      const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      toast(`Exported ${rows.length} row${rows.length === 1 ? '' : 's'} to ${filename}.`, 'success');
+    }
+
+    function exportRadarCsv() {
+      const list = applySort('radar', radarSignals);
+      downloadCsv(
+        `loki-radar-${new Date().toISOString().slice(0, 10)}.csv`,
+        ['Symbol', 'Action', 'Score', 'Confidence %', 'Squeeze', 'Entry', 'Stop', 'Target 1', 'Target 2', 'Risk:Reward', 'Regime', 'Reasons'],
+        list.map(s => [
+          s.symbol, s.action, s.score, s.confidence, s.squeeze_status,
+          s.entry_price, s.stop_loss, s.take_profit, s.target_2, s.risk_reward,
+          radarRegimes[s.symbol] ? radarRegimes[s.symbol].state : '',
+          (s.reasons || []).join(' | '),
+        ])
+      );
+    }
+
+    function exportPositionsCsv() {
+      const list = applySort('positions', (portfolioData && portfolioData.positions) || []);
+      const dist = (v) => Number.isFinite(v) ? v.toFixed(2) : '';
+      downloadCsv(
+        `loki-positions-${new Date().toISOString().slice(0, 10)}.csv`,
+        ['Symbol', 'Side', 'Quantity', 'Avg Entry', 'Current Price', 'Market Value', 'Unrealized P&L', 'P&L %', 'Stop Loss', 'Take Profit', 'Distance to Stop %', 'Distance to Target %'],
+        list.map(p => {
+          const m = laneMetrics(p);
+          return [p.symbol, p.side, p.qty, p.avg_entry, p.current_price, p.market_value, p.unrealized_pnl, p.unrealized_pnl_pct, p.stop_loss, p.take_profit, m ? dist(m.toStop) : '', m ? dist(m.toTarget) : ''];
+        })
+      );
+    }
+
+    function exportTradesCsv() {
+      const list = applySort('trades', (portfolioData && portfolioData.recent_trades) || []);
+      downloadCsv(
+        `loki-trades-${new Date().toISOString().slice(0, 10)}.csv`,
+        ['Symbol', 'Side', 'Quantity', 'Entry Price', 'Exit Price', 'Realized P&L', 'Return %'],
+        list.map(t => [t.symbol, t.side, t.qty, t.entry_price, t.exit_price, t.pnl, t.pnl_pct])
+      );
+    }
+
+    // ------------------------------------------------------------------
+    // Session equity sparkline (kept in localStorage, pruned to 12h)
+    // ------------------------------------------------------------------
+    function loadEquityHistory() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(EQUITY_HISTORY_KEY) || '[]');
+        const cutoff = Date.now() - 12 * 60 * 60 * 1000;
+        equityHistory = (Array.isArray(raw) ? raw : [])
+          .filter(pt => Array.isArray(pt) && pt.length === 2 && Number.isFinite(pt[0]) && Number.isFinite(pt[1]) && pt[0] > cutoff)
+          .slice(-EQUITY_HISTORY_MAX);
+      } catch (e) {
+        equityHistory = [];
+      }
+    }
+
+    function saveEquityHistory() {
+      try { localStorage.setItem(EQUITY_HISTORY_KEY, JSON.stringify(equityHistory)); } catch (e) { /* ignore */ }
+    }
+
+    function recordEquity(value) {
+      const v = Number(value);
+      if (!Number.isFinite(v)) return;
+      const now = Date.now();
+      const last = equityHistory[equityHistory.length - 1];
+      if (last && now - last[0] < EQUITY_POINT_MIN_GAP_MS) {
+        last[1] = v; // coalesce rapid frames into the current point
+      } else {
+        equityHistory.push([now, v]);
+        while (equityHistory.length > EQUITY_HISTORY_MAX) equityHistory.shift();
+        saveEquityHistory();
+      }
+      renderEquitySpark();
+    }
+
+    function renderEquitySpark() {
+      const holder = $('kpi-spark');
+      if (!holder) return;
+      const line = holder.querySelector('.spark-line');
+      const area = holder.querySelector('.spark-area');
+      const meta = $('kpi-spark-meta');
+      if (!line || !area || equityHistory.length < 2) {
+        holder.hidden = true;
+        return;
+      }
+      const pts = equityHistory.slice(-EQUITY_HISTORY_MAX);
+      const t0 = pts[0][0];
+      const t1 = pts[pts.length - 1][0];
+      const tSpan = (t1 - t0) || 1;
+      const vals = pts.map(p => p[1]);
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      const vSpan = (max - min) || 1;
+
+      const coords = pts.map(([t, v]) => {
+        const x = ((t - t0) / tSpan) * 100;
+        const y = 26 - ((v - min) / vSpan) * 22;
+        return [x, y];
+      });
+      const d = coords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+      line.setAttribute('d', d);
+      area.setAttribute('d', `${d} L${coords[coords.length - 1][0].toFixed(2)},28 L0,28 Z`);
+
+      const first = vals[0];
+      const lastV = vals[vals.length - 1];
+      const delta = lastV - first;
+      const pct = first ? (delta / first) * 100 : 0;
+      const sign = delta >= 0 ? '+' : '';
+      holder.hidden = false;
+      holder.classList.toggle('spark-up', delta >= 0);
+      holder.classList.toggle('spark-down', delta < 0);
+      holder.title = `Session equity range ${fmtMoney(min)} – ${fmtMoney(max)} · tracking since ${new Date(t0).toLocaleTimeString()}`;
+      if (meta) {
+        meta.textContent = `SESSION ${sign}${fmtMoney(delta)} (${sign}${pct.toFixed(2)}%) · ${pts.length} PTS`;
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Last-known prices + order ticket sizing assistant
+    // ------------------------------------------------------------------
+    function rememberPrice(symbol, price) {
+      const sym = String(symbol || '').toUpperCase();
+      const n = Number(price);
+      if (!sym || !Number.isFinite(n) || n <= 0) return;
+      lastKnownPrices[sym] = n;
+    }
+
+    function lastKnownPrice(symbol) {
+      const sym = String(symbol || '').toUpperCase();
+      if (lastKnownPrices[sym]) return lastKnownPrices[sym];
+      const pos = ((portfolioData && portfolioData.positions) || []).find(p => String(p.symbol).toUpperCase() === sym);
+      if (pos && Number.isFinite(Number(pos.current_price)) && Number(pos.current_price) > 0) return Number(pos.current_price);
+      const sig = radarSignals.find(s => String(s.symbol).toUpperCase() === sym);
+      if (sig && Number.isFinite(Number(sig.entry_price)) && Number(sig.entry_price) > 0) return Number(sig.entry_price);
+      return null;
+    }
+
+    function refreshOrderSymbolList() {
+      const list = $('order-symbol-list');
+      if (!list) return;
+      const syms = new Set();
+      getWatchlist().forEach(s => syms.add(String(s).toUpperCase()));
+      ((portfolioData && portfolioData.positions) || []).forEach(p => syms.add(String(p.symbol).toUpperCase()));
+      radarSignals.forEach(s => syms.add(String(s.symbol).toUpperCase()));
+      list.innerHTML = '';
+      [...syms].slice(0, 60).forEach(sym => {
+        const opt = document.createElement('option');
+        opt.value = sym;
+        list.appendChild(opt);
+      });
+    }
+
+    function updateOrderEstimate() {
+      const holder = $('order-est');
+      if (!holder) return;
+      const action = ($('order-action') || {}).value || 'BUY';
+      const sym = (($('order-symbol') || {}).value || '').trim().toUpperCase();
+      const qtyInput = $('order-qty');
+      const rawQty = qtyInput ? Number(qtyInput.value.trim()) : NaN;
+      const closing = action === 'CLOSE';
+
+      document.querySelectorAll('.size-preset').forEach(b => { b.disabled = closing; });
+      if (qtyInput) qtyInput.disabled = closing;
+
+      if (closing) {
+        holder.className = 'order-est';
+        holder.textContent = `CLOSE flattens the ${sym || 'selected'} position at market — quantity is ignored.`;
+        return;
+      }
+
+      const price = sym ? lastKnownPrice(sym) : null;
+      if (Number.isFinite(rawQty) && rawQty > 0 && price) {
+        holder.className = 'order-est order-est-live';
+        holder.textContent = `EST. NOTIONAL ${fmtMoney(rawQty * price)} · ${fmtNum(rawQty, 4)} UNITS @ ${fmtMoney(price)} LAST KNOWN`;
+      } else if (Number.isFinite(rawQty) && rawQty > 0) {
+        holder.className = 'order-est';
+        holder.textContent = `Manual size ${fmtNum(rawQty, 4)} units — last price unknown; scan the radar or refresh the desk for an estimate.`;
+      } else if (price) {
+        holder.className = 'order-est';
+        holder.textContent = `Auto-size: the engine sizes the order by ATR risk at transmission (last known ${sym} ${fmtMoney(price)}).`;
+      } else {
+        holder.className = 'order-est';
+        holder.textContent = 'Auto-size: the engine sizes the order by ATR risk at transmission.';
+      }
+    }
+
+    function applySizePreset(pct) {
+      const action = ($('order-action') || {}).value || 'BUY';
+      const input = $('order-symbol');
+      const sym = ((input || {}).value || '').trim().toUpperCase();
+      if (action === 'CLOSE') {
+        toast('CLOSE orders flatten the position — no size is needed.', 'info');
+        return;
+      }
+      if (!sym) {
+        toast('Pick a symbol before sizing the order.', 'error');
+        if (input) input.focus();
+        return;
+      }
+      const price = lastKnownPrice(sym);
+      if (!price) {
+        toast(`No recent price for ${sym} — run a scan or refresh the desk first.`, 'error');
+        return;
+      }
+      const cash = lastStatus && Number.isFinite(Number(lastStatus.cash)) ? Number(lastStatus.cash) : NaN;
+      if (!Number.isFinite(cash) || cash <= 0) {
+        toast('Available cash is unknown — wait for the next status sync.', 'error');
+        return;
+      }
+      const raw = (cash * pct) / price;
+      if (!Number.isFinite(raw) || raw <= 0) {
+        toast('Available cash is too small for one unit at this price.', 'error');
+        return;
+      }
+      const qty = raw >= 100 ? Math.floor(raw) : Math.round(raw * 10000) / 10000;
+      const qtyInput = $('order-qty');
+      if (qtyInput) qtyInput.value = String(qty);
+      updateOrderEstimate();
+      const label = pct >= 0.95 ? 'MAX' : Math.round(pct * 100) + '%';
+      toast(`${label} size: ${qty} ${sym} ≈ ${fmtMoney(qty * price)}.`, 'info');
+    }
+
+    function scrollToTop() {
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    }
+
+    function focusWatchlistInput() {
+      showTab('radar', $('btn-tab-radar'));
+      const input = $('watchlist-input');
+      if (input) { input.focus(); input.select(); }
+    }
+
+    function clearRadarFilter() {
+      setRadarFilter('ALL', document.querySelector('.filter-chip[data-filter="ALL"]'));
+    }
+
+
+    function setConnection(ok) {
+      const dot = $('engine-dot');
+      const text = $('nav-engine-status');
+      const banner = $('offline-banner');
+      if (!dot || !text || !banner) return;
+
+      if (ok) {
+        dot.classList.remove('status-dot--off');
+        text.textContent = 'ENGINE ONLINE';
+        banner.hidden = true;
+        if (connectionLost) toast('Connection restored — terminal is live.', 'success');
+        connectionLost = false;
+      } else {
+        dot.classList.add('status-dot--off');
+        text.textContent = 'ENGINE OFFLINE';
+        banner.hidden = false;
+        if (!connectionLost) toast('Cannot reach the engine API — retrying automatically.', 'error');
+        connectionLost = true;
+      }
+    }
+
+    function tickClock() {
+      const el = $('header-clock');
+      if (el) el.textContent = new Date().toLocaleTimeString();
+    }
+
+    function showTab(tabId, btn, opts = {}) {
+      const targetTab = $('tab-' + tabId);
+      if (!targetTab) return;
+
+      document.querySelectorAll('.tab-content').forEach(el => { el.style.display = 'none'; });
+      document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('active');
+        el.setAttribute('aria-selected', 'false');
+        el.tabIndex = -1;
+      });
+      targetTab.style.display = 'block';
+
+      const target = btn || document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+      if (target) {
+        target.classList.add('active');
+        target.setAttribute('aria-selected', 'true');
+        target.tabIndex = 0;
+      }
+      localStorage.setItem('loki_active_tab', tabId);
+      if (!opts.fromHash) {
+        const hash = '#' + tabId;
+        if (location.hash !== hash) history.replaceState(null, '', hash);
+      }
+
+      if (tabId === 'portfolio') {
+        loadPortfolio();
+        startPortfolioRefresh();
+      } else {
+        stopPortfolioRefresh();
+      }
+      if (tabId === 'council' && !tabLoaded.council) loadCouncil();
+      if (tabId === 'trainer' && !tabLoaded.trainer) loadTrainingReport();
+      if (tabId === 'regime' && !tabLoaded.regime) loadRegime(false);
+    }
+
+    function initTabKeyboard() {
+      const nav = document.querySelector('.tabs-nav');
+      if (!nav) return;
+      nav.addEventListener('keydown', (e) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+        const tabs = Array.from(nav.querySelectorAll('.tab-btn'));
+        const current = tabs.indexOf(document.activeElement);
+        if (current === -1) return;
+        e.preventDefault();
+        let next = current;
+        if (e.key === 'ArrowLeft') next = current === 0 ? tabs.length - 1 : current - 1;
+        else if (e.key === 'ArrowRight') next = current === tabs.length - 1 ? 0 : current + 1;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        const tab = tabs[next];
+        showTab(tab.dataset.tab, tab);
+        tab.focus();
+      });
+    }
+
+    function currentTabId() {
+      const active = document.querySelector('.tab-btn.active');
+      return active ? active.dataset.tab : 'radar';
+    }
+
+    function startPortfolioRefresh() {
+      stopPortfolioRefresh();
+      portfolioRefreshTimer = setInterval(loadPortfolio, 15000);
+    }
+
+    function stopPortfolioRefresh() {
+      if (portfolioRefreshTimer) {
+        clearInterval(portfolioRefreshTimer);
+        portfolioRefreshTimer = null;
+      }
+    }
+
+    function setAutoScan(enabled) {
+      localStorage.setItem('loki_auto_scan', enabled ? '1' : '0');
+      if (autoScanTimer) {
+        clearInterval(autoScanTimer);
+        autoScanTimer = null;
+      }
+      if (enabled) {
+        autoScanNextAt = Date.now() + 60000;
+        autoScanTimer = setInterval(() => {
+          autoScanNextAt = Date.now() + 60000;
+          triggerScan({ silent: true });
+        }, 60000);
+      } else {
+        autoScanNextAt = 0;
+      }
+      updateAutoScanCountdown();
+    }
+
+    function updateAutoScanCountdown() {
+      const chip = $('auto-scan-countdown');
+      if (!chip) return;
+      if (!autoScanNextAt) {
+        chip.hidden = true;
+        return;
+      }
+      const remain = Math.max(0, Math.ceil((autoScanNextAt - Date.now()) / 1000));
+      chip.hidden = false;
+      chip.textContent = `next ${remain}s`;
+    }
+
+    function refreshActiveTab() {
+      const id = currentTabId();
+      if (id === 'radar') { triggerScan(); }
+      else if (id === 'regime') { loadRegime(true); }
+      else if (id === 'council') { loadCouncil(); }
+      else if (id === 'portfolio') { loadPortfolio(); }
+      else if (id === 'backtest') { runBacktest(); }
+      else if (id === 'trainer') { toast('Training runs are started manually — press RUN TRAINING when ready.', 'info'); return; }
+      else { return; }
+      toast('Refreshing the active panel…', 'info');
+    }
+
+    function applyDensity(mode) {
+      const compact = mode === 'compact';
+      document.body.classList.toggle('density-compact', compact);
+      try { localStorage.setItem('loki_density', compact ? 'compact' : 'comfortable'); } catch (e) { /* ignore */ }
+    }
+
+    function toggleDensity() {
+      const next = document.body.classList.contains('density-compact') ? 'comfortable' : 'compact';
+      applyDensity(next);
+      toast(next === 'compact' ? 'Compact density enabled.' : 'Comfortable density restored.', 'info');
+    }
+
+    // ------------------------------------------------------------------
+    // Status / mode
+    // ------------------------------------------------------------------
+    async function updateStatus() {
+      const startedAt = performance.now();
+      try {
+        const res = await fetch('/api/status', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        const equityEl = $('kpi-equity');
+        const nextEquity = Number(data.equity);
+        const prevEquity = Number(equityEl.dataset.value);
+        equityEl.textContent = fmtMoney(data.equity);
+        if (Number.isFinite(prevEquity) && Number.isFinite(nextEquity) && prevEquity !== nextEquity) {
+          flashValue(equityEl, nextEquity >= prevEquity);
+        }
+        equityEl.dataset.value = String(nextEquity);
+        $('kpi-cash').textContent = fmtMoney(data.cash);
+
+        const pnlEl = $('kpi-pnl');
+        const nextPnl = Number(data.total_pnl);
+        const prevPnl = Number(pnlEl.dataset.value);
+        const sign = data.total_pnl >= 0 ? '+' : '';
+        pnlEl.textContent = `${sign}${fmtMoney(data.total_pnl)} (${sign}${fmtNum(data.total_pnl_pct)}%)`;
+        pnlEl.className = 'kpi-sub ' + (data.total_pnl >= 0 ? 'text-positive' : 'text-negative');
+        if (Number.isFinite(prevPnl) && Number.isFinite(nextPnl) && prevPnl !== nextPnl) {
+          flashValue(pnlEl, nextPnl >= prevPnl);
+        }
+        pnlEl.dataset.value = String(nextPnl);
+
+        const maxPositions = data.max_open_positions ?? 4;
+        $('kpi-positions').textContent = `${data.open_positions} / ${maxPositions}`;
+        $('kpi-trades').textContent = data.total_trades;
+
+        lastStatus = data;
+        recordEquity(nextEquity);
+        updateOrderEstimate();
+
+        updateDbPill(data.supabase || null);
+        currentMode = data.mode;
+        $('kpi-mode').textContent = data.mode.toUpperCase() + (data.mode === 'paper' ? ' SIM' : ' BROKER');
+        $('btn-mode-paper').classList.toggle('active', data.mode === 'paper');
+        $('btn-mode-live').classList.toggle('active', data.mode === 'live');
+
+        const sync = $('last-sync');
+        if (sync) sync.textContent = 'synced ' + new Date().toLocaleTimeString();
+        setLatency(performance.now() - startedAt);
+        setConnection(true);
+      } catch (e) {
+        console.error('Status fetch error:', e);
+        setLatency(NaN);
+        setConnection(false);
+      }
+    }
+
+    async function setMode(mode) {
+      if (mode === currentMode) {
+        toast(`Already in ${mode === 'paper' ? 'paper simulation' : 'live broker'} mode.`, 'info');
+        return;
+      }
+      if (mode === 'live') {
+        const ok = await confirmDialog('Switching to LIVE BROKER requires real broker API credentials in .env. It fails closed to the local simulator if unset. Proceed?');
+        if (!ok) return;
+      }
+      try {
+        const res = await fetch('/api/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        currentMode = data.mode;
+        toast(`Trading mode switched to ${data.mode === 'paper' ? 'PAPER SIM' : 'LIVE BROKER'}.`, 'success');
+        updateStatus();
+      } catch (e) {
+        toast('Failed to switch mode: ' + e.message, 'error');
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Radar
+    // ------------------------------------------------------------------
+    async function triggerScan(opts = {}) {
+      const silent = !!opts.silent;
+      if (scanInFlight) return;
+      scanInFlight = true;
+
+      const tbody = $('radar-table-body');
+      const btn = $('btn-scan');
+      if (!silent) {
+        setBusy(btn, true, 'SCANNING…');
+        tbody.innerHTML = skeletonRows(10, 5);
+        const note = $('radar-filter-note');
+        if (note) note.textContent = 'Scanning the live universe…';
+      }
+
+      try {
+        const watchlist = getWatchlist();
+        const scanUrl = watchlist.length
+          ? '/api/scan?symbols=' + encodeURIComponent(watchlist.join(','))
+          : '/api/scan';
+
+        const res = await fetch(scanUrl, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+
+        radarSignals = Array.isArray(data.signals) ? data.signals : [];
+        radarRegimes = data.regimes || {};
+        radarSignals.forEach(s => rememberPrice(s.symbol, s.entry_price));
+        renderRadar();
+        refreshOrderSymbolList();
+        updateOrderEstimate();
+
+        const scanMeta = $('scan-meta');
+        if (scanMeta) scanMeta.textContent = 'Last scan: ' + new Date().toLocaleTimeString();
+        setConnection(true);
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="10">${emptyState('⚠️', 'Scan failed', e.message, { label: 'RETRY SCAN', onclick: 'triggerScan()' })}</td></tr>`;
+        setConnection(false);
+        if (!silent) toast('Scan failed: ' + e.message, 'error');
+      } finally {
+        scanInFlight = false;
+        if (!silent) setBusy(btn, false);
+        const note = $('radar-filter-note');
+        if (note && !note.textContent.startsWith('Showing')) {
+          note.textContent = radarSignals.length ? 'Signals refresh with each scan' : 'No signals yet';
+        }
+      }
+    }
+
+    function setRadarFilter(filter, btn) {
+      radarFilter = filter;
+      document.querySelectorAll('.filter-chip').forEach(el => el.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderRadar();
+    }
+
+    function renderRadar() {
+      const tbody = $('radar-table-body');
+      if (!tbody) return;
+
+      const counts = { ALL: radarSignals.length, BUY: 0, SELL: 0, HOLD: 0 };
+      radarSignals.forEach(s => {
+        const action = String(s.action || 'HOLD').toUpperCase();
+        counts[action] = (counts[action] || 0) + 1;
+      });
+      ['all', 'buy', 'sell', 'hold'].forEach(k => {
+        const el = $('filter-count-' + k);
+        const key = k.toUpperCase();
+        if (el) el.textContent = counts[key] || 0;
+      });
+      const badge = $('radar-count-badge');
+      if (badge) badge.textContent = `${radarSignals.length} signal${radarSignals.length === 1 ? '' : 's'}`;
+
+      const filtered = radarFilter === 'ALL'
+        ? radarSignals
+        : radarSignals.filter(s => String(s.action || 'HOLD').toUpperCase() === radarFilter);
+      const list = applySort('radar', filtered);
+
+      if (!list.length) {
+        const hint = radarSignals.length
+          ? `No ${radarFilter.toLowerCase()} signals in the last scan. Switch the filter to see the full matrix.`
+          : 'The radar found no actionable setups. Try scanning again or add symbols to your watchlist.';
+        const action = radarSignals.length
+          ? { label: 'SHOW ALL SIGNALS', onclick: 'clearRadarFilter()' }
+          : { label: 'ADD SYMBOLS', onclick: 'focusWatchlistInput()' };
+        tbody.innerHTML = `<tr><td colspan="10">${emptyState('📡', 'Nothing in this view', hint, action)}</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = '';
+      list.forEach(s => {
+        const action = String(s.action || 'HOLD').toUpperCase();
+        const actionClass = action === 'BUY' ? 'badge-buy' : (action === 'SELL' ? 'badge-sell' : 'badge-hold');
+        const squeeze = String(s.squeeze_status || 'OFF');
+        const squeezeClass = squeeze === 'ON'
+          ? 'badge-squeeze-on'
+          : (squeeze.indexOf('FIRING') === 0 ? 'badge-squeeze-fire' : 'badge-hold');
+        const reasonsHtml = (s.reasons || []).map(r => `<span class="factor-tag">${escapeHtml(r)}</span>`).join(' ');
+        const sym = escapeHtml(s.symbol);
+        const jsSym = safeSymbol(s.symbol);
+        const reg = radarRegimes[s.symbol];
+        const regHtml = reg
+          ? `<span class="regime-mini regime-mini-${String(reg.state).replace(/_/g, '').toLowerCase()}">${escapeHtml(cleanState(reg.state))}</span>`
+          : '';
+
+        const score = Number(s.score) || 0;
+        const conf = Math.max(0, Math.min(100, Number(s.confidence) || 0));
+        const price = Number(s.entry_price) || 0;
+        const t1 = Number(s.take_profit) || 0;
+        const t2 = Number(s.target_2) || 0;
+        const rr = Number(s.risk_reward) || 0;
+
+        let actionBtn;
+        if (action === 'BUY') {
+          actionBtn = `<button type="button" class="action-btn btn-buy btn-compact" onclick="placeQuickOrder('${jsSym}', 'BUY', ${price})">BUY</button>`;
+        } else if (action === 'SELL') {
+          actionBtn = `<button type="button" class="action-btn btn-sell btn-compact" onclick="placeQuickOrder('${jsSym}', 'SELL', ${price})">SELL</button>`;
+        } else {
+          actionBtn = `<button type="button" class="action-btn btn-secondary btn-compact" disabled title="No actionable signal on this row">HOLD</button>`;
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = 'row-' + action.toLowerCase();
+        tr.innerHTML = `
+          <td>
+            <button type="button" class="symbol-cell symbol-link" onclick="openSymbolInspector('${jsSym}')" title="Inspect ${sym}">${sym}</button>
+            <div class="cell-sub">${regHtml}</div>
+          </td>
+          <td><span class="badge ${actionClass}">${action}</span></td>
+          <td>
+            <div class="num" style="font-weight:700;">${score > 0 ? '+' : ''}${score.toFixed(1)}</div>
+            <div class="score-bar" aria-hidden="true"><div style="width:${conf}%"></div></div>
+            <div class="cell-sub">${conf.toFixed(1)}% conf</div>
+          </td>
+          <td><span class="badge ${squeezeClass}">${escapeHtml(squeeze)}</span></td>
+          <td class="num">${fmtMoney(price)}</td>
+          <td class="num" style="color:var(--neon-red);">${fmtMoney(s.stop_loss)}</td>
+          <td class="num" style="color:var(--neon-green);">
+            ${fmtMoney(t1)} <span style="font-size:10px; color:var(--text-sub);">/ ${t2 ? fmtMoney(t2) : '—'}</span>
+          </td>
+          <td class="num" style="font-weight:600;">1 : ${rr ? fmtNum(rr, 2).replace(/0+$/, '').replace(/\.$/, '') : '—'}</td>
+          <td><div class="factors-list">${reasonsHtml || '<span class="cell-sub">No factor detail</span>'}</div></td>
+          <td style="text-align:right;">${actionBtn}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // Watchlist (persisted per-browser in localStorage)
+    // ------------------------------------------------------------------
+    function getWatchlist() {
+      try {
+        const raw = JSON.parse(localStorage.getItem('loki_watchlist') || '[]');
+        return Array.isArray(raw) ? raw.filter(s => /^[A-Z0-9.\-^]{1,15}$/.test(s)) : [];
+      } catch (e) { return []; }
+    }
+
+    function saveWatchlist(list) {
+      localStorage.setItem('loki_watchlist', JSON.stringify(list));
+      renderWatchlist();
+    }
+
+    function addWatchlistSymbol() {
+      const input = $('watchlist-input');
+      const sym = input.value.trim().toUpperCase();
+      if (!sym) return;
+      if (!/^[A-Z0-9.\-^]{1,15}$/.test(sym)) {
+        toast('Invalid symbol: ' + sym, 'error');
+        return;
+      }
+      const list = getWatchlist();
+      if (list.includes(sym)) { toast(sym + ' is already on the watchlist.', 'info'); return; }
+      list.push(sym);
+      saveWatchlist(list);
+      input.value = '';
+      toast(sym + ' added to watchlist.', 'success');
+    }
+
+    function removeWatchlistSymbol(sym) {
+      const list = getWatchlist();
+      const index = list.indexOf(sym);
+      if (index === -1) return;
+      saveWatchlist(list.filter(s => s !== sym));
+      toast(`${sym} removed from your watchlist.`, 'info', {
+        label: 'UNDO',
+        onClick: () => {
+          const restored = getWatchlist();
+          if (!restored.includes(sym)) {
+            restored.splice(Math.min(index, restored.length), 0, sym);
+            saveWatchlist(restored);
+            toast(`${sym} restored to your watchlist.`, 'success');
+          }
+        }
+      });
+    }
+
+    function renderWatchlist() {
+      const holder = $('watchlist-chips');
+      if (!holder) return;
+      const list = getWatchlist();
+      holder.innerHTML = list.length
+        ? list.map(s => `<span class="watchlist-chip"><button type="button" class="chip-label" onclick="openSymbolInspector('${safeSymbol(s)}')" title="Inspect ${escapeHtml(s)}">${escapeHtml(s)}</button><button type="button" class="chip-x" title="Remove ${escapeHtml(s)}" aria-label="Remove ${escapeHtml(s)} from watchlist" onclick="removeWatchlistSymbol('${safeSymbol(s)}')">×</button></span>`).join('')
+        : '<span class="watchlist-empty">No custom symbols yet</span>';
+      refreshOrderSymbolList();
+    }
+
+    // ------------------------------------------------------------------
+    // Portfolio
+    // ------------------------------------------------------------------
+    async function loadPortfolio() {
+      if (portfolioLoading) return;
+      portfolioLoading = true;
+
+      const posTbody = $('positions-table-body');
+      const tradesTbody = $('trades-table-body');
+      if (!portfolioLoaded && posTbody) posTbody.innerHTML = skeletonRows(10, 4);
+      if (!portfolioLoaded && tradesTbody) tradesTbody.innerHTML = skeletonRows(7, 3);
+
+      try {
+        const res = await fetch('/api/portfolio', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+
+        portfolioData = data;
+        portfolioLoadedAt = new Date();
+        portfolioLoaded = true;
+        tabLoaded.portfolio = true;
+        renderPortfolio();
+        setConnection(true);
+      } catch (e) {
+        console.error('Portfolio load error:', e);
+        if (!portfolioLoaded && posTbody) {
+          posTbody.innerHTML = `<tr><td colspan="11">${emptyState('⚠️', 'Desk unavailable', e.message, { label: 'RETRY', onclick: 'loadPortfolio()' })}</td></tr>`;
+        }
+        if (!portfolioLoaded && tradesTbody) {
+          tradesTbody.innerHTML = `<tr><td colspan="7">${emptyState('⚠️', 'Trade history unavailable', e.message, { label: 'RETRY', onclick: 'loadPortfolio()' })}</td></tr>`;
+        }
+        toast('Portfolio refresh failed: ' + e.message, 'error');
+      } finally {
+        portfolioLoading = false;
+      }
+    }
+
+    function renderPortfolio() {
+      if (!portfolioData) return;
+      const posTbody = $('positions-table-body');
+      const tradesTbody = $('trades-table-body');
+      const positions = applySort('positions', portfolioData.positions || []);
+      const trades = applySort('trades', portfolioData.recent_trades || []);
+      const stamp = portfolioLoadedAt ? portfolioLoadedAt.toLocaleTimeString() : '';
+
+      $('pos-count-badge').textContent = `${positions.length} Open${stamp ? ' · ' + stamp : ''}`;
+      renderPerfStrip();
+
+      if (positions.length === 0) {
+        posTbody.innerHTML = `<tr><td colspan="11">${emptyState('🎯', 'No open positions', 'Use the Radar to launch high-conviction trades, or transmit a manual order above.', { label: 'OPEN RADAR', onclick: "showTab('radar', document.getElementById('btn-tab-radar'))" })}</td></tr>`;
+      } else {
+        posTbody.innerHTML = '';
+        positions.forEach(p => {
+          const sideClass = p.side === 'long' ? 'badge-long' : 'badge-short';
+          const pnlColor = p.unrealized_pnl >= 0 ? 'text-positive' : 'text-negative';
+          const sign = p.unrealized_pnl >= 0 ? '+' : '';
+          const sym = safeSymbol(p.symbol);
+          rememberPrice(p.symbol, p.current_price);
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><button type="button" class="symbol-cell symbol-link" onclick="openSymbolInspector('${sym}')" title="Inspect ${escapeHtml(p.symbol)}">${escapeHtml(p.symbol)}</button></td>
+            <td><span class="badge ${sideClass}">${escapeHtml(String(p.side).toUpperCase())}</span></td>
+            <td class="num">${fmtNum(p.qty, 4)}</td>
+            <td class="num">${fmtMoney(p.avg_entry)}</td>
+            <td class="num">${fmtMoney(p.current_price)}</td>
+            <td class="num">${fmtMoney(p.market_value)}</td>
+            <td class="num ${pnlColor}" style="font-weight:700;">
+              ${sign}${fmtMoney(p.unrealized_pnl)} (${sign}${fmtNum(p.unrealized_pnl_pct)}%)
+            </td>
+            <td>${riskLaneMarkup(p)}</td>
+            <td class="num">${fmtMoney(p.stop_loss)}</td>
+            <td class="num">${fmtMoney(p.take_profit)}</td>
+            <td style="text-align:right;">
+              <button type="button" class="action-btn btn-close btn-compact" onclick="closePosition('${sym}', this)">CLOSE</button>
+            </td>
+          `;
+          posTbody.appendChild(tr);
+        });
+      }
+
+      if (trades.length === 0) {
+        tradesTbody.innerHTML = `<tr><td colspan="7">${emptyState('📜', 'No closed trades yet', 'Completed trades will appear here with realized P&L and return.', { label: 'OPEN BACKTEST LAB', onclick: "showTab('backtest', document.getElementById('btn-tab-backtest'))" })}</td></tr>`;
+      } else {
+        tradesTbody.innerHTML = '';
+        trades.forEach(t => {
+          const sideClass = t.side === 'long' ? 'badge-long' : 'badge-short';
+          const pnlColor = t.pnl >= 0 ? 'text-positive' : 'text-negative';
+          const sign = t.pnl >= 0 ? '+' : '';
+          const sym = safeSymbol(t.symbol);
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><button type="button" class="symbol-cell symbol-link" onclick="openSymbolInspector('${sym}')" title="Inspect ${escapeHtml(t.symbol)}">${escapeHtml(t.symbol)}</button></td>
+            <td><span class="badge ${sideClass}">${escapeHtml(String(t.side).toUpperCase())}</span></td>
+            <td class="num">${fmtNum(t.qty, 4)}</td>
+            <td class="num">${fmtMoney(t.entry_price)}</td>
+            <td class="num">${fmtMoney(t.exit_price)}</td>
+            <td class="num ${pnlColor}" style="font-weight:700;">${sign}${fmtMoney(t.pnl)}</td>
+            <td class="num ${pnlColor}">${sign}${fmtNum(t.pnl_pct)}%</td>
+          `;
+          tradesTbody.appendChild(tr);
+        });
+      }
+
+      refreshOrderSymbolList();
+      updateOrderEstimate();
+    }
+
+    // ------------------------------------------------------------------
+    // Risk lanes + closed-trade performance strip
+    // ------------------------------------------------------------------
+    function laneMetrics(p) {
+      const stop = Number(p.stop_loss);
+      const tp = Number(p.take_profit);
+      const cur = Number(p.current_price);
+      const entry = Number(p.avg_entry);
+      if (![stop, tp, cur].every(Number.isFinite) || stop === tp || cur <= 0) return null;
+      const lo = Math.min(stop, tp);
+      const hi = Math.max(stop, tp);
+      const pos = (v) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+      const mark = pos(cur);
+      const st = pos(stop);
+      const tg = pos(tp);
+      const ent = Number.isFinite(entry) ? pos(entry) : null;
+      const toStop = Math.abs((stop - cur) / cur) * 100;
+      const toTarget = Math.abs((tp - cur) / cur) * 100;
+      return {
+        mark, st, tg, ent,
+        riskLeft: Math.min(mark, st),
+        riskWidth: Math.abs(mark - st),
+        rewardLeft: Math.min(mark, tg),
+        rewardWidth: Math.abs(mark - tg),
+        toStop,
+        toTarget,
+      };
+    }
+
+    function riskLaneMarkup(p) {
+      const m = laneMetrics(p);
+      if (!m) return '<span class="cell-sub">—</span>';
+      const up = Number(p.unrealized_pnl) >= 0;
+      const title = `Risk lane — stop ${fmtMoney(p.stop_loss)} (${fmtNum(m.toStop, 1)}% away) · mark ${fmtMoney(p.current_price)} · target ${fmtMoney(p.take_profit)} (${fmtNum(m.toTarget, 1)}% away)`;
+      return `<div class="risk-lane" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+        <div class="lane-track">
+          <span class="lane-zone lane-risk" style="left:${m.riskLeft.toFixed(1)}%; width:${Math.max(m.riskWidth, 1).toFixed(1)}%"></span>
+          <span class="lane-zone lane-reward" style="left:${m.rewardLeft.toFixed(1)}%; width:${Math.max(m.rewardWidth, 1).toFixed(1)}%"></span>
+          ${m.ent !== null ? `<span class="lane-entry" style="left:${m.ent.toFixed(1)}%"></span>` : ''}
+          <span class="lane-mark ${up ? 'lane-mark-up' : 'lane-mark-down'}" style="left:${m.mark.toFixed(1)}%"></span>
+        </div>
+        <div class="lane-caption">
+          <span class="text-negative">−${fmtNum(m.toStop, 1)}%</span>
+          <span class="text-positive">+${fmtNum(m.toTarget, 1)}%</span>
+        </div>
+      </div>`;
+    }
+
+    function renderPerfStrip() {
+      const holder = $('perf-strip');
+      if (!holder) return;
+      const trades = (portfolioData && portfolioData.recent_trades) || [];
+      const nums = trades.map(t => Number(t.pnl)).filter(Number.isFinite);
+      if (!nums.length) {
+        holder.hidden = true;
+        holder.innerHTML = '';
+        return;
+      }
+      const wins = nums.filter(v => v > 0);
+      const losses = nums.filter(v => v < 0);
+      const grossWin = wins.reduce((a, b) => a + b, 0);
+      const grossLoss = Math.abs(losses.reduce((a, b) => a + b, 0));
+      const winRate = (wins.length / nums.length) * 100;
+      const pf = grossLoss > 0 ? grossWin / grossLoss : (grossWin > 0 ? Infinity : 0);
+      const avgWin = wins.length ? grossWin / wins.length : 0;
+      const avgLoss = losses.length ? grossLoss / losses.length : 0;
+      const net = nums.reduce((a, b) => a + b, 0);
+      const expectancy = net / nums.length;
+      const best = Math.max(...nums);
+      const worst = Math.min(...nums);
+      const signed = (v) => `${v >= 0 ? '+' : ''}${fmtMoney(v)}`;
+      const item = (label, value, cls = '') => `<div class="perf-item"><span class="perf-label">${label}</span><span class="perf-value ${cls}">${value}</span></div>`;
+      holder.hidden = false;
+      holder.innerHTML = `
+        ${item('Closed trades', String(nums.length))}
+        ${item('Win rate', `${fmtNum(winRate, 1)}%`, winRate >= 50 ? 'text-positive' : 'text-negative')}
+        ${item('Profit factor', Number.isFinite(pf) ? fmtNum(pf, 2) : '∞', pf >= 1 ? 'text-positive' : 'text-negative')}
+        ${item('Avg win', wins.length ? signed(avgWin) : '—', 'text-positive')}
+        ${item('Avg loss', losses.length ? fmtMoney(-avgLoss) : '—', 'text-negative')}
+        ${item('Expectancy', signed(expectancy), expectancy >= 0 ? 'text-positive' : 'text-negative')}
+        ${item('Best trade', signed(best), 'text-positive')}
+        ${item('Worst trade', fmtMoney(worst), 'text-negative')}
+        <div class="perf-note">Computed from the last ${nums.length} closed fill${nums.length === 1 ? '' : 's'} — small samples overstate edge.</div>`;
+    }
+
+    // ------------------------------------------------------------------
+    // Agentic council
+    // ------------------------------------------------------------------
+    async function loadCouncil() {
+      const container = $('council-container');
+      container.innerHTML = Array.from({ length: 3 }, () => `
+        <div class="agent-card">
+          <div class="skeleton skeleton-line short" style="margin-bottom:12px;"></div>
+          <div class="skeleton skeleton-block" style="margin-bottom:12px;"></div>
+          <div class="skeleton skeleton-line" style="margin-bottom:8px;"></div>
+          <div class="skeleton skeleton-line" style="margin-bottom:8px;"></div>
+          <div class="skeleton skeleton-line short"></div>
+        </div>`).join('');
+
+      try {
+        const res = await fetch('/api/council', { cache: 'no-store' });
+        const report = await res.json();
+        if (!res.ok) throw new Error(report.detail || ('HTTP ' + res.status));
+
+        const entries = Object.entries(report.trails || {});
+        if (!entries.length) {
+          container.innerHTML = `<div class="agent-card" style="grid-column:1 / -1;">${emptyState('🏛️', 'Council returned no trails', 'No symbols were evaluated in this deliberation. Try again or widen the universe.')}</div>`;
+        } else {
+          container.innerHTML = '';
+          entries.forEach(([sym, trail]) => {
+            const director = trail.find(t => t.agent === 'director') || {};
+            const quant = trail.find(t => t.agent === 'quant') || {};
+            const risk = trail.find(t => t.agent === 'risk') || {};
+            const exec = trail.find(t => t.agent === 'execution') || {};
+
+            const action = String(quant.action || 'HOLD').toUpperCase();
+            const cardClass = action === 'BUY' ? 'agent-card--buy' : (action === 'SELL' ? 'agent-card--sell' : 'agent-card--hold');
+            const actionClass = action === 'BUY' ? 'badge-buy' : (action === 'SELL' ? 'badge-sell' : 'badge-hold');
+
+            const posture = cleanState(director.posture || 'neutral');
+            const regime = cleanState(director.regime || 'RANGING');
+            const quantScore = Number(quant.score) || 0;
+            const quantConf = Number(quant.confidence) || 0;
+            const riskClass = risk.approved ? 'good' : 'bad';
+            const riskText = risk.approved
+              ? `APPROVED · ${fmtNum(risk.qty, 2)} units`
+              : `BLOCKED · ${cleanState(risk.reason || 'none')}`;
+            const execText = exec.executed ? `FILLED · ${currentMode.toUpperCase()}` : 'STANDBY';
+            const execClass = exec.executed ? 'good' : 'muted';
+            const entryPrice = quant.entry ?? quant.entry_price;
+            const stopPrice = quant.stop ?? quant.stop_loss;
+            const targetPrice = quant.target ?? quant.take_profit;
+            const plan = entryPrice
+              ? `<div class="agent-plan">
+                   <span>Entry <strong>${fmtMoney(entryPrice)}</strong></span>
+                   <span>Stop <strong>${fmtMoney(stopPrice)}</strong></span>
+                   <span>Target <strong>${fmtMoney(targetPrice)}</strong></span>
+                 </div>`
+              : '';
+
+            const card = document.createElement('div');
+            card.className = 'agent-card ' + cardClass;
+            card.innerHTML = `
+              <div class="agent-header">
+                <button type="button" class="agent-symbol symbol-link" onclick="openSymbolInspector('${safeSymbol(sym)}')" title="Inspect ${escapeHtml(sym)}">${escapeHtml(sym)}</button>
+                <span class="badge ${actionClass}">${action}</span>
+              </div>
+              <div class="agent-thesis">${escapeHtml(director.thesis || 'Analyzing market structure.')}</div>
+              <div class="agent-pipeline">
+                <div class="agent-stage">
+                  <span class="agent-stage-name">Director</span>
+                  <span class="agent-stage-value">${escapeHtml(posture.toUpperCase())} · ${escapeHtml(regime)}</span>
+                </div>
+                <div class="agent-stage">
+                  <span class="agent-stage-name">Quant</span>
+                  <span class="agent-stage-value">${quantScore > 0 ? '+' : ''}${quantScore.toFixed(1)} · ${quantConf.toFixed(1)}% confidence</span>
+                </div>
+                <div class="agent-stage">
+                  <span class="agent-stage-name">Sentinel</span>
+                  <span class="agent-stage-value ${riskClass}">${escapeHtml(riskText)}</span>
+                </div>
+                <div class="agent-stage">
+                  <span class="agent-stage-name">Hermes</span>
+                  <span class="agent-stage-value ${execClass}">${escapeHtml(execText)}</span>
+                </div>
+              </div>
+              ${plan}
+            `;
+            container.appendChild(card);
+          });
+        }
+        tabLoaded.council = true;
+        setConnection(true);
+      } catch (e) {
+        container.innerHTML = `<div class="agent-card" style="grid-column:1 / -1;">${emptyState('⚠️', 'Council unavailable', e.message, { label: 'RETRY DELIBERATION', onclick: 'loadCouncil()' })}</div>`;
+        setConnection(false);
+        toast('Council error: ' + e.message, 'error');
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Orders
+    // ------------------------------------------------------------------
+    async function placeQuickOrder(symbol, action, price) {
+      if (action !== 'BUY' && action !== 'SELL') {
+        toast('This row has no executable signal.', 'info');
+        return;
+      }
+      const ok = await confirmDialog(`Execute ${action} order on ${symbol} at the current market price${price ? ' (~' + fmtMoney(price) + ')' : ''}?`);
+      if (!ok) return;
+      try {
+        const body = { symbol, action };
+        const numericPrice = Number(price);
+        if (Number.isFinite(numericPrice) && numericPrice > 0) body.price = numericPrice;
+
+        const res = await fetch('/api/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Order executed: ${action} ${data.symbol} @ ${fmtMoney(data.fill_price)}`, 'success');
+        updateStatus();
+        loadPortfolio();
+      } catch (e) {
+        toast('Order failed: ' + e.message, 'error');
+      }
+    }
+
+    async function submitManualOrder() {
+      const symbol = $('order-symbol').value.trim().toUpperCase();
+      const action = $('order-action').value;
+      const rawQty = $('order-qty').value.trim();
+      const qty = rawQty === '' ? null : Number(rawQty);
+      const btn = $('btn-submit-order');
+
+      if (!symbol) { toast('Please specify a symbol.', 'error'); return; }
+      if (qty !== null && (!Number.isFinite(qty) || qty < 0)) {
+        toast('Quantity must be zero (auto-size) or a positive number.', 'error');
+        return;
+      }
+
+      const ok = await confirmDialog(
+        action === 'CLOSE'
+          ? `Close the active position in ${symbol}?`
+          : `Submit a ${action} order for ${symbol}${qty ? ' · ' + qty + ' units' : ' · auto-sized'}?`
+      );
+      if (!ok) return;
+
+      setBusy(btn, true, 'TRANSMITTING…');
+      try {
+        const res = await fetch('/api/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol, action, qty: qty || null })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Order filled: ${data.action} ${data.symbol} @ ${fmtMoney(data.fill_price)}`, 'success');
+        updateStatus();
+        loadPortfolio();
+      } catch (e) {
+        toast('Order error: ' + e.message, 'error');
+      } finally {
+        setBusy(btn, false);
+      }
+    }
+
+    async function closePosition(symbol, btn) {
+      const ok = await confirmDialog(`Close the active position in ${symbol}?`);
+      if (!ok) return;
+      setBusy(btn, true, 'CLOSING…');
+      try {
+        const res = await fetch('/api/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol, action: 'CLOSE' })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Closed ${symbol} @ ${fmtMoney(data.fill_price)}`, 'success');
+        updateStatus();
+        loadPortfolio();
+      } catch (e) {
+        toast('Failed to close: ' + e.message, 'error');
+      } finally {
+        setBusy(btn, false);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Backtest + chart
+    // ------------------------------------------------------------------
+    async function runBacktest() {
+      const symbol = $('bt-symbol').value.trim().toUpperCase();
+      const period = $('bt-period').value;
+      const btn = $('btn-run-backtest');
+      const status = $('bt-chart-status');
+
+      if (!symbol) { toast('Enter a ticker to backtest.', 'error'); return; }
+      setBusy(btn, true, 'SIMULATING…');
+      status.textContent = 'Simulating event-driven execution…';
+
+      try {
+        const res = await fetch(`/api/backtest?symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(period)}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+
+        $('bt-results-card').style.display = 'block';
+
+        const retEl = $('bt-return');
+        retEl.textContent = `${data.total_return_pct >= 0 ? '+' : ''}${fmtNum(data.total_return_pct)}%`;
+        retEl.className = 'stat-value ' + (data.total_return_pct >= 0 ? 'text-positive' : 'text-negative');
+
+        $('bt-final').textContent = fmtMoney(data.final_equity);
+        $('bt-cagr').textContent = `${data.cagr_pct >= 0 ? '+' : ''}${fmtNum(data.cagr_pct)}%`;
+        $('bt-winrate').textContent = fmtPct(data.win_rate_pct);
+        $('bt-pf').textContent = (data.profit_factor === null || data.profit_factor === undefined) ? '—' : fmtNum(data.profit_factor);
+        $('bt-maxdd').textContent = fmtPct(data.max_drawdown_pct);
+        $('bt-sharpe').textContent = fmtNum(data.sharpe);
+        $('bt-trades').textContent = data.total_trades;
+
+        status.textContent = `Complete · ${data.total_trades} trades executed`;
+
+        const curve = Array.isArray(data.equity_curve) && data.equity_curve.length
+          ? data.equity_curve
+          : (() => {
+              let running = Number(data.initial_capital) || 0;
+              const points = [{ t: null, v: running }];
+              (data.trades || []).forEach(t => {
+                running += Number(t.pnl) || 0;
+                points.push({ t: null, v: running });
+              });
+              return points;
+            })();
+
+        renderChart(curve, Number(data.initial_capital) || 0);
+        setConnection(true);
+      } catch (e) {
+        status.textContent = 'Simulation failed';
+        toast('Backtest failed: ' + e.message, 'error');
+      } finally {
+        setBusy(btn, false);
+      }
+    }
+
+    function renderChart(curve, initialCapital) {
+      const canvas = $('equityChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (equityChartInstance) equityChartInstance.destroy();
+
+      const points = Array.isArray(curve) ? curve : [];
+      const labels = points.map((p, i) => (p && p.t) ? fmtDate(p.t) : 'Trade ' + i);
+      const values = points.map(p => Number(p && p.v !== undefined ? p.v : p));
+      const first = values.length ? values[0] : 0;
+      const last = values.length ? values[values.length - 1] : 0;
+      const isPositive = last >= first;
+      const lineColor = isPositive ? '#10b981' : '#ef4444';
+
+      const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+      gradient.addColorStop(0, isPositive ? 'rgba(16, 185, 129, 0.26)' : 'rgba(239, 68, 68, 0.24)');
+      gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+
+      const datasets = [{
+        label: 'Portfolio Equity',
+        data: values,
+        borderColor: lineColor,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.25,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      }];
+
+      if (initialCapital > 0) {
+        datasets.push({
+          label: 'Initial Capital',
+          data: labels.map(() => initialCapital),
+          borderColor: 'rgba(148, 163, 184, 0.55)',
+          borderDash: [3, 5],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+        });
+      }
+
+      equityChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#94a3b8', boxWidth: 10, font: { size: 10 } } },
+            tooltip: {
+              callbacks: {
+                label: (item) => `${item.dataset.label}: ${fmtMoney(item.parsed.y)}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              ticks: { color: '#64748b', maxTicksLimit: 10, font: { size: 10 } }
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              ticks: { color: '#64748b', font: { size: 10 }, callback: (value) => compactMoney(value) }
+            }
+          }
+        }
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // Autonomous loop
+    // ------------------------------------------------------------------
+    async function checkAutonomousStatus() {
+      try {
+        const res = await fetch('/api/bot/autonomous', { cache: 'no-store' });
+        const data = await res.json();
+        const panel = $('auto-engine-panel');
+        const btn = $('btn-toggle-auto');
+
+        if (data.is_running) {
+          panel.style.display = 'block';
+          btn.textContent = '⏹ STOP PAPER LOOP';
+          btn.style.background = 'rgba(239, 68, 68, 0.18)';
+          btn.style.borderColor = '#ef4444';
+          btn.style.color = '#f87171';
+          $('auto-cycle-badge').textContent = `Cycle #${data.iterations}`;
+          if (data.last_run) {
+            $('auto-last-run').textContent = `Last run: ${new Date(data.last_run).toLocaleTimeString()}`;
+          }
+          if (data.logs && data.logs.length > 0) {
+            $('auto-logs-box').innerHTML = data.logs.slice(0, 5).map(l => escapeHtml(l)).join('<br>');
+          }
+        } else {
+          panel.style.display = 'none';
+          btn.textContent = '▶ START PAPER LOOP';
+          btn.style.background = 'rgba(139, 92, 246, 0.2)';
+          btn.style.borderColor = '#8b5cf6';
+          btn.style.color = '#c084fc';
+        }
+      } catch (e) {
+        console.error('Auto status error:', e);
+      }
+    }
+
+    async function toggleAutonomousLoop() {
+      try {
+        const checkRes = await fetch('/api/bot/autonomous', { cache: 'no-store' });
+        const current = await checkRes.json();
+        const nextAction = current.is_running ? 'stop' : 'start';
+
+        if (nextAction === 'start') {
+          const ok = await confirmDialog('Start the continuous 24/7 autonomous trading loop? The multi-agent council will continuously scan assets and execute approved orders in the background.');
+          if (!ok) return;
+        }
+
+        const res = await fetch('/api/bot/autonomous', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: nextAction, interval: 60 })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        toast(nextAction === 'start' ? 'Autonomous 24/7 loop started.' : 'Autonomous loop stopped.', nextAction === 'start' ? 'success' : 'info');
+        checkAutonomousStatus();
+      } catch (e) {
+        toast('Toggle auto-loop failed: ' + e.message, 'error');
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // WebSocket
+    // ------------------------------------------------------------------
+    async function connectWebSocket() {
+      const localToken = await localSession;
+      if (!localToken) return;
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUri = `${proto}//${location.host}/terminal/ws/market-data`;
+      try {
+        const ws = new WebSocket(wsUri, ["loki", "loki."+localToken]);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.portfolio_value !== undefined) {
+              const equityEl = $('kpi-equity');
+              const next = Number(data.portfolio_value);
+              const prev = Number(equityEl.dataset.value);
+              if (Number.isFinite(next)) {
+                if (Number.isFinite(prev) && prev !== next) flashValue(equityEl, next >= prev);
+                equityEl.textContent = fmtMoney(next);
+                equityEl.dataset.value = String(next);
+                recordEquity(next);
+              }
+              const sync = $('last-sync');
+              if (sync) sync.textContent = 'synced ' + new Date().toLocaleTimeString();
+              setConnection(true);
+            }
+          } catch (err) { /* ignore malformed frames */ }
+        };
+        ws.onclose = () => { setTimeout(connectWebSocket, 5000); };
+      } catch (e) {
+        console.warn('WebSocket connect error:', e);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // AI Strategy Trainer
+    // ------------------------------------------------------------------
+    function paramsSummary(params) {
+      if (!params) return '—';
+      return [
+        `thr ${fmtNum(params.signal_threshold, 0)}`,
+        `SL ${fmtNum(params.stop_loss_atr, 1)}×ATR`,
+        `TP ${fmtNum(params.take_profit_atr, 1)}×ATR`,
+        `trend filter ${params.require_trend_filter ? 'ON' : 'OFF'}`,
+      ].join(' · ');
+    }
+
+    async function runTraining() {
+      const btn = $('btn-run-training');
+      const status = $('train-status');
+      const symbols = $('train-symbols').value.trim();
+      const period = $('train-period').value;
+      const objective = $('train-objective').value;
+      const refine = parseInt($('train-refine').value, 10) || 1;
+      const weights = $('train-weights').checked;
+      const aggressive = objective === 'win_rate';
+
+      const baseMsg = aggressive
+        ? `AGGRESSIVE MODE — chasing the 70% closed-trade win-rate research target on ${period} of history (up to ${refine} refinement rounds${weights ? ' with 14 factor-weight presets' : ''}). This can take several minutes…`
+        : `Training on ${period} of history — development search on the first 80%, with a separate final 20% holdout. This can take a minute…`;
+
+      setBusy(btn, true, 'TRAINING…');
+      status.style.display = 'block';
+      status.className = 'train-status train-running';
+      status.textContent = baseMsg;
+
+      const startedAt = Date.now();
+      const timer = setInterval(() => {
+        status.textContent = `${baseMsg} (${Math.round((Date.now() - startedAt) / 1000)}s elapsed)`;
+      }, 1000);
+
+      try {
+        const qs = new URLSearchParams({
+          period,
+          refine_rounds: String(refine),
+          objective,
+        });
+        if (weights) qs.set('optimize_weights', 'true');
+        if (aggressive) {
+          qs.set('target_win_rate', '70');
+          qs.set('target_profitable_months', '50');
+          qs.set('objective', 'win_rate');
+        }
+        if (symbols) qs.set('symbols', symbols);
+
+        const res = await fetch('/api/training/run?' + qs.toString());
+        const report = await res.json();
+        if (!res.ok) throw new Error(report.detail || ('HTTP ' + res.status));
+
+        renderTrainingReport(report);
+        tabLoaded.trainer = true;
+
+        const okCount = (report.symbols || []).filter(s => s.ok).length;
+        const goodCount = (report.symbols || []).filter(s => s.ok && s.good).length;
+        status.className = 'train-status train-done';
+        status.textContent = `Trained ${okCount} symbol(s) at ${new Date(report.generated_at).toLocaleString()} on ${report.period} history` +
+          `${report.refine_rounds_used > 1 ? ` — ${report.refine_rounds_used} refinement rounds` : ''}` +
+          `${report.weights_tested ? `, ${report.weights_tested} factor presets` : ''}. ${goodCount} pass the good-trade hurdles.`;
+        toast(`Training complete: ${okCount}/${(report.symbols || []).length} symbols trained — ${goodCount} pass the good-trade hurdles.`, okCount ? 'success' : 'error');
+        setConnection(true);
+      } catch (e) {
+        status.className = 'train-status train-error';
+        status.textContent = 'Training failed: ' + e.message;
+        toast('Training failed: ' + e.message, 'error');
+      } finally {
+        clearInterval(timer);
+        setBusy(btn, false);
+      }
+    }
+
+    async function loadTrainingReport() {
+      try {
+        const res = await fetch('/api/training/report', { cache: 'no-store' });
+        const report = await res.json();
+        if (!res.ok) throw new Error(report.detail || ('HTTP ' + res.status));
+        if (report.generated_at) {
+          renderTrainingReport(report);
+          const status = $('train-status');
+          status.style.display = 'block';
+          status.className = 'train-status train-done';
+          status.textContent = `Showing last training run from ${new Date(report.generated_at).toLocaleString()} (${report.period} history).`;
+        }
+        tabLoaded.trainer = true;
+      } catch (e) {
+        console.error('Training report load error:', e);
+      }
+    }
+
+    function renderTrainingReport(report) {
+      const holder = $('train-results');
+      holder.innerHTML = '';
+
+      const cons = report.consensus;
+      if (cons && cons.params) {
+        const consCard = document.createElement('div');
+        consCard.className = 'table-card train-card consensus-card';
+        consCard.innerHTML = `
+          <div class="table-header-title">
+            <span>⚙️ ENGINE CONSENSUS <span style="font-size:10px; color:var(--text-muted); font-weight:400;">— median of every symbol's winner · ${cons.symbols_used} symbols · ${cons.support_pct}% agreement</span></span>
+            ${cons.params.factor_preset ? `<span class="badge badge-cyan">preset: ${escapeHtml(cons.params.factor_preset)}</span>` : ''}
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 20px;">
+            <span style="font-family:var(--font-mono); font-size:12px; color:#fff;">${escapeHtml(paramsSummary(cons.params))}</span>
+            <button type="button" class="action-btn btn-primary btn-compact" onclick="applyConsensusParams()">APPLY CONSENSUS TO ENGINE</button>
+          </div>`;
+        holder.appendChild(consCard);
+      }
+
+      (report.symbols || []).forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'table-card train-card';
+
+        if (!s.ok) {
+          card.innerHTML = `
+            <div class="table-header-title">
+              <span>${escapeHtml(s.symbol)}</span>
+              <span class="badge badge-hold">NOT TRAINED</span>
+            </div>
+            <div class="train-error-body">${escapeHtml(s.error || 'unknown error')}</div>`;
+          holder.appendChild(card);
+          return;
+        }
+
+        const hurdles = (s.hurdles || []).map(h => `
+          <li class="hurdle-item ${h.ok ? 'hurdle-ok' : 'hurdle-fail'}">
+            <span class="hurdle-mark">${h.ok ? '✓' : '✗'}</span> ${escapeHtml(h.label)}
+          </li>`).join('');
+        const hurdlePct = s.hurdles && s.hurdles.length
+          ? Math.round(100 * s.hurdles.filter(h => h.ok).length / s.hurdles.length) : 0;
+
+        const rows = (s.leaderboard || []).slice(0, 5).map((entry, i) => {
+          const t = entry.train || {};
+          const v = entry.validation || {};
+          const valBadge = (v.trades > 0 && v.return_pct > 0)
+            ? '<span class="badge badge-buy">VALIDATED</span>'
+            : '<span class="badge badge-hold">NOT VALIDATED</span>';
+          const presetNote = entry.weight_preset && entry.weight_preset !== 'config'
+            ? `<div style="font-size:10px; color:var(--accent-purple);">weights: ${escapeHtml(entry.weight_preset)}</div>` : '';
+          return `
+            <tr>
+              <td style="font-family:var(--font-mono); font-weight:700;">#${i + 1}${i === 0 ? ' <span class="best-flag">BEST</span>' : ''}</td>
+              <td style="font-size:11.5px;">${escapeHtml(paramsSummary(entry.params))}${presetNote}</td>
+              <td class="num">${fmtNum(t.sharpe)}</td>
+              <td class="num ${t.return_pct >= 0 ? 'text-positive' : 'text-negative'}">${fmtNum(t.return_pct)}%</td>
+              <td class="num">${fmtNum(t.win_rate_pct, 1)}%</td>
+              <td class="num">${t.trades}</td>
+              <td class="num ${v.return_pct >= 0 ? 'text-positive' : 'text-negative'}">${v.trades ? fmtNum(v.return_pct) + '%' : '–'}</td>
+              <td class="num">${v.trades ? fmtNum(v.win_rate_pct, 1) + '%' : '–'}</td>
+              <td class="num">${v.trades ? fmtNum(v.profit_factor) : '–'}</td>
+              <td>${valBadge}</td>
+              <td style="text-align:right;">
+                <button type="button" class="action-btn btn-buy btn-compact" onclick="applyTrained('${safeSymbol(s.symbol)}')">APPLY</button>
+              </td>
+            </tr>`;
+        }).join('');
+
+        card.innerHTML = `
+          <div class="table-header-title">
+            <span>${escapeHtml(s.symbol)} <span style="font-size:10px; color:var(--text-muted); font-weight:400;">— ${s.bars} bars · ${s.n_combos} combos tested${s.weights_tested ? ` · ${s.weights_tested} presets` : ''}${s.refine_round > 1 ? ` · refined ×${s.refine_round}` : ''} · recommended: ${escapeHtml(paramsSummary(s.best_params))}</span></span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              ${s.factor_preset ? `<span class="badge badge-cyan">${escapeHtml(s.factor_preset)}</span>` : ''}
+              ${s.good
+                ? '<span class="badge badge-buy">RESEARCH CANDIDATE</span>'
+                : (s.validated ? '<span class="badge badge-squeeze-on">VALIDATION PASSED · TARGETS INCOMPLETE</span>' : '<span class="badge badge-squeeze-on">IN-SAMPLE ONLY — CAUTION</span>')}
+            </div>
+          </div>
+          <div class="hurdle-strip" title="Out-of-sample good-trade checklist">
+            <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px;">Good-trade hurdles</span>
+            <div class="metric-bar" style="width:120px;"><div style="width:${hurdlePct}%; background:${hurdlePct === 100 ? 'var(--neon-green)' : 'var(--accent-cyan)'};"></div></div>
+            <span style="font-family:var(--font-mono); font-size:11px; color:${hurdlePct === 100 ? 'var(--neon-green)' : 'var(--text-muted)'};">${hurdlePct}%</span>
+            <ul class="hurdle-list">${hurdles}</ul>
+          </div>
+          <div style="padding:12px 20px;color:var(--text-muted);font-size:12px;">
+            ${s.final_holdout && s.final_holdout.metrics ? `Final reserved holdout: ${s.final_holdout.metrics.trades} trades · win ${fmtNum(s.final_holdout.metrics.win_rate_pct,1)}% · return ${fmtNum(s.final_holdout.metrics.return_pct)}% · profit factor ${fmtNum(s.final_holdout.metrics.profit_factor)}. ${escapeHtml(s.final_holdout.start)} → ${escapeHtml(s.final_holdout.end)}. Not used for selection.` : 'No final reserved-holdout result is available for this report.'}
+            <br>Validation guides refinement. A 70% win rate remains unproven. Applying parameters updates the whole paper engine.
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Rank</th><th scope="col">Parameters</th>
+                  <th scope="col">Train Sharpe</th><th scope="col">Train Return</th><th scope="col">Train Win%</th><th scope="col">Train Trades</th>
+                  <th scope="col">Valid. Return</th><th scope="col">Valid. Win%</th><th scope="col">Valid. P.Factor</th>
+                  <th scope="col">Verdict</th><th scope="col"></th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          ${s.regime_distribution ? `<div class="regime-mini-strip" style="padding:0 20px 14px;">${Object.entries(s.regime_distribution).sort((a, b) => b[1] - a[1]).map(([st, frac]) => {
+            const c = REGIME_COLORS[st] || '#64748b';
+            return `<span class="regime-summary-chip" style="border-color:${c}; color:${c}; padding:2px 8px;">${escapeHtml(cleanState(st))} ${(frac * 100).toFixed(0)}%</span>`;
+          }).join('')}</div>` : ''}
+        `;
+        holder.appendChild(card);
+      });
+    }
+
+    async function applyTrained(symbol) {
+      try {
+        const res = await fetch('/api/training/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Applied trained parameters for ${data.symbol}: ${paramsSummary(data.applied)}`, 'success');
+      } catch (e) {
+        toast('Apply failed: ' + e.message, 'error');
+      }
+    }
+
+    async function applyConsensusParams() {
+      const ok = await confirmDialog('Apply the cross-symbol consensus parameters to the running engine?');
+      if (!ok) return;
+      try {
+        const res = await fetch('/api/training/apply-consensus', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        toast(`Consensus applied to the engine: ${paramsSummary(data.applied)}`, 'success');
+      } catch (e) {
+        toast('Apply consensus failed: ' + e.message, 'error');
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Market regime monitor
+    // ------------------------------------------------------------------
+    function regimePill(state) {
+      const c = REGIME_COLORS[state] || '#64748b';
+      return `<span class="badge regime-badge" style="background:${c}22; color:${c}; border-color:${c};">${escapeHtml(cleanState(state))}</span>`;
+    }
+
+    async function loadRegime(force) {
+      const holder = $('regime-cards');
+      const symsRaw = $('regime-symbols').value.trim();
+      const syms = symsRaw
+        ? symsRaw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 8)
+        : null;
+
+      holder.innerHTML = Array.from({ length: 3 }, () => `
+        <div class="regime-card">
+          <div class="skeleton skeleton-line short" style="margin-bottom:12px;"></div>
+          <div class="skeleton skeleton-block" style="margin-bottom:12px;"></div>
+          <div class="skeleton skeleton-line" style="margin-bottom:7px;"></div>
+          <div class="skeleton skeleton-line" style="margin-bottom:7px;"></div>
+          <div class="skeleton skeleton-line short"></div>
+        </div>`).join('');
+      statusPill('Classifying market regimes across the universe…');
+
+      try {
+        const qs = new URLSearchParams({ period: '5y' });
+        if (syms) qs.set('symbols', syms.join(','));
+        const res = await fetch('/api/regime?' + qs.toString(), { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+
+        const summary = data.summary || {};
+        const summaryHtml = Object.entries(summary).map(([st, n]) =>
+          `<div class="regime-summary-chip" style="border-color:${REGIME_COLORS[st]}; color:${REGIME_COLORS[st]};">${escapeHtml(cleanState(st))} × ${n}</div>`
+        ).join('');
+        $('regime-summary').innerHTML = summaryHtml
+          ? `<div class="regime-summary-title">Universe snapshot</div>${summaryHtml}`
+          : '';
+
+        holder.innerHTML = '';
+        (data.symbols || []).forEach(r => {
+          const card = document.createElement('div');
+          card.className = 'regime-card';
+
+          if (r.error) {
+            card.innerHTML = `
+              <div class="table-header-title">
+                <span style="font-family:var(--font-mono);">${escapeHtml(r.symbol)}</span>
+                <span class="badge badge-hold">NO DATA</span>
+              </div>
+              <div class="train-error-body">${escapeHtml(r.error)}</div>`;
+            holder.appendChild(card);
+            return;
+          }
+
+          const color = REGIME_COLORS[r.state] || '#64748b';
+          card.style.setProperty('--regime-color', color);
+
+          const dist = Object.entries(r.distribution || {}).sort((a, b) => b[1] - a[1]).map(([st, frac]) => {
+            const c2 = REGIME_COLORS[st] || '#64748b';
+            return `<div class="regime-dist-row">
+              <span class="regime-dist-label" style="color:${c2};">${escapeHtml(cleanState(st))}</span>
+              <div class="regime-dist-bar"><div style="width:${(frac * 100).toFixed(1)}%; background:${c2};"></div></div>
+              <span class="regime-dist-val">${(frac * 100).toFixed(0)}%</span>
+            </div>`;
+          }).join('');
+
+          card.innerHTML = `
+            <div class="table-header-title">
+              <span style="font-family:var(--font-mono); font-weight:800;">${escapeHtml(r.symbol)}</span>
+              ${regimePill(r.state)}
+            </div>
+            <div class="agent-stat"><span>Trend Score:</span><span class="agent-stat-value">${r.trend_score > 0 ? '+' : ''}${r.trend_score}</span></div>
+            <div class="agent-stat"><span>ADX:</span><span class="agent-stat-value">${r.adx}</span></div>
+            <div class="agent-stat"><span>Daily ATR Vol:</span><span class="agent-stat-value">${r.volatility_pct}% (rank ${r.volatility_rank})</span></div>
+            <div class="metric-bar-row">
+              <span class="metric-bar-label">Confidence</span>
+              <div class="metric-bar"><div style="width:${r.confidence}%; background:${color};"></div></div>
+              <span class="metric-bar-val">${r.confidence}%</span>
+            </div>
+            <div class="regime-desc">${escapeHtml(r.description)}</div>
+            <div class="regime-dist-title">History distribution (${r.bars} bars)</div>
+            ${dist}
+          `;
+          holder.appendChild(card);
+        });
+
+        tabLoaded.regime = true;
+        setConnection(true);
+        toast('Regime scan complete.', 'success');
+      } catch (e) {
+        holder.innerHTML = `<div class="regime-card" style="grid-column:1 / -1;">${emptyState('⚠️', 'Regime scan failed', e.message, { label: 'RETRY SCAN', onclick: 'loadRegime(true)' })}</div>`;
+        setConnection(false);
+        toast('Regime scan failed: ' + e.message, 'error');
+      }
+    }
+
+    // Header pill for the global market regime (SPY + QQQ), refresh every 60s
+    async function refreshRegimePill() {
+      try {
+        const res = await fetch('/api/regime?symbols=SPY,QQQ&period=2y', { cache: 'no-store' });
+        const data = await res.json();
+        const spy = (data.symbols || []).find(s => s.symbol === 'SPY');
+        if (!spy || spy.error) return;
+
+        const color = REGIME_COLORS[spy.state] || '#64748b';
+        const dot = $('regime-pill-dot');
+        dot.style.background = color;
+        dot.style.boxShadow = `0 0 10px ${color}`;
+        $('regime-pill-text').textContent = `REGIME ${cleanState(spy.state)}`;
+
+        const kpiVal = $('kpi-regime');
+        const kpiSub = $('kpi-regime-sub');
+        kpiVal.textContent = cleanState(spy.state);
+        kpiVal.style.color = color;
+        kpiSub.textContent = spy.description || '5-state trend & vol engine';
+      } catch (e) {
+        console.warn('Regime pill error:', e);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Monte Carlo survival engine
+    // ------------------------------------------------------------------
+    async function runMonteCarlo() {
+      const symbol = $('bt-symbol').value.trim().toUpperCase();
+      const period = $('bt-period').value;
+      const nSims = $('mc-sims').value;
+      const status = $('mc-status');
+      const btn = $('btn-run-mc');
+
+      if (!symbol) { toast('Enter a ticker before running Monte Carlo.', 'error'); return; }
+
+      setBusy(btn, true, 'BOOTSTRAPPING…');
+      status.textContent = `Bootstrapping ${Number(nSims).toLocaleString()} alternate lifetimes…`;
+
+      try {
+        const res = await fetch(`/api/montecarlo?symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(period)}&n_sims=${nSims}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+
+        const mc = data.monte_carlo;
+        if (mc.verdict === 'NO_TRADES') {
+          status.textContent = 'No completed trades in the window — nothing to bootstrap.';
+          toast('Monte Carlo needs at least one completed trade — widen the period.', 'info');
+          return;
+        }
+
+        const verdictColor = {
+          ROBUST: 'var(--neon-green)',
+          ACCEPTABLE: 'var(--accent-cyan)',
+          FRAGILE: 'var(--neon-amber)',
+          DANGEROUS: 'var(--neon-red)'
+        }[mc.verdict] || 'var(--text-muted)';
+
+        const verdictEl = $('mc-verdict');
+        verdictEl.style.display = 'flex';
+        verdictEl.innerHTML = `
+          <span class="badge" style="background:transparent; color:${verdictColor}; border-color:${verdictColor}; font-size:12px;">${escapeHtml(mc.verdict)}</span>
+          <span style="color:var(--text-muted);"> on ${mc.n_simulated || mc.n_sims} paths of ${mc.n_trades} trades — prob profit <strong style="color:${mc.prob_profit_pct >= 55 ? 'var(--neon-green)' : 'var(--neon-amber)'}">${mc.prob_profit_pct}%</strong>,
+          median outcome <strong>${mc.final_return.p50 > 0 ? '+' : ''}${mc.final_return.p50}%</strong>,
+          VaR95 <strong style="color:var(--neon-red);">${mc.var_95_pct}%</strong></span>`;
+
+        const rows = [
+          ['Prob. Profitable', `${mc.prob_profit_pct}%`, mc.prob_profit_pct >= 55],
+          ['Median Final Return', `${mc.final_return.p50 > 0 ? '+' : ''}${mc.final_return.p50}%`, mc.final_return.p50 > 0],
+          ['Best-Decile Outcome (p95)', `${mc.final_return.p95 > 0 ? '+' : ''}${mc.final_return.p95}%`, mc.final_return.p95 > 0],
+          ['Worst-Decile Outcome (p5)', `${mc.final_return.p5 > 0 ? '+' : ''}${mc.final_return.p5}%`, mc.final_return.p5 > 0],
+          ['VaR 95% / CVaR 95%', `${mc.var_95_pct}% / ${mc.cvar_95_pct}%`, mc.var_95_pct > -20],
+          ['Median Max Drawdown', `${mc.max_drawdown.p50}%`, mc.max_drawdown.p50 > -25],
+          ['p95 Max Drawdown', `${mc.max_drawdown.p95}%`, mc.max_drawdown.p95 > -35],
+          ['Worst Simulated Drawdown', `${mc.max_drawdown.worst}%`, mc.max_drawdown.worst > -50],
+          ['P(DD deeper than -20%)', `${mc.prob_dd_worse_20_pct}%`, mc.prob_dd_worse_20_pct < 30],
+          ['Risk of Ruin (≤ -50%)', `${mc.prob_bust_pct}%`, mc.prob_bust_pct < 5],
+          ['Median Longest Losing Streak', `${mc.median_worst_streak}`, true],
+        ];
+
+        $('mc-stats').innerHTML = rows.map(([k, v, good]) =>
+          `<div class="agent-stat"><span>${escapeHtml(k)}:</span><span class="agent-stat-value" style="color:${good ? 'var(--neon-green)' : 'var(--neon-red)'};">${escapeHtml(v)}</span></div>`
+        ).join('');
+
+        $('mc-panel').style.display = 'grid';
+        const initialCapital = Number(data.backtest && data.backtest.initial_capital);
+        renderMcChart(mc.fan, initialCapital);
+        status.textContent = `Complete · ${mc.n_simulated || mc.n_sims} paths from ${mc.n_trades} historical trades`;
+        toast(`Monte Carlo verdict: ${mc.verdict}`, mc.verdict === 'ROBUST' || mc.verdict === 'ACCEPTABLE' ? 'success' : 'info');
+        setConnection(true);
+      } catch (e) {
+        status.textContent = 'Monte Carlo failed';
+        toast('Monte Carlo failed: ' + e.message, 'error');
+      } finally {
+        setBusy(btn, false);
+      }
+    }
+
+    function renderMcChart(fan, initial) {
+      const canvas = $('mcChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (mcChartInstance) mcChartInstance.destroy();
+
+      const p50 = (fan && Array.isArray(fan.p50)) ? fan.p50 : [];
+      const labels = p50.map((_, i) => i === 0 ? 'Start' : '#' + i);
+
+      const ds = [
+        { key: 'p5', color: 'rgba(239, 68, 68, 0.85)' },
+        { key: 'p25', color: 'rgba(245, 158, 11, 0.8)' },
+        { key: 'p50', color: 'rgba(34, 211, 238, 1)' },
+        { key: 'p75', color: 'rgba(16, 185, 129, 0.8)' },
+        { key: 'p95', color: 'rgba(16, 185, 129, 0.85)' },
+      ]
+        .filter(d => fan && Array.isArray(fan[d.key]))
+        .map(d => ({
+          label: d.key.toUpperCase() + ' equity',
+          data: fan[d.key],
+          borderColor: d.color,
+          backgroundColor: 'transparent',
+          borderWidth: d.key === 'p50' ? 2.5 : 1.25,
+          pointRadius: 0,
+          tension: 0.15,
+          borderDash: d.key === 'p50' ? [] : [4, 3],
+          fill: false,
+        }));
+
+      if (Number.isFinite(initial) && initial > 0) {
+        ds.push({
+          label: 'Initial capital',
+          data: labels.map(() => initial),
+          borderColor: 'rgba(148, 163, 184, 0.5)',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [2, 5],
+          pointRadius: 0,
+          fill: false,
+        });
+      }
+
+      mcChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: ds },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#94a3b8', boxWidth: 10, font: { size: 9.5 } } },
+            tooltip: {
+              callbacks: {
+                label: (item) => `${item.dataset.label}: ${fmtMoney(item.parsed.y)}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              ticks: { color: '#64748b', maxTicksLimit: 11, font: { size: 9.5 } }
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              ticks: { color: '#64748b', font: { size: 9.5 }, callback: (v) => compactMoney(v) }
+            }
+          }
+        }
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // Supabase Data Vault — pill + configuration modal
+    // ------------------------------------------------------------------
+    function updateDbPill(stats) {
+      const dot = $('db-pill-dot');
+      const text = $('db-pill-text');
+      if (!dot || !text) return;
+      if (!stats || !stats.configured) {
+        dot.style.background = '#64748b';
+        dot.style.boxShadow = 'none';
+        text.textContent = 'DB OFF';
+      } else if (stats.muted || (stats.failures > 0 && stats.successes === 0)) {
+        dot.style.background = '#f59e0b';
+        dot.style.boxShadow = '0 0 10px #f59e0b';
+        text.textContent = 'DB ERROR';
+      } else if (!stats.verified) {
+        dot.style.background = '#f59e0b';
+        text.textContent = 'DB UNVERIFIED';
+      } else {
+        dot.style.background = '#10b981';
+        dot.style.boxShadow = '0 0 10px #10b981';
+        text.textContent = 'DB VERIFIED';
+      }
+    }
+
+    async function refreshDbStatus() {
+      try {
+        const res = await fetch('/api/supabase/status', { cache: 'no-store' });
+        updateDbPill(await res.json());
+      } catch (e) { /* pill keeps its last state */ }
+    }
+
+    function openDbModal() {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal-box" role="dialog" aria-modal="true" style="text-align:left; max-width:560px;">
+          <div class="modal-msg" style="text-align:left;">
+            <strong style="color:#e9d5ff;">Supabase Data Vault</strong><br>
+            Cloud-persist every trade, signal, equity snapshot, regime change, and training report.<br><br>
+            <span style="font-size:12px; color:var(--text-muted);">
+            1. Create a free project at supabase.com<br>
+            2. Paste <code style="color:#38bdf8;">supabase_schema.sql</code> (repo root) into the SQL editor and run it<br>
+            3. Set environment variables:<br>
+            &nbsp;&nbsp;&nbsp;<code style="color:#38bdf8;">SUPABASE_URL=https://&lt;project&gt;.supabase.co</code><br>
+            &nbsp;&nbsp;&nbsp;<code style="color:#38bdf8;">SUPABASE_SERVICE_KEY=&lt;server secret key&gt;</code><br>
+            4. Test the connection — this pill turns <span style="color:var(--neon-green);">DB VERIFIED</span></span>
+          </div>
+          <div id="db-test-result" style="font-size:12px; margin-top:8px; color:var(--text-muted);" role="status"></div>
+          <div class="modal-actions">
+            <button type="button" class="action-btn btn-secondary" data-close="1">Close</button>
+            <button type="button" class="action-btn btn-primary" id="db-test-btn">Test Connection</button>
+          </div>
+        </div>`;
+
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); close(); }
+      };
+      const untrap = trapFocus(overlay);
+      const close = () => {
+        document.removeEventListener('keydown', onKey);
+        untrap();
+        overlay.remove();
+      };
+
+      overlay.querySelector('[data-close]').addEventListener('click', close);
+      overlay.querySelector('#db-test-btn').addEventListener('click', async () => {
+        const out = overlay.querySelector('#db-test-result');
+        out.textContent = 'Checking read access to loki_events…';
+        try {
+          const r = await fetch('/api/supabase/test', { method: 'POST' });
+          const j = await r.json();
+          await refreshDbStatus();
+          out.innerHTML = j.ok
+            ? '<span style="color:var(--neon-green);">✓ Connection verified — no records were written.</span>'
+            : `<span style="color:var(--neon-red);">✗ ${escapeHtml(j.error || j.reason || 'connection failed')}</span>`;
+        } catch (e) {
+          out.innerHTML = `<span style="color:var(--neon-red);">✗ ${escapeHtml(e.message)}</span>`;
+        }
+      });
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(overlay);
+    }
+
+    function statusPill(msg) {
+      const holder = $('regime-summary');
+      if (holder) holder.innerHTML = `<div style="width:100%; color:var(--accent-cyan); font-size:12px; font-weight:600;">${escapeHtml(msg)}</div>`;
+    }
+
+    // ------------------------------------------------------------------
+    // Command palette
+    // ------------------------------------------------------------------
+    function paletteTabItems() {
+      return Array.from(document.querySelectorAll('.tab-btn')).map((btn, index) => {
+        const label = btn.textContent.trim().replace(/\s+/g, ' ');
+        return {
+          group: 'Navigate',
+          label: `Go to ${label}`,
+          hint: `Alt+${index + 1}`,
+          keywords: `${btn.dataset.tab} tab navigate ${label}`,
+          run: () => showTab(btn.dataset.tab, btn),
+        };
+      });
+    }
+
+    function paletteActionItems() {
+      const autoScanOn = !!($('auto-scan-toggle') && $('auto-scan-toggle').checked);
+      const items = [
+        {
+          group: 'Actions',
+          label: 'Scan the live universe now',
+          hint: 'Alt+S',
+          keywords: 'scan radar refresh signals',
+          run: () => { showTab('radar', $('btn-tab-radar')); triggerScan(); },
+        },
+        {
+          group: 'Actions',
+          label: autoScanOn ? 'Turn off radar auto-scan' : 'Turn on radar auto-scan (60s)',
+          hint: 'Radar',
+          keywords: 'auto scan timer refresh toggle',
+          run: () => {
+            const toggle = $('auto-scan-toggle');
+            if (toggle) {
+              toggle.checked = !toggle.checked;
+              setAutoScan(toggle.checked);
+              toast(`Radar auto-scan ${toggle.checked ? 'enabled' : 'disabled'}.`, 'info');
+            }
+          },
+        },
+        {
+          group: 'Actions',
+          label: 'Refresh the portfolio desk',
+          hint: 'Portfolio',
+          keywords: 'positions portfolio refresh desk',
+          run: () => { showTab('portfolio', $('btn-tab-portfolio')); loadPortfolio(); },
+        },
+        {
+          group: 'Actions',
+          label: 'Re-evaluate the agentic council',
+          hint: 'Council',
+          keywords: 'council agents deliberation refresh',
+          run: () => { showTab('council', $('btn-tab-council')); loadCouncil(); },
+        },
+        {
+          group: 'Actions',
+          label: 'Scan market regimes',
+          hint: 'Regime',
+          keywords: 'regime market scan classification',
+          run: () => { showTab('regime', $('btn-tab-regime')); loadRegime(true); },
+        },
+        {
+          group: 'Actions',
+          label: 'Run a backtest with the current settings',
+          hint: 'Backtest',
+          keywords: 'backtest simulate equity lab',
+          run: () => { showTab('backtest', $('btn-tab-backtest')); runBacktest(); },
+        },
+        {
+          group: 'Actions',
+          label: 'Run the Monte Carlo survival engine',
+          hint: 'Backtest',
+          keywords: 'monte carlo simulation bootstrap risk',
+          run: () => { showTab('backtest', $('btn-tab-backtest')); runMonteCarlo(); },
+        },
+        {
+          group: 'Actions',
+          label: 'Open the Supabase Data Vault',
+          hint: 'Database',
+          keywords: 'supabase database vault sync config',
+          run: () => openDbModal(),
+        },
+        {
+          group: 'Actions',
+          label: 'Manage the watchlist',
+          hint: 'Radar',
+          keywords: 'watchlist symbols add remove',
+          run: () => focusWatchlistInput(),
+        },
+        {
+          group: 'Actions',
+          label: 'Show keyboard shortcuts',
+          hint: '?',
+          keywords: 'keyboard help shortcuts hotkeys',
+          run: () => openShortcuts(),
+        },
+        {
+          group: 'Actions',
+          label: 'Refresh the active panel',
+          hint: 'Alt+R',
+          keywords: 'refresh reload active panel update data',
+          run: () => refreshActiveTab(),
+        },
+        {
+          group: 'Actions',
+          label: 'Toggle compact layout density',
+          hint: 'Alt+C',
+          keywords: 'compact density comfortable spacing rows layout',
+          run: () => toggleDensity(),
+        },
+      ];
+
+      if (radarSignals.length) {
+        items.push({
+          group: 'Export',
+          label: 'Export radar signals as CSV',
+          hint: `${radarSignals.length} rows`,
+          keywords: 'export download csv radar signals',
+          run: () => exportRadarCsv(),
+        });
+      }
+      if (portfolioData && portfolioData.recent_trades && portfolioData.recent_trades.length) {
+        items.push({
+          group: 'Export',
+          label: 'Export trade history as CSV',
+          hint: `${portfolioData.recent_trades.length} rows`,
+          keywords: 'export download csv trades history',
+          run: () => exportTradesCsv(),
+        });
+      }
+      if (portfolioData && portfolioData.positions && portfolioData.positions.length) {
+        items.push({
+          group: 'Export',
+          label: 'Export open positions as CSV',
+          hint: `${portfolioData.positions.length} rows`,
+          keywords: 'export download csv positions portfolio',
+          run: () => exportPositionsCsv(),
+        });
+      }
+      return items;
+    }
+
+    function paletteSymbolItems() {
+      const items = [];
+      const seen = new Set();
+      getWatchlist().forEach(sym => {
+        seen.add(sym);
+        items.push({
+          group: 'Watchlist',
+          label: `Inspect ${sym}`,
+          hint: 'Symbol',
+          keywords: `inspect symbol watchlist ${sym}`,
+          run: () => openSymbolInspector(sym),
+        });
+      });
+      radarSignals.forEach(s => {
+        if (!s || !s.symbol || seen.has(s.symbol)) return;
+        seen.add(s.symbol);
+        const action = String(s.action || 'HOLD').toUpperCase();
+        items.push({
+          group: 'Radar signals',
+          label: `Inspect ${s.symbol}`,
+          hint: action,
+          keywords: `inspect symbol radar signal ${s.symbol} ${action}`,
+          run: () => openSymbolInspector(s.symbol),
+        });
+      });
+      return items;
+    }
+
+    function getPaletteItems() {
+      return [...paletteTabItems(), ...paletteActionItems(), ...paletteSymbolItems()];
+    }
+
+    function renderPalette() {
+      const results = $('palette-results');
+      const input = $('palette-input');
+      if (!results || !input) return;
+      const query = input.value.trim().toLowerCase();
+      const all = getPaletteItems();
+      paletteFiltered = all.filter(item => {
+        if (!query) return true;
+        return `${item.group} ${item.label} ${item.keywords || ''}`.toLowerCase().includes(query);
+      }).slice(0, 40);
+
+      if (!paletteFiltered.length) {
+        results.innerHTML = `<div class="palette-empty">No commands match “${escapeHtml(input.value.trim())}”.</div>`;
+        input.removeAttribute('aria-activedescendant');
+        return;
+      }
+      if (paletteActiveIndex >= paletteFiltered.length) paletteActiveIndex = 0;
+
+      let html = '';
+      let lastGroup = '';
+      paletteFiltered.forEach((item, index) => {
+        if (item.group !== lastGroup) {
+          html += `<div class="palette-group" role="presentation">${escapeHtml(item.group)}</div>`;
+          lastGroup = item.group;
+        }
+        const active = index === paletteActiveIndex;
+        html += `<button type="button" class="palette-item${active ? ' active' : ''}" id="palette-item-${index}" role="option" aria-selected="${active}" tabindex="-1" data-index="${index}">
+          <span class="palette-label">${escapeHtml(item.label)}</span>
+          ${item.hint ? `<span class="palette-hint">${escapeHtml(item.hint)}</span>` : ''}
+        </button>`;
+      });
+      results.innerHTML = html;
+      input.setAttribute('aria-activedescendant', `palette-item-${paletteActiveIndex}`);
+      const activeEl = results.querySelector('.palette-item.active');
+      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    function openPalette(prefill = '') {
+      const overlay = $('palette-overlay');
+      const input = $('palette-input');
+      if (!overlay || !input) return;
+      if (!overlay.hidden) {
+        input.focus();
+        input.select();
+        return;
+      }
+      const active = document.activeElement;
+      paletteReturnFocus = active && active !== document.body ? active : $('btn-palette');
+      overlay.hidden = false;
+      input.value = prefill;
+      input.setAttribute('aria-expanded', 'true');
+      paletteActiveIndex = 0;
+      if (!paletteUntrap) paletteUntrap = trapFocus(overlay);
+      renderPalette();
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+    }
+
+    function closePalette() {
+      const overlay = $('palette-overlay');
+      const input = $('palette-input');
+      if (!overlay || overlay.hidden) return;
+      overlay.hidden = true;
+      if (input) {
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
+      }
+      releaseTrap(paletteUntrap);
+      paletteUntrap = null;
+      const returnTo = paletteReturnFocus;
+      paletteReturnFocus = null;
+      if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
+        returnTo.focus();
+      }
+    }
+
+    function runPaletteItem(index) {
+      const item = paletteFiltered[index];
+      if (!item) return;
+      closePalette();
+      try { item.run(); }
+      catch (e) {
+        console.error('Palette action failed:', e);
+        toast('Action failed: ' + e.message, 'error');
+      }
+    }
+
+    function initPalette() {
+      const overlay = $('palette-overlay');
+      const input = $('palette-input');
+      const results = $('palette-results');
+      if (!overlay || !input || !results) return;
+
+      input.addEventListener('input', () => { paletteActiveIndex = 0; renderPalette(); });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          paletteActiveIndex = Math.min(paletteActiveIndex + 1, paletteFiltered.length - 1);
+          renderPalette();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          paletteActiveIndex = Math.max(paletteActiveIndex - 1, 0);
+          renderPalette();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          runPaletteItem(paletteActiveIndex);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closePalette();
+        }
+      });
+      results.addEventListener('click', (e) => {
+        const btn = e.target.closest('.palette-item');
+        if (btn) runPaletteItem(Number(btn.dataset.index));
+      });
+      overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) closePalette(); });
+      overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePalette(); });
+
+      input.setAttribute('aria-expanded', 'false');
+      const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+      const kbd = $('palette-kbd');
+      if (kbd) kbd.textContent = isMac ? '⌘ K' : 'Ctrl K';
+    }
+
+    // ------------------------------------------------------------------
+    // Keyboard shortcut sheet
+    // ------------------------------------------------------------------
+    function openShortcuts() {
+      const returnFocus = document.activeElement;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      const rows = [
+        ['Ctrl / ⌘ + K', 'Open the command palette'],
+        ['?', 'Show this shortcut sheet'],
+        ['Alt + 1 … 6', 'Jump between terminal sections'],
+        ['Alt + R', 'Refresh the active panel'],
+        ['Alt + S', 'Scan the live universe'],
+        ['Alt + C', 'Toggle compact layout density'],
+        ['← / → / Home / End', 'Navigate tabs when the tab bar is focused'],
+        ['Esc', 'Close the palette or an open dialog'],
+        ['Enter', 'Confirm the focused action'],
+      ];
+      overlay.innerHTML = `
+        <div class="modal-box shortcuts-box" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+          <div class="inspector-head">
+            <div>
+              <h3 id="shortcuts-title">Keyboard shortcuts</h3>
+              <span class="cell-sub">Move around the terminal without reaching for the mouse</span>
+            </div>
+            <button type="button" class="icon-btn inspector-close" aria-label="Close shortcuts">×</button>
+          </div>
+          <div class="shortcuts-grid">
+            ${rows.map(([key, desc]) => `<div class="shortcut-row"><kbd>${escapeHtml(key)}</kbd><span>${escapeHtml(desc)}</span></div>`).join('')}
+          </div>
+          <p class="inspector-note">Tip: click any ticker in a table to open its symbol inspector. Click a column header to sort.</p>
+          <div class="modal-actions">
+            <button type="button" class="action-btn btn-primary" data-close>GOT IT</button>
+          </div>
+        </div>`;
+      const untrap = trapFocus(overlay);
+      const close = () => {
+        untrap();
+        overlay.remove();
+        if (returnFocus && document.contains(returnFocus) && typeof returnFocus.focus === 'function') {
+          returnFocus.focus();
+        }
+      };
+      overlay.querySelector('.inspector-close').addEventListener('click', close);
+      overlay.querySelector('[data-close]').addEventListener('click', close);
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.querySelector('.inspector-close').focus(), 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Symbol inspector
+    // ------------------------------------------------------------------
+    function closeInspector() {
+      if (!inspectorOverlay) return;
+      const returnTo = inspectorReturnFocus;
+      inspectorReturnFocus = null;
+      releaseTrap(inspectorUntrap);
+      inspectorUntrap = null;
+      inspectorOverlay.remove();
+      inspectorOverlay = null;
+      if (returnTo && document.contains(returnTo) && typeof returnTo.focus === 'function') {
+        returnTo.focus();
+      }
+    }
+
+    function inspectorTrade(symbol) {
+      closeInspector();
+      showTab('portfolio', $('btn-tab-portfolio'));
+      const input = $('order-symbol');
+      if (input) {
+        input.value = symbol;
+        input.focus();
+        input.select();
+      }
+      toast(`${symbol} loaded into the order ticket.`, 'info');
+    }
+
+    function inspectorBacktest(symbol) {
+      closeInspector();
+      showTab('backtest', $('btn-tab-backtest'));
+      const input = $('bt-symbol');
+      if (input) {
+        input.value = symbol;
+        input.focus();
+        input.select();
+      }
+      toast(`${symbol} loaded into the backtest lab.`, 'info');
+    }
+
+    function toggleWatchlistSymbol(symbol) {
+      const list = getWatchlist();
+      if (list.includes(symbol)) {
+        removeWatchlistSymbol(symbol);
+      } else {
+        list.push(symbol);
+        saveWatchlist(list);
+        toast(`${symbol} added to your watchlist.`, 'success');
+      }
+      const btn = Array.from(document.querySelectorAll('.inspector-actions button'))
+        .find(b => b.textContent.includes('WATCHLIST'));
+      if (btn) {
+        btn.textContent = getWatchlist().includes(symbol) ? 'REMOVE FROM WATCHLIST' : 'ADD TO WATCHLIST';
+      }
+    }
+
+    function renderInspector(overlay, symbol, signal, regime, position) {
+      const body = overlay.querySelector('#inspector-body');
+      const badges = overlay.querySelector('#inspector-badges');
+      if (!body || !badges) return;
+
+      const action = String((signal && signal.action) || 'HOLD').toUpperCase();
+      const actionClass = action === 'BUY' ? 'badge-buy' : (action === 'SELL' ? 'badge-sell' : 'badge-hold');
+      badges.innerHTML = `${signal ? `<span class="badge ${actionClass}">${action}</span>` : ''}${regime ? regimePill(regime.state) : ''}`;
+
+      const sections = [];
+      if (signal) {
+        const reasons = (signal.reasons || []).map(r => `<span class="factor-tag">${escapeHtml(r)}</span>`).join(' ');
+        sections.push(`
+          <section class="inspector-section">
+            <div class="inspector-section-head"><span>Signal snapshot</span><span class="badge badge-cyan">${escapeHtml(String(signal.squeeze_status || 'OFF'))}</span></div>
+            <div class="inspector-kpis">
+              <div class="inspector-kpi"><span>Score</span><strong>${Number(signal.score) > 0 ? '+' : ''}${fmtNum(signal.score, 1)}</strong></div>
+              <div class="inspector-kpi"><span>Confidence</span><strong>${fmtNum(signal.confidence, 1)}%</strong></div>
+              <div class="inspector-kpi"><span>Risk : Reward</span><strong>1 : ${fmtNum(signal.risk_reward, 2)}</strong></div>
+              <div class="inspector-kpi"><span>Entry</span><strong>${fmtMoney(signal.entry_price)}</strong></div>
+            </div>
+            <div class="inspector-plan">
+              <div><span>Entry</span><strong>${fmtMoney(signal.entry_price)}</strong></div>
+              <div><span>Stop</span><strong class="text-negative">${fmtMoney(signal.stop_loss)}</strong></div>
+              <div><span>Target 1</span><strong class="text-positive">${fmtMoney(signal.take_profit)}</strong></div>
+              <div><span>Target 2</span><strong class="text-positive">${signal.target_2 ? fmtMoney(signal.target_2) : '—'}</strong></div>
+            </div>
+            <div class="factors-list inspector-factors">${reasons || '<span class="cell-sub">No factor detail returned.</span>'}</div>
+          </section>`);
+      } else {
+        sections.push(`<section class="inspector-section"><div class="inspector-section-head"><span>Signal snapshot</span></div><div class="inspector-note">No radar signal is cached for this symbol. Run a scan to refresh the matrix.</div></section>`);
+      }
+
+      if (regime) {
+        const dist = Object.entries(regime.distribution || {}).sort((a, b) => b[1] - a[1]).map(([state, frac]) => {
+          const color = REGIME_COLORS[state] || '#64748b';
+          return `<div class="regime-dist-row">
+            <span class="regime-dist-label" style="color:${color};">${escapeHtml(cleanState(state))}</span>
+            <div class="regime-dist-bar"><div style="width:${(frac * 100).toFixed(1)}%; background:${color};"></div></div>
+            <span class="regime-dist-val">${(frac * 100).toFixed(0)}%</span>
+          </div>`;
+        }).join('');
+        sections.push(`
+          <section class="inspector-section">
+            <div class="inspector-section-head"><span>Market regime</span>${regimePill(regime.state)}</div>
+            <div class="agent-stat"><span>Trend score</span><span class="agent-stat-value">${Number(regime.trend_score) > 0 ? '+' : ''}${regime.trend_score}</span></div>
+            <div class="agent-stat"><span>ADX</span><span class="agent-stat-value">${regime.adx}</span></div>
+            <div class="agent-stat"><span>Daily ATR volatility</span><span class="agent-stat-value">${regime.volatility_pct}% · rank ${regime.volatility_rank}</span></div>
+            <div class="metric-bar-row">
+              <span class="metric-bar-label">Confidence</span>
+              <div class="metric-bar"><div style="width:${regime.confidence}%; background:${REGIME_COLORS[regime.state] || '#64748b'};"></div></div>
+              <span class="metric-bar-val">${regime.confidence}%</span>
+            </div>
+            <p class="inspector-note">${escapeHtml(regime.description || '')}</p>
+            ${dist ? `<div class="inspector-dist-title">History distribution (${regime.bars} bars)</div>${dist}` : ''}
+          </section>`);
+      }
+
+      if (position) {
+        const pnlColor = position.unrealized_pnl >= 0 ? 'text-positive' : 'text-negative';
+        const sign = position.unrealized_pnl >= 0 ? '+' : '';
+        sections.push(`
+          <section class="inspector-section">
+            <div class="inspector-section-head"><span>Open position</span><span class="badge ${position.side === 'long' ? 'badge-long' : 'badge-short'}">${escapeHtml(String(position.side).toUpperCase())}</span></div>
+            <div class="agent-stat"><span>Quantity</span><span class="agent-stat-value">${fmtNum(position.qty, 4)}</span></div>
+            <div class="agent-stat"><span>Average entry</span><span class="agent-stat-value">${fmtMoney(position.avg_entry)}</span></div>
+            <div class="agent-stat"><span>Current price</span><span class="agent-stat-value">${fmtMoney(position.current_price)}</span></div>
+            <div class="agent-stat"><span>Market value</span><span class="agent-stat-value">${fmtMoney(position.market_value)}</span></div>
+            <div class="agent-stat"><span>Unrealized P&amp;L</span><span class="agent-stat-value ${pnlColor}">${sign}${fmtMoney(position.unrealized_pnl)} (${sign}${fmtNum(position.unrealized_pnl_pct)}%)</span></div>
+            <div class="agent-stat"><span>Stop / target</span><span class="agent-stat-value">${fmtMoney(position.stop_loss)} / ${fmtMoney(position.take_profit)}</span></div>
+            <button type="button" class="action-btn btn-close btn-compact inspector-close-position" onclick="closeInspector(); closePosition('${safeSymbol(symbol)}', null)">CLOSE POSITION</button>
+          </section>`);
+      }
+
+      const inWatchlist = getWatchlist().includes(symbol);
+      sections.push(`
+        <div class="inspector-actions">
+          <button type="button" class="action-btn btn-primary btn-compact" onclick="inspectorTrade('${safeSymbol(symbol)}')">TRADE ${escapeHtml(symbol)}</button>
+          <button type="button" class="action-btn btn-secondary btn-compact" onclick="inspectorBacktest('${safeSymbol(symbol)}')">BACKTEST</button>
+          <button type="button" class="action-btn btn-secondary btn-compact" onclick="toggleWatchlistSymbol('${safeSymbol(symbol)}')">${inWatchlist ? 'REMOVE FROM WATCHLIST' : 'ADD TO WATCHLIST'}</button>
+        </div>`);
+
+      body.setAttribute('aria-busy', 'false');
+      body.innerHTML = sections.join('');
+    }
+
+    async function openSymbolInspector(rawSymbol) {
+      const symbol = safeSymbol(rawSymbol);
+      if (!symbol) return;
+      closeInspector();
+      inspectorReturnFocus = document.activeElement;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal-box inspector-box" role="dialog" aria-modal="true" aria-labelledby="inspector-title">
+          <div class="inspector-head">
+            <div>
+              <h3 id="inspector-title">${escapeHtml(symbol)}</h3>
+              <span class="cell-sub">Symbol inspector</span>
+            </div>
+            <div class="inspector-badges" id="inspector-badges"></div>
+            <button type="button" class="icon-btn inspector-close" aria-label="Close symbol inspector">×</button>
+          </div>
+          <div id="inspector-body" aria-busy="true">
+            <div class="skeleton skeleton-line short" style="margin-bottom:10px;"></div>
+            <div class="skeleton skeleton-block" style="margin-bottom:10px;"></div>
+            <div class="skeleton skeleton-line" style="margin-bottom:8px;"></div>
+            <div class="skeleton skeleton-line short"></div>
+          </div>
+        </div>`;
+      inspectorOverlay = overlay;
+      inspectorUntrap = trapFocus(overlay);
+
+      const close = () => closeInspector();
+      overlay.querySelector('.inspector-close').addEventListener('click', close);
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.querySelector('.inspector-close').focus(), 0);
+
+      const getJson = async (url) => {
+        const res = await fetch(url, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+        return data;
+      };
+
+      const [scanResult, regimeResult, portfolioResult] = await Promise.allSettled([
+        getJson(`/api/scan?symbols=${encodeURIComponent(symbol)}`),
+        getJson(`/api/regime?symbols=${encodeURIComponent(symbol)}&period=5y`),
+        getJson('/api/portfolio'),
+      ]);
+
+      if (!inspectorOverlay || inspectorOverlay !== overlay) return;
+
+      let signal = null;
+      if (scanResult.status === 'fulfilled') {
+        signal = (scanResult.value.signals || []).find(s => String(s.symbol).toUpperCase() === symbol) || null;
+        radarRegimes[symbol] = (scanResult.value.regimes || {})[symbol] || radarRegimes[symbol];
+      }
+      let regime = null;
+      if (regimeResult.status === 'fulfilled') {
+        regime = (regimeResult.value.symbols || []).find(s => String(s.symbol).toUpperCase() === symbol && !s.error) || null;
+      }
+      let position = null;
+      if (portfolioResult.status === 'fulfilled') {
+        portfolioData = portfolioResult.value;
+        portfolioLoaded = true;
+        portfolioLoadedAt = new Date();
+        const portfolioPanel = $('tab-portfolio');
+        if (portfolioPanel && portfolioPanel.style.display !== 'none') renderPortfolio();
+        position = (portfolioResult.value.positions || []).find(p => String(p.symbol).toUpperCase() === symbol) || null;
+      } else if (portfolioData) {
+        position = (portfolioData.positions || []).find(p => String(p.symbol).toUpperCase() === symbol) || null;
+      }
+
+      if (!signal && !regime && !position) {
+        const body = overlay.querySelector('#inspector-body');
+        body.setAttribute('aria-busy', 'false');
+        body.innerHTML = emptyState('🔎', 'No data for ' + symbol, 'The symbol could not be resolved by the market data provider. Check the ticker and try again.', { label: 'RETRY', onclick: `openSymbolInspector('${safeSymbol(symbol)}')` });
+        return;
+      }
+      renderInspector(overlay, symbol, signal, regime, position);
+    }
+
+
+    // ------------------------------------------------------------------
+    // Keyboard shortcuts + init
+    // ------------------------------------------------------------------
+    document.addEventListener('keydown', (e) => {
+      const target = e.target;
+      const typing = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && String(e.key).toLowerCase() === 'k') {
+        e.preventDefault();
+        const overlay = $('palette-overlay');
+        if (overlay && overlay.hidden) openPalette();
+        else closePalette();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        const overlay = $('palette-overlay');
+        if (overlay && !overlay.hidden) { e.preventDefault(); closePalette(); return; }
+        if (inspectorOverlay) { e.preventDefault(); closeInspector(); return; }
+      }
+
+      if (typing) return;
+
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        const key = String(e.key).toLowerCase();
+        const idx = parseInt(e.key, 10);
+        if (idx >= 1 && idx <= 6) {
+          const btn = document.querySelectorAll('.tab-btn')[idx - 1];
+          if (btn && btn.dataset.tab) {
+            e.preventDefault();
+            showTab(btn.dataset.tab, btn);
+          }
+        } else if (key === 'r') {
+          e.preventDefault();
+          refreshActiveTab();
+        } else if (key === 's') {
+          e.preventDefault();
+          showTab('radar', $('btn-tab-radar'));
+          triggerScan();
+        } else if (key === 'c') {
+          e.preventDefault();
+          toggleDensity();
+        }
+        return;
+      }
+
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (document.querySelector('.modal-overlay')) return;
+        e.preventDefault();
+        openShortcuts();
+      }
+    });
+
+    initPalette();
+    initTabKeyboard();
+    restoreSorts();
+
+    // Make wide tables keyboard-scrollable with an accessible name.
+    document.querySelectorAll('.table-scroll').forEach(scroll => {
+      const caption = scroll.querySelector('caption');
+      if (!caption || scroll.tabIndex >= 0) return;
+      scroll.setAttribute('role', 'region');
+      scroll.setAttribute('aria-label', caption.textContent.trim());
+      scroll.tabIndex = 0;
+    });
+
+    const scrollTopBtn = $('scroll-top');
+    if (scrollTopBtn) {
+      const updateScrollTop = () => scrollTopBtn.classList.toggle('visible', window.scrollY > 600);
+      window.addEventListener('scroll', updateScrollTop, { passive: true });
+      updateScrollTop();
+    }
+
+    window.addEventListener('hashchange', () => {
+      const tabId = location.hash.replace('#', '');
+      if ($('tab-' + tabId)) {
+        showTab(tabId, document.querySelector(`.tab-btn[data-tab="${tabId}"]`), { fromHash: true });
+      }
+    });
+
+    tickClock();
+    setInterval(tickClock, 1000);
+
+    updateStatus();
+    checkAutonomousStatus();
+    renderWatchlist();
+    refreshRegimePill();
+    refreshDbStatus();
+
+    loadEquityHistory();
+    renderEquitySpark();
+    applyDensity(localStorage.getItem('loki_density') === 'compact' ? 'compact' : 'comfortable');
+    refreshOrderSymbolList();
+    updateOrderEstimate();
+    setInterval(updateAutoScanCountdown, 1000);
+
+    ['order-qty', 'order-symbol'].forEach(id => {
+      const el = $(id);
+      if (el) el.addEventListener('input', updateOrderEstimate);
+    });
+    const orderActionSel = $('order-action');
+    if (orderActionSel) orderActionSel.addEventListener('change', updateOrderEstimate);
+
+    const autoScanToggle = $('auto-scan-toggle');
+    if (autoScanToggle) {
+      autoScanToggle.checked = localStorage.getItem('loki_auto_scan') === '1';
+      autoScanToggle.addEventListener('change', () => setAutoScan(autoScanToggle.checked));
+      if (autoScanToggle.checked) setAutoScan(true);
+    }
+
+    setInterval(() => {
+      updateStatus();
+      checkAutonomousStatus();
+    }, 10000);
+    setInterval(refreshRegimePill, 60000);
+    setInterval(refreshDbStatus, 45000);
+
+    connectWebSocket();
+
+    const hashTab = location.hash.replace('#', '');
+    const savedTab = localStorage.getItem('loki_active_tab');
+    const initialTab = ($('tab-' + hashTab) && hashTab) ||
+      (savedTab && $('tab-' + savedTab) ? savedTab : 'radar');
+    showTab(initialTab, document.querySelector(`.tab-btn[data-tab="${initialTab}"]`));
+
+    // Warm the radar on first load.
+    triggerScan();
+  </script>
+</body>
+</html>

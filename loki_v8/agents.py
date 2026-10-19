@@ -143,6 +143,8 @@ class ExecutionAgent:
         if not decision.get("approved"):
             return {"executed": False, "reason": decision.get("reason")}
         if decision.get("action") == "BUY":
+            if symbol in self.broker.positions:
+                return {"executed": False, "reason": "position_already_open"}
             qty = decision["qty"]
             ok = self.broker.buy(symbol, qty, price)
             if ok and symbol in self.broker.positions:
@@ -168,7 +170,13 @@ class LokiAgentPipeline:
         self.executor = ExecutionAgent(cfg, broker)
 
     def run_symbol(
-        self, symbol: str, equity: float, open_positions: int, price: float
+        self,
+        symbol: str,
+        equity: float,
+        open_positions: int,
+        price: float,
+        *,
+        execute: bool = False,
     ) -> List[Dict]:
         """Run the pipeline and return the ordered decision trail."""
         trail: List[Dict] = []
@@ -189,13 +197,21 @@ class LokiAgentPipeline:
         r = self.risk.run(d["posture"], sig, equity, open_positions, price)
         trail.append({"agent": "risk", **r})
 
-        e = self.executor.run(symbol, r, price)
+        e = (
+            self.executor.run(symbol, r, price)
+            if execute
+            else {"executed": False, "reason": "review_only", "approved": r.get("approved", False)}
+        )
         trail.append({"agent": "execution", **e})
 
         return trail
 
     def run_universe(
-        self, symbols: Optional[List[str]] = None, equity: Optional[float] = None
+        self,
+        symbols: Optional[List[str]] = None,
+        equity: Optional[float] = None,
+        *,
+        execute: bool = False,
     ) -> Dict:
         """Run the pipeline across a symbol list and return a full report."""
         syms = symbols or self.cfg.symbols
@@ -206,10 +222,12 @@ class LokiAgentPipeline:
         report = {"trails": {}, "signals": 0, "executed": 0}
         for sym in syms:
             price = quotes.get(sym, 0.0)
-            trail = self.run_symbol(sym, equity, open_positions, price)
+            trail = self.run_symbol(sym, equity, open_positions, price, execute=execute)
             report["trails"][sym] = trail
             if any(t.get("agent") == "quant" and t.get("action") in ("BUY", "SELL") for t in trail):
                 report["signals"] += 1
             if any(t.get("agent") == "execution" and t.get("executed") for t in trail):
                 report["executed"] += 1
+                open_positions = len(self.executor.broker.positions)
+                equity = self.executor.broker.equity(quotes)
         return report

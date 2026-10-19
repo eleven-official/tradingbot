@@ -23,6 +23,8 @@ editor once. See README "Supabase Data Vault" for instructions.
 from __future__ import annotations
 
 import logging
+import hashlib
+from urllib.parse import urlsplit
 import os
 import threading
 import time
@@ -56,6 +58,7 @@ class SupabaseLogger:
     """Fire-and-forget persistence to Supabase (PostgREST) tables."""
 
     def __init__(self):
+        self._verified_config = None
         self._pool: Optional[ThreadPoolExecutor] = None
         self._futures: List[Any] = []
         self._lock = threading.Lock()
@@ -76,69 +79,124 @@ class SupabaseLogger:
     def key(self) -> str:
         _load_dotenv_once()
         return (
-            os.environ.get("SUPABASE_SERVICE_KEY")
-            or os.environ.get("SUPABASE_KEY")
-            or os.environ.get("SUPABASE_ANON_KEY")
-            or ""
+            os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or ""
         ).strip()
 
-    def configured(self) -> bool:
-        return bool(self.url()) and bool(self.key())
+    def _configuration(self):
+        url, key = self.url(), self.key()
+        parsed = urlsplit(url)
+        if not url or not key:
+            raise ValueError("not_configured")
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or not parsed.hostname.endswith(".supabase.co")
+            or parsed.username
+            or parsed.password
+            or parsed.port not in (None, 443)
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Use the HTTPS Supabase project URL without paths or credentials")
+        if key.startswith("sb_publishable_"):
+            raise ValueError(
+                "Configure a server secret or legacy service-role key, not a publishable key"
+            )
+        headers = {"apikey": key, "Content-Type": "application/json"}
+        # Opaque sb_secret keys are not JWTs. Legacy JWT keys still need Bearer.
+        if not key.startswith("sb_secret_"):
+            import base64
+            import json
 
-    # ------------------------------------------------------------------
-    # Core write path
-    # ------------------------------------------------------------------
+            try:
+                payload = key.split(".")[1]
+                claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+                if claims.get("role") != "service_role":
+                    raise ValueError()
+            except (IndexError, ValueError, TypeError):
+                raise ValueError("A server secret or legacy service-role JWT is required") from None
+            headers["Authorization"] = f"Bearer {key}"
+        fingerprint = hashlib.sha256((url + "\0" + key).encode()).hexdigest()
+        return url, headers, fingerprint
+
+    def configured(self) -> bool:
+        try:
+            self._configuration()
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    def request(self, method, table, *, row=None, params=None):
+        """Shared, non-redirecting transport; never returns provider errors or keys."""
+        allowed = {
+            "loki_trades",
+            "loki_signals",
+            "loki_equity_snapshots",
+            "loki_regime_events",
+            "loki_training_reports",
+            "loki_events",
+        }
+        if table not in allowed or method not in {"GET", "POST"}:
+            return {"ok": False, "error": "Unsupported vault operation"}
+        try:
+            url, headers, fingerprint = self._configuration()
+        except (ValueError, TypeError) as exc:
+            return {"ok": False, "reason": str(exc)}
+        try:
+            import requests
+
+            headers["Prefer"] = "return=representation" if method == "POST" else "count=none"
+            response = requests.request(
+                method,
+                f"{url}/rest/v1/{table}",
+                headers=headers,
+                params=params,
+                json=[row] if row is not None else None,
+                timeout=(2.0, 5.0),
+                allow_redirects=False,
+            )
+            ok = response.status_code in (200, 201, 202, 204)
+            data = response.json() if ok and response.content else []
+            if ok and not isinstance(data, list):
+                raise ValueError("Unexpected vault response")
+            with self._lock:
+                if ok:
+                    self._successes += 1
+                    self._last_success_at = datetime.now().isoformat(timespec="seconds")
+                    self._last_error = None
+                    self._verified_config = fingerprint
+                    self._muted_until = 0.0
+                else:
+                    self._failures += 1
+                    self._last_error = f"Vault request failed (HTTP {response.status_code})"
+                    self._verified_config = None
+                    self._maybe_mute()
+            return {"ok": ok, "data": data if ok else [], "error": None if ok else self._last_error}
+        except Exception:
+            with self._lock:
+                self._failures += 1
+                self._last_error = "Vault connection failed; check server configuration and schema"
+                self._verified_config = None
+                self._maybe_mute()
+            return {"ok": False, "error": self._last_error}
+
     def _post(self, table: str, row: Dict[str, Any], run_in_pool: bool = True) -> Dict[str, Any]:
-        """Insert one row into ``table``. Returns a status dict; never raises."""
         if not self.configured():
             return {"ok": False, "reason": "not_configured"}
-
-        now = time.monotonic()
         with self._lock:
-            if now < self._muted_until and run_in_pool:
+            if run_in_pool and time.monotonic() < self._muted_until:
                 return {"ok": False, "reason": "cooldown_after_failures"}
-
-        def _perform() -> Dict[str, Any]:
-            try:
-                import requests  # local import: keeps yfinance-free envs safe
-
-                resp = requests.post(
-                    f"{self.url()}/rest/v1/{table}",
-                    json=[row],
-                    headers={
-                        "apikey": self.key(),
-                        "Authorization": f"Bearer {self.key()}",
-                        "Content-Type": "application/json",
-                        "Prefer": "return=minimal",
-                    },
-                    timeout=(2.0, 5.0),
-                )
-                ok = resp.status_code in (200, 201, 202, 204)
-                with self._lock:
-                    if ok:
-                        self._successes += 1
-                        self._last_success_at = datetime.now().isoformat(timespec="seconds")
-                    else:
-                        self._failures += 1
-                        self._last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
-                        self._maybe_mute()
-                return {"ok": ok, "error": None if ok else self._last_error}
-            except Exception as exc:  # noqa: BLE001 — logging must never crash trading
-                with self._lock:
-                    self._failures += 1
-                    self._last_error = f"{type(exc).__name__}: {exc}"
-                    self._maybe_mute()
-                return {"ok": False, "error": self._last_error}
-
-        if run_in_pool:
-            self._ensure_pool()
-            try:
-                fut = self._pool.submit(_perform)  # type: ignore[union-attr]
-                self._futures.append(fut)
-                return {"ok": True, "queued": True}
-            except Exception:  # noqa: BLE001
-                return _perform()
-        return _perform()
+        if not run_in_pool:
+            return self.request("POST", table, row=row)
+        self._ensure_pool()
+        with self._lock:
+            self._futures = [f for f in self._futures if not f.done()]
+            if len(self._futures) >= 100:
+                return {"ok": False, "reason": "queue_full"}
+            future = self._pool.submit(self.request, "POST", table, row=row)
+            self._futures.append(future)
+        return {"ok": True, "queued": True}
 
     def _maybe_mute(self) -> None:
         """Pause background logging for a while after repeated failures."""
@@ -167,9 +225,15 @@ class SupabaseLogger:
     # Status / test
     # ------------------------------------------------------------------
     def status(self) -> Dict[str, Any]:
+        try:
+            fingerprint = self._configuration()[2]
+        except (ValueError, TypeError):
+            fingerprint = None
         with self._lock:
             return {
-                "configured": self.configured(),
+                "configured": fingerprint is not None,
+                "verified": fingerprint is not None and self._verified_config == fingerprint,
+                "scope": "private_server_vault",
                 "successes": self._successes,
                 "failures": self._failures,
                 "last_error": self._last_error,
@@ -180,15 +244,9 @@ class SupabaseLogger:
             }
 
     def test_connection(self, table: str = "loki_events") -> Dict[str, Any]:
-        """Synchronous write-and-verify used by the web UI's test button."""
-        result = self._post(
-            table,
-            {
-                "kind": "connection_test",
-                "payload": {"at": datetime.now().isoformat(timespec="seconds")},
-            },
-            run_in_pool=False,
-        )
+        """Read at most one ID. Testing never inserts a synthetic trade/event."""
+        result = self.request("GET", table, params={"select": "id", "limit": "1"})
+        result.pop("data", None)
         return result
 
     # ------------------------------------------------------------------

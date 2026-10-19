@@ -1,333 +1,87 @@
-# 🚀 Loki Quantum Platform — Next-Gen Algorithmic Trading
+# Loki Trading Workspace
 
-## ⚡ Next-Level Upgrade v8.5
+One Python application combines Loki Fusion research, the v8 strategy engine,
+market planning, broker sessions and Supabase persistence.
 
-**System Status:** ✅ FULLY OPERATIONAL  
-**Architecture:** Autonomous 4-Agent Council (Director ➔ Quant ➔ Risk Sentinel ➔ Hermes Execution Router)  
-**Signal Engine:** 5-Factor Weighted Ensemble (trend · momentum · money-flow · TTM squeeze · volatility) + ATR risk sizing  
-**Regime Engine:** 5-State Trend/Volatility Classification (STRONG_BULL · BULL · RANGING · BEAR · CRISIS) with causal volatility-percentile detection — longs blocked in bear/crisis regimes across backtests, council, and live trading  
-**Trainer:** Multi-Factor Walk-Forward Grid Search with auto-refinement ("train until good trades"), 90%-profitability aggressive mode, cross-symbol consensus, 5–10 year history support  
-**Risk Lab:** Monte Carlo bootstrap engine — thousands of alternate equity lifetimes, percentile fans, V@R/CV@R, risk-of-ruin  
-**Data Vault:** Optional Supabase cloud persistence (trades, signals, equity snapshots, regime changes, training reports) — configure any time, zero-prompt until then  
-**Execution:** Zero-Lookahead Event-Driven Paper & Live Multi-Market Engine (US Stocks, Crypto, Global Indices)  
-**Web Terminal:** Real-Time Cyber-Institutional Command Center with Regime Monitor, Monte Carlo Lab, and Instant Order Desk  
+## Run locally
 
----
+Requires Python 3.12. From the repository root:
 
-## 🏦 Supabase Data Vault (optional — add credentials when ready)
-
-The engine ships persistence-ready. Until configured it quietly does nothing;
-once you add two environment variables every trade, signal, equity snapshot,
-regime change, and training report is mirrored to your own Supabase tables:
-
-1. Create a free project at [supabase.com](https://supabase.com).
-2. In the Supabase **SQL Editor**, paste and run [`supabase_schema.sql`](supabase_schema.sql) (repo root). It creates
-   `loki_trades`, `loki_signals`, `loki_equity_snapshots`, `loki_regime_events`,
-   `loki_training_reports`, and `loki_events`.
-3. Get the **Project URL** and **service_role key** (Project Settings → API).
-4. Set the environment variables (local `.env` or Vercel Project → Settings → Environment Variables):
-
-```
-SUPABASE_URL=https://<project-ref>.supabase.co
-SUPABASE_SERVICE_KEY=<service_role key>
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements_desktop.txt
+.\.venv\Scripts\python.exe launch_loki_fusion.py --port 8123
 ```
 
-5. Restart / redeploy. The terminal header shows **DB SYNCED** (green) once writes
-   flow; click the pill any time for status and a one-click write test.
+Open http://127.0.0.1:8123/. The local launcher enables private native tools and
+broker sessions only for loopback, same-origin requests with its session token.
+Use `--config fusion.config.local.json` for optional private engine settings;
+copy the example file and keep local settings outside Git.
 
-> The service_role key bypasses row-level security — keep it server-side only.
+## Integrated features
 
-## 🧠 AI Strategy Trainer — multi-factor + 90% profitability mode
+- Quant lab: imported OHLCV, factor diagnostics, purged walk-forward evaluation,
+  pullback research, cost assumptions and benchmark comparisons.
+- Agent council: inspect deterministic reviews and provenance. Viewing a council
+  never places an order.
+- Paper portfolio and simulated market: practice ledgers, synthetic regimes,
+  limits/stops and scenario stress. Synthetic results cannot establish an edge.
+- Broker connection: Alpaca paper/live keys and supported exchange inspection
+  keys stay in local server memory for up to four hours, outside browser storage,
+  exports and source control.
+- Alpaca paper AI: explicitly train on 5 or 10 years of completed daily history,
+  inspect training/validation/test dates, then Start/Pause the runner. It pauses
+  when its page is hidden; venue orders and positions remain until reconciled or
+  explicitly canceled. Live automation is disabled.
+- Advanced terminal: the merged v8 multi-factor engine, TTM Squeeze, CMF, regime
+  monitor, backtests, Monte Carlo scenarios and parameter trainer. Its explicit
+  paper loop manages stops/risk against an independent local simulated balance.
+- Market planner: public Binance snapshots, six-role paper council, daily
+  loss-cap estimates, risk sizing and a context-aware local coach.
+- Research desk: preserved CSV paper agent, versioned strategies and local
+  profile at `/research-desk`.
+- Supabase vault: shared server-only transport for the engine and domain manager.
+  See [setup](SUPABASE_SETUP.md).
 
-`templates → AI Strategy Trainer` (or `GET /api/training/run`):
+Manual Kraken real orders use the separate host-enabled preview/confirmation
+workflow and journal. Selecting Real places no order. Broker credentials and
+market entitlements are necessary for actual account access.
 
-* **Honest mode** — rank by out-of-sample Sharpe, verify on the untouched last 30%.
-* **🎯 90% Profitability Chase (aggressive)** — `objective=win_rate&target_win_rate=90`:
-  sweeps small-take-profit / wide-stop geometries and re-ordered factor weights,
-  auto-refining the search neighborhood for up to 3 rounds until the good-trade
-  hurdles (≥90% OOS win rate, positive OOS return, PF ≥ 1.25, DD > −30%, ≥50%
-  profitable months) pass — the report always states what was actually verified.
-  The sweep now includes **smart exits** (v8.7): a *breakeven lock* ratchets the
-  stop to entry (+cost cushion) once the trade moves in favor, converting
-  would-be full losses into scratches, plus a *polish stage* that tries
-  scale-outs, conviction/regime/vol-target sizing, armed trailing, and an
-  adaptive threshold on top of the winning geometry.
-* **Multi-factor optimization** — 14 named weight presets over the five factor
-  stacks, re-scored cheaply from precomputed factor columns.
-* **Consensus** — one click applies the median winner of every symbol to the engine.
+## Evidence and limits
 
-## 🧠 Smart Trade Management (v8.7 engine)
+**A 70% closed-trade win rate has not been proven. Future returns are not
+guaranteed.** The v8 trainer reserves the final 20% of downloaded history before
+development search/refinement. Reports label validation reuse, final-holdout
+metrics, fingerprints and trade counts. Repeated inspection and multiple
+experiments mean a strong holdout remains exploratory. Costs, profit factor,
+losses and drawdown matter alongside win rate. Applying parameters changes the
+running engine globally. A cross-symbol consensus is a research proposal.
 
-Lived in the engine — enabled by the trainer when it wins out-of-sample, all
-defaults off so the classic behavior is unchanged:
+The optional Yahoo/yfinance feed supplies observations, not commercial data
+rights or brokerage streaming. Use entitled data or appropriately licensed
+imports for commercial deployment. Installation creates no paid data account.
 
-| Knob | What it does |
-| --- | --- |
-| `breakeven_atr` | Move stop to entry (+ small cushion) once up N×ATR — never re-take a full loss |
-| `arm_trailing_atr` | Only ratchet the trailing stop after the trade is up N×ATR |
-| `partial_tp_atr` / `partial_fraction` | Bank a fraction at an intermediate level, ride the rest |
-| `conviction_sizing` | Bigger positions on stronger scores (capped ×1.25) |
-| `regime_sizing` | Half size in RANGING regimes |
-| `vol_target_sizing` | Shrink size when ATR% runs above its rolling median |
-| `adaptive_threshold` | Demand stronger signals when volatility expands |
+The private Supabase vault is single-server storage, not customer authentication
+or tenant isolation. Native broker tools are unavailable to public/Vercel
+clients. A customer-facing account service needs owner-scoped authentication and
+database policies before private remote operations are enabled.
 
-The same logic runs in the live paper loop (`bot.step`), so backtests and
-paper trading manage trades identically.
+Provenance/license boundaries remain in `components/` and `third_party/`.
+Fincept loads from a separately configured licensed private installation.
+Retained MiroFish code carries AGPL notices. Optional model/graph/simulation jobs
+need their configured dependencies and provider credentials.
 
-## 🌟 Quick Launch Options
+## Tests and deployment
 
-### 🌐 1. Quantum Web Terminal (Recommended)
-Launch the interactive web command center with live alpha radar, agent deliberation feed, order desk, and backtesting lab:
-```bash
-python loki_bot.py web --port 8000
-# OR
-python main.py
-```
-Open **http://localhost:8000** in your browser.
-
-### 🏛️ 2. Multi-Agent Deliberation Council CLI
-Run the autonomous decision council across your monitored universe:
-```bash
-python loki_bot.py council --symbols AAPL MSFT NVDA BTC-USD
-```
-
-### 📡 3. Live Alpha Radar Scan
-Scan all configured assets for actionable institutional breakout setups:
-```bash
-python loki_bot.py scan
-```
-
-### 🔬 4. Honest Out-of-Sample Walk-Forward Backtesting
-```bash
-python loki_bot.py walkforward --symbol AAPL --splits 4
-python loki_bot.py backtest --symbols AAPL SPY BTC-USD
+```powershell
+python -m pip install -r requirements_test.txt
+python -m pytest -o addopts= tests/ -q
 ```
 
----
+GitHub checks run offline; broker/database transports are mocked. `vercel.json`
+explicitly selects FastAPI with `main:app` and bundles templates/static assets.
+The historical Next.js prototype remains in `app/`; it is not the deployed
+application. Long-running local paper loops are not serverless jobs.
 
-## 🔗 TradingView Setup
-
-### 1. Start Loki
-```bash
-python loki_desktop.py
-# OR
-python loki.py
-```
-
-### 2. Get Your Webhook URL
-**TradingView Webhook URL:** `http://localhost:8000/webhook/tradingview`
-
-### 3. Configure TradingView Alert
-- Go to TradingView.com
-- Create an alert on your chart
-- Set webhook URL to: `http://localhost:8000/webhook/tradingview`
-- Use this alert message:
-```json
-{
-  "signal_type": "{{strategy.order.action}}",
-  "symbol": "{{ticker}}",
-  "price": "{{close}}",
-  "quantity": "{{strategy.order.contracts}}"
-}
-```
-
-### 4. Enable the Alert
-Loki will automatically process TradingView signals in paper trading mode!
-
----
-
-## 🧪 Test Loki
-
-### Quick Test
-```bash
-python test_auto_trading.py
-```
-
-### Manual Webhook Test
-```bash
-python -c "import requests; requests.post('http://localhost:8000/webhook/tradingview', json={'signal_type':'BUY','symbol':'BTCUSDT','price':'50000.00','quantity':'0.001'})"
-```
-
-### Health Check
-```bash
-python -c "import requests; print(requests.get('http://localhost:8000/health').json())"
-```
-
----
-
-## 🧬 Loki's Evolutionary Features
-
-### 🧠 Machine Learning Strategy Selector
-- Automatically selects best trading strategy
-- Learns from historical performance
-- Adapts to market conditions
-- Fitness score calculation
-
-### 📈 Real-Time Regime Detection
-- Detects 8 different market regimes
-- Provides regime-based recommendations
-- Predicts regime changes
-- Confidence scoring
-
-### 🛡️ Self-Healing System
-- Monitors 5 system components
-- Automatic failure recovery
-- Health reporting
-- Continuous monitoring
-
-### 📊 Advanced Trading Strategies
-- 5 sophisticated algorithms
-- Multi-timeframe analysis
-- Risk-adjusted returns
-- ATR-based position sizing
-
-### 🎉 Enhanced Profit Pleasure
-- Psychology tracking
-- Achievement system
-- Trading recommendations
-- Milestone rewards
-
----
-
-## 🇦🇺 Australian Market Integration
-
-- � AUD currency throughout system
-- 🕐 AEST timezone support
-- 💱 Binance, Bybit, Kraken exchanges
-- 🪙 Crypto/futures trading
-- 💸 Multi-exchange support
-
----
-
-## 📊 What Loki Does Automatically
-
-### When Loki Starts:
-1. ✅ Runs startup tests automatically
-2. ✅ Enables paper trading for safety
-3. ✅ Starts webhook server on port 8000
-4. ✅ Activates auto-trading from TradingView
-5. ✅ Monitors system health continuously
-
-### When TradingView Signal Arrives:
-1. � Signal Reception → Webhook receives TradingView alert
-2. 📈 Market Analysis → Regime detector analyzes market state
-3. 🧠 Strategy Selection → ML selector chooses best strategy
-4. 📄 Paper Execution → Trade executed in paper trading mode
-5. 📊 Performance Tracking → Results recorded for learning
-6. 🎉 Positive Reinforcement → Profit celebration if profitable
-7. 🛡️ System Health → Self-healing monitors integrity
-
----
-
-## 🎯 Quick Start Commands
-
-### Start Loki Desktop:
-```bash
-python loki_desktop.py
-```
-
-### Start Loki Headless:
-```bash
-python loki.py
-```
-
-### Test Loki:
-```bash
-python test_auto_trading.py
-```
-
-### Send Test Signal:
-```bash
-python -c "import requests; requests.post('http://localhost:8000/webhook/tradingview', json={'signal_type':'BUY','symbol':'BTCUSDT','price':'50000.00','quantity':'0.001'})"
-```
-
----
-
-## � Important Files
-
-- **`loki_desktop.py`** - Desktop application (GUI mode)
-- **`loki.py`** - Headless mode (server mode)
-- **`test_auto_trading.py`** - Test script
-- **`desktop_app.py`** - Original desktop app (still works)
-- **`config.example.yaml`** - Configuration template
-
----
-
-## 🔧 Configuration
-
-Create a `config.yaml` file or use the default settings:
-
-```yaml
-crypto_broker:
-  exchange: binance
-  api_key: your_api_key_here
-  api_secret: your_api_secret_here
-  testnet: true
-  base_currency: AUD
-
-trading_flags:
-  paper_trading: true
-  underlying_instrument: BTCUSDT
-
-tradingview:
-  enabled: true
-  auto_execute: true
-  paper_trading: true
-  webhook_secret: your_secret_here
-
-ml_strategy_selector:
-  enabled: true
-  learning_rate: 0.1
-
-regime_detector:
-  enabled: true
-
-self_healing:
-  enabled: true
-```
-
----
-
-## 🎉 Summary
-
-Loki is now:
-- ✅ Named "Loki" throughout the system
-- ✅ Ready to trade automatically from TradingView
-- ✅ Running in paper trading mode for safety
-- ✅ Has both desktop and headless modes
-- ✅ Using ML to select optimal strategies
-- ✅ Detecting market regimes in real-time
-- ✅ Self-healing from system failures
-- ✅ Providing positive reinforcement for profits
-- ✅ 186 tests passing (100% success rate)
-- ✅ Fully operational and ready to use
-
----
-
-## 🚀 Start Loki Now!
-
-**Desktop Mode:**
-```bash
-python loki_desktop.py
-```
-
-**Headless Mode:**
-```bash
-python loki.py
-```
-
-**Your TradingView Webhook URL:** `http://localhost:8000/webhook/tradingview`
-
-**Paper trading is enabled by default** - no real money risk while testing!
-
-Loki is ready to trade automatically from TradingView signals with all evolutionary features active! 🚀🎯
-
----
-
-## 📖 Additional Documentation
-
-- `LOKI_STARTUP_GUIDE.md` - Detailed startup instructions
-- `AUTO_TRADING_GUIDE.md` - Auto-trading setup guide
-- `EVOLUTIONARY_SYSTEM_SUMMARY.md` - Evolutionary features overview
-- `AUSTRALIAN_MARKET_GUIDE.md` - Australian market specifics
-- `TRADINGVIEW_SETUP.md` - TradingView integration details
+See [the integration inventory](docs/GITHUB_UNIFICATION.md) for branch provenance,
+conflict resolutions and environment-dependent checks.
