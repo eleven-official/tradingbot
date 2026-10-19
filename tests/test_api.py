@@ -1,195 +1,212 @@
-"""Contracts of research routes and the separately gated local order surface.
+"""Contract tests for Loki's paper-only web surface."""
+from dataclasses import dataclass
 
-These requests exercise the real ASGI application. They never require a default
-administrator, a venue connection, or a fabricated account/market-data stream.
-"""
-
-import pytest
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
-from loki.api.server import app
-from loki.version import __version__
+import loki.api.server as server
 
-client = TestClient(app)
+client = TestClient(server.app)
 
 
-def test_root_serves_unified_workspace_html():
+def test_console_renders_the_market_and_journal_workspace():
     response = client.get("/")
+
     assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/html")
-    for section in (
-        "overview",
-        "strategy-lab",
-        "agent-council",
-        "portfolio",
-        "simulated-market",
-        "real-market",
-        "scenarios",
-        "copilot",
-        "integrations",
-    ):
-        assert f'data-view="{section}"' in response.text
-    assert "Separate practice accounts" in response.text
-    assert 'id="real-order-fields" disabled' in response.text
-    assert __version__ in response.text
+    assert "text/html" in response.headers["content-type"]
+    assert "Market structure" in response.text
+    assert "Paper journal" in response.text
+    assert "Ask the bot" in response.text
+    assert "Sample read" in response.text
 
 
-def test_health_reports_service_health_without_invented_account_state():
+def test_health_endpoint_identifies_the_paper_only_mode():
     response = client.get("/health")
+
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "loki", "version": __version__}
-    assert "market_connection" not in response.json()
-    assert "active_strategies" not in response.json()
+    assert response.json()["status"] == "ok"
+    assert response.json()["mode"] == "paper-tools-only"
 
 
-@pytest.mark.parametrize(
-    "path,content_type",
-    [("/static/css/style.css", "text/css"), ("/static/js/workspace.js", "javascript")],
-)
-def test_browser_assets_are_served(path, content_type):
-    response = client.get(path)
-    assert response.status_code == 200
-    assert content_type in response.headers["content-type"]
-    assert response.content
-
-
-@pytest.mark.parametrize("password", ["admin123", "wrong"])
-def test_no_default_administrator_login_is_installed(password):
-    response = client.post("/token", data={"username": "admin", "password": password})
-    assert response.status_code == 404
-    assert "access_token" not in response.json()
-
-
-@pytest.mark.parametrize(
-    "method,path",
-    [
-        ("get", "/api/v1/portfolio"),
-        ("get", "/api/v1/positions"),
-        ("get", "/api/v1/strategies"),
-        ("put", "/api/v1/strategies/QuantumMomentum"),
-        ("post", "/api/v1/strategies/QuantumMomentum/start"),
-        ("post", "/api/v1/strategies/QuantumMomentum/stop"),
-        ("post", "/api/v1/orders"),
-        ("post", "/api/orders"),
-        ("post", "/api/trade"),
-        ("get", "/metrics"),
-    ],
-)
-def test_legacy_live_or_mock_account_surface_is_not_exposed(method, path):
-    response = getattr(client, method)(path, headers={"Authorization": "Bearer admin123"})
-    assert response.status_code == 404
-
-
-def test_no_fabricated_market_data_websocket_is_exposed():
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect("/ws/market-data") as socket:
-            socket.receive_json()
-
-
-def test_openapi_separates_research_from_gated_manual_order_routes():
-    response = client.get("/openapi.json")
-    assert response.status_code == 200
-    paths = response.json()["paths"]
-    for path in (
-        "/api/research/evaluate",
-        "/api/risk/preview",
-        "/api/copilot",
-        "/api/fusion/portfolio",
-    ):
-        assert "post" in paths[path]
-    assert "/token" not in paths
-    assert not any(path.startswith("/api/v1") for path in paths)
-    order_paths = {path for path in paths if "/orders" in path}
-    assert order_paths == {
-        "/api/fusion/real/orders",
-        "/api/fusion/real/orders/preview",
-        "/api/fusion/real/orders/submit",
-        "/api/fusion/real/orders/cancel",
-        "/api/fusion/real/orders/{identifier}/reconcile",
-    }
-    assert client.get("/api/fusion/real/orders").status_code == 403
-    assert (
-        client.post(
-            "/api/fusion/real/orders/preview",
-            json={
-                "symbol": "BTC/USD",
-                "side": "buy",
-                "quantity": 0.5,
-                "limit_price": 100.0,
-            },
-        ).status_code
-        == 403
-    )
-    for action in ("submit", "cancel"):
-        assert (
-            client.post(
-                f"/api/fusion/real/orders/{action}",
-                json={
-                    "identifier": "a" * 32,
-                    "confirmation": "PLACE REAL ORDER",
-                },
-            ).status_code
-            == 403
-        )
-    assert client.post(f"/api/fusion/real/orders/{'a' * 32}/reconcile").status_code == 403
-
-
-def test_paper_account_lifecycle_is_costed_and_client_owned():
-    initial = client.get("/api/fusion/portfolio").json()
-    assert initial["state"]["mode"] == "paper_only"
-    assert initial["state"]["positions"] == {}
-    assert initial["metrics"]["cash"] == initial["metrics"]["equity"] == 10000
-    assert initial["metrics"]["win_rate"] is None
-
-    buy = client.post(
-        "/api/fusion/portfolio",
-        json={
-            "action": "buy",
-            "state": initial["state"],
-            "symbol": "AAPL/USD",
-            "price": 100.0,
-            "quantity": 2.0,
-        },
-    )
-    assert buy.status_code == 200, buy.text
-    entered = buy.json()
-    assert entered["last_action"]["mode"] == "paper_only"
-    assert entered["last_action"]["fees"] > 0
-    assert entered["last_action"]["price"] > 100  # Adverse entry slippage.
-    assert entered["metrics"]["equity"] < initial["metrics"]["equity"]
-
-    sell = client.post(
-        "/api/fusion/portfolio",
-        json={
-            "action": "sell",
-            "state": entered["state"],
-            "symbol": "AAPL/USD",
-            "price": 110.0,
-            "quantity": 2.0,
-        },
-    )
-    assert sell.status_code == 200, sell.text
-    closed = sell.json()
-    assert closed["state"]["positions"] == {}
-    assert closed["metrics"]["closed_trades"] == 1
-    assert 0 < closed["metrics"]["total_pnl"] < 20  # Exit costs are included.
-    assert closed["metrics"]["win_rate"] == 100  # Percentage points, one paper lifecycle.
-    # The server has not persisted a user account or a broker order.
-    assert client.get("/api/fusion/portfolio").json()["state"] == initial["state"]
-
-
-def test_paper_endpoint_rejects_attempt_to_select_live_execution():
+def test_risk_plan_returns_a_non_executable_calculation():
     response = client.post(
-        "/api/fusion/portfolio",
-        json={"action": "buy", "symbol": "AAPL", "price": 100.0, "quantity": 2.0, "live": True},
+        "/api/risk-plan",
+        json={
+            "side": "BUY",
+            "capital": 10_000,
+            "risk_percent": 1,
+            "entry_price": 100,
+            "stop_price": 95,
+            "target_price": 110,
+        },
     )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "paper-only"
+    assert response.json()["approved"] is True
+    assert response.json()["quantity"] > 0
+    assert "not financial advice or an order" in response.json()["disclaimer"]
+
+
+def test_risk_plan_rejects_a_stop_on_the_profit_side():
+    response = client.post(
+        "/api/risk-plan",
+        json={
+            "side": "BUY",
+            "capital": 10_000,
+            "risk_percent": 1,
+            "entry_price": 100,
+            "stop_price": 105,
+            "target_price": 110,
+        },
+    )
+
     assert response.status_code == 422
 
 
-def test_chat_declines_real_order_request():
-    response = client.post("/api/copilot", json={"message": "Buy 10 BTC now"})
+def test_council_returns_six_explainable_gates_without_execution():
+    response = client.post(
+        "/api/trade-council",
+        json={
+            "side": "BUY",
+            "capital": 10_000,
+            "risk_percent": 1,
+            "entry_price": 100,
+            "stop_price": 95,
+            "target_price": 110,
+            "current_price": 100,
+            "trend": "BULLISH",
+            "volatility_percent": 2,
+            "volume_ratio": 2,
+            "market_data_age_seconds": 0,
+            "spread_percent": 0.1,
+            "market_open": True,
+            "setup_name": "Test continuation",
+            "setup_score": 90,
+        },
+    )
+
     assert response.status_code == 200
-    reply = response.json()
-    assert reply["intent"] == "action"
-    assert "cannot" in reply["text"].lower() or "can't" in reply["text"].lower()
+    assert response.json()["mode"] == "paper-only"
+    assert response.json()["action"] in {"BUY", "WAIT", "SKIP"}
+    assert len(response.json()["reviews"]) == 6
+    assert all(review["reason"] for review in response.json()["reviews"])
+    assert all(review["next_step"] for review in response.json()["reviews"])
+
+
+def test_bot_chat_answers_from_supplied_paper_context():
+    response = client.post(
+        "/api/bot-chat",
+        json={
+            "question": "Why did the council say WAIT?",
+            "market": {"symbol": "BTCUSDT", "interval": "5m"},
+            "decision": {
+                "action": "WAIT",
+                "rationale": "Trend is neutral.",
+                "reviews": [{
+                    "agent": "Trend",
+                    "verdict": "WAIT",
+                    "reason": "Trend is neutral.",
+                    "next_step": "Wait for a confirmed bullish regime.",
+                }],
+            },
+            "journal": {"closed_trades": 0, "setups": []},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "local-context-coach"
+    assert "BTCUSDT (5m) WAIT" in response.json()["answer"]
+    assert "Wait for a confirmed bullish regime" in response.json()["answer"]
+    assert response.json()["context_used"]["decision"] is True
+    assert "or an order" in response.json()["disclaimer"]
+
+
+def test_daily_risk_endpoint_summarizes_the_user_configured_cap():
+    response = client.post(
+        "/api/daily-risk",
+        json={
+            "capital": 10_000,
+            "loss_limit_percent": 2,
+            "realized_pnl": -100,
+            "realized_loss": 100,
+            "open_planned_risk": 50,
+            "closed_today": 1,
+            "open_positions": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "paper-only"
+    assert response.json()["status"] == "WATCH"
+    assert response.json()["limit_amount"] == 200
+    assert response.json()["remaining_amount"] == 50
+    assert "never blocks" in response.json()["disclaimer"]
+
+
+def test_daily_risk_endpoint_rejects_negative_loss_inputs():
+    response = client.post(
+        "/api/daily-risk",
+        json={
+            "capital": 10_000,
+            "loss_limit_percent": 2,
+            "realized_pnl": 0,
+            "realized_loss": -1,
+            "open_planned_risk": 0,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_bot_chat_answers_daily_risk_from_supplied_context():
+    response = client.post(
+        "/api/bot-chat",
+        json={
+            "question": "How much of my daily loss cap remains?",
+            "daily_risk": {
+                "status": "WATCH",
+                "limit_amount": 200,
+                "realized_pnl": -100,
+                "realized_loss": 100,
+                "open_planned_risk": 50,
+                "committed_loss": 150,
+                "remaining_amount": 50,
+                "utilization_percent": 75,
+                "closed_today": 1,
+                "open_positions": 1,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Daily paper-risk guard: WATCH" in response.json()["answer"]
+    assert "Remaining cap 50.00" in response.json()["answer"]
+    assert response.json()["context_used"]["daily_risk"] is True
+
+
+def test_bot_chat_rejects_questions_over_500_characters():
+    response = client.post("/api/bot-chat", json={"question": "x" * 501})
+
+    assert response.status_code == 422
+
+
+def test_market_snapshot_endpoint_uses_the_read_only_data_adapter(monkeypatch):
+    @dataclass(frozen=True)
+    class Snapshot:
+        provider: str
+        symbol: str
+        interval: str
+
+    requested = []
+
+    def fake_snapshot(symbol, interval):
+        requested.append((symbol, interval))
+        return Snapshot("Binance Spot", symbol, interval)
+
+    monkeypatch.setattr(server, "get_binance_spot_snapshot", fake_snapshot)
+    response = client.get("/api/market-snapshot?symbol=ETHUSDT&interval=5m")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "read-only-market-data"
+    assert response.json()["snapshot"]["symbol"] == "ETHUSDT"
+    assert requested == [("ETHUSDT", "5m")]

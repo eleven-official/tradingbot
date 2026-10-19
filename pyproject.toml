@@ -8,6 +8,15 @@ dynamic = ["version"]
 description = "Enterprise-grade AI-powered algorithmic trading platform"
 readme = "README.md"
 requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "jinja2>=3.1.2",
+    "aiofiles>=23.1.0",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0.0",
+    "structlog>=24.1.0",
+]
 license = {text = "Proprietary"}
 authors = [
     {name = "Loki Trading Systems", email = "support@lokitrading.ai"}

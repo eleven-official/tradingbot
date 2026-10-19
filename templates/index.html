@@ -3,143 +3,279 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#080b12" />
-  <meta name="description" content="Loki is a rules-first strategy research and paper trading workspace." />
-  <title>Loki — Strategy workspace</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/style.css" />
-  <script defer src="/static/js/profile.js"></script>
-  <script defer src="/static/js/strategy-lab.js"></script>
-  <script defer src="/static/js/workspace.js"></script>
+  <meta name="description" content="Loki paper-trading strategy and risk workbench" />
+  <meta name="theme-color" content="#080d12" />
+  <title>Loki · Trade Console</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}" />
+  <script defer src="{{ url_for('static', path='/js/planner.js') }}"></script>
 </head>
 <body>
-  <div class="ambient ambientOne" aria-hidden="true"></div>
-  <div class="ambient ambientTwo" aria-hidden="true"></div>
-  <div class="shell">
+  <main class="app-shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Loki home"><span class="brandMark">L</span><span class="brandName">LOKI<span>STRATEGY WORKSPACE</span></span></a>
-      <div class="topStatus"><span class="statusPulse"></span> RESEARCH MODE <span class="topDivider"></span> <span>PUBLIC PREVIEW</span></div>
-      <a class="serviceLink" href="/health" target="_blank" rel="noreferrer">Service status <span aria-hidden="true">↗</span></a>
+      <a class="brand" href="/" aria-label="Loki Trade Console home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span><strong>LOKI</strong><small>TRADE CONSOLE</small></span>
+      </a>
+      <nav class="workspace-nav" aria-label="Workspace navigation">
+        <a href="#market-desk">Market</a>
+        <a href="#risk-desk">Risk desk</a>
+        <a href="#paper-journal">Journal</a>
+        <a href="#bot-coach">Ask Loki</a>
+        <a href="/strategy-lab">Strategy lab ↗</a>
+      </nav>
+      <div class="topbar-meta">
+        <span class="mode-pill"><i></i> PAPER WORKBENCH</span>
+        <span class="build-tag">{{ version }}</span>
+      </div>
     </header>
 
-    <main>
-      <section class="profileWall" id="profileWall" aria-label="Personal workspace">
-        <div class="welcomeIntro">
-          <p class="eyebrow">A BETTER PROCESS FOR EVERY DECISION</p>
-          <h1>Make the rules<br /><em>earn your trust.</em></h1>
-          <p class="welcomeLead">Explore a trading strategy, test it across different market regimes, then review every paper trade with costs included.</p>
-          <div class="principles"><span><b>01</b> Define</span><i></i><span><b>02</b> Replay</span><i></i><span><b>03</b> Review</span></div>
-          <div class="welcomeChart" aria-hidden="true">
-            <div class="chartGlow"></div><span class="chartAxis axisTop">RESEARCH SIGNAL</span><span class="chartAxis axisBottom">PAST DATA · NOT A FORECAST</span>
-            <svg viewBox="0 0 700 200" preserveAspectRatio="none"><path class="gridLine" d="M0 45H700M0 100H700M0 155H700"/><path class="chartFill" d="M0 148 C55 137 65 99 111 118 S178 145 220 101 S282 84 328 113 S385 129 429 74 S500 94 541 50 S606 86 650 35 S674 44 700 18 V200H0Z"/><path class="chartStroke" d="M0 148 C55 137 65 99 111 118 S178 145 220 101 S282 84 328 113 S385 129 429 74 S500 94 541 50 S606 86 650 35 S674 44 700 18"/><circle cx="650" cy="35" r="4"/></svg>
-          </div>
+    <section id="market-desk" class="market-strip" aria-labelledby="market-title">
+      <div class="market-heading">
+        <div>
+          <p class="eyebrow">MARKET DESK <span class="eyebrow-line"></span> PUBLIC DATA ONLY</p>
+          <h1 id="market-title">See the setup.<br /><em>Defend the trade.</em></h1>
         </div>
-        <section class="profileCard" aria-labelledby="profileHeading">
-          <div id="onboarding">
-            <div class="cardTopline"><span class="eyebrow">YOUR PERSONAL WORKSPACE</span><span class="stepCount">01 / 01</span></div>
-            <div class="formMark" aria-hidden="true">✳</div>
-            <h2 id="profileHeading">First, make it yours.</h2>
-            <p class="cardIntro">Choose how Loki greets you. Your nickname and email stay in this browser.</p>
-            <form id="profileForm" novalidate>
-              <label class="field"><span>Nickname</span><input id="profileNickname" name="nickname" type="text" maxlength="32" autocomplete="nickname" required placeholder="How should we address you?" /></label>
-              <label class="field"><span>Email</span><input id="profileEmail" name="email" type="email" maxlength="254" autocomplete="email" required placeholder="you@example.com" /></label>
-              <p class="formError" id="profileError" role="alert" aria-live="polite"></p>
-              <button class="button buttonPrimary saveButton" type="submit">Create my workspace <span>→</span></button>
-            </form>
-            <p class="privacyNote"><span>⌑</span> Saved only on this device. It does not send your details to the server.</p>
+        <form id="live-feed-form" class="feed-controls">
+          <label class="symbol-control">Market
+            <input name="symbol" value="BTCUSDT" pattern="[A-Za-z0-9]{5,20}" maxlength="20" autocomplete="off" required />
+          </label>
+          <label class="interval-control">Frame
+            <select name="interval"><option value="1m">1m</option><option value="5m">5m</option><option value="15m">15m</option><option value="1h">1h</option></select>
+          </label>
+          <button type="submit" class="refresh-button"><span aria-hidden="true">↻</span> Refresh feed</button>
+          <p id="live-feed-status" role="status">Connect a read-only Binance Spot feed to begin.</p>
+        </form>
+      </div>
+
+      <div class="market-stats" aria-label="Latest market snapshot">
+        <article class="market-stat featured"><span>SPOT PRICE</span><strong id="stat-price">—</strong><small id="stat-symbol">Awaiting snapshot</small></article>
+        <article class="market-stat"><span>24H CHANGE</span><strong id="stat-change">—</strong><small>Rolling 24-hour move</small></article>
+        <article class="market-stat"><span>QUOTE SPREAD</span><strong id="stat-spread">—</strong><small>Bid / ask midpoint</small></article>
+        <article class="market-stat"><span>DATA AGE</span><strong id="stat-age">—</strong><small id="stat-source">No feed loaded</small></article>
+      </div>
+    </section>
+
+    <section class="console-grid" aria-label="Market and trade review workspace">
+      <div class="main-column">
+        <section class="panel chart-panel" aria-labelledby="chart-title">
+          <div class="panel-header chart-header">
+            <div>
+              <p class="section-kicker">01 / PRICE ACTION</p>
+              <h2 id="chart-title">Market structure</h2>
+            </div>
+            <div class="chart-legend"><span><i class="legend-up"></i> Up</span><span><i class="legend-down"></i> Down</span><span><i class="legend-ema"></i> EMA 8 / 20</span></div>
           </div>
-          <div id="welcome" hidden>
-            <div class="cardTopline"><span class="eyebrow">YOUR PERSONAL WORKSPACE</span><span class="savedMark"><i></i> SAVED HERE</span></div>
-            <div class="formMark" aria-hidden="true">✳</div>
-            <p class="eyebrow welcomeEyebrow">GOOD TO HAVE YOU HERE</p>
-            <h2 id="welcomeTitle">Welcome back.</h2>
-            <p class="cardIntro" id="welcomeDetail">Your workspace is ready on this device.</p>
-            <button class="button buttonPrimary saveButton" type="button" id="workspaceOpen">Open workspace <span>→</span></button>
-            <div class="welcomeActions"><button class="button buttonSecondary" type="button" id="profileEdit">Edit profile</button><button class="button buttonQuiet" type="button" id="profileForget">Forget profile</button></div>
-            <p class="privacyNote"><span>⌑</span> Your details stay in this browser.</p>
+          <div class="chart-frame" id="market-chart-frame">
+            <div id="chart-empty" class="chart-empty"><span class="chart-glyph" aria-hidden="true">⌁</span><strong>Waiting for market data</strong><span>Load the public feed to see completed candles and moving averages.</span></div>
+            <svg id="market-chart" class="market-chart" role="img" aria-label="Live candlestick chart" hidden></svg>
+          </div>
+          <div class="chart-foot"><span id="chart-caption">Candles use completed bars only.</span><span id="chart-window">— bars</span></div>
+          <div class="indicator-strip" aria-label="Technical indicators">
+            <span><small>REGIME</small><b id="indicator-trend">—</b></span>
+            <span><small>RSI 14</small><b id="indicator-rsi">—</b></span>
+            <span><small>VOLUME</small><b id="indicator-volume">—</b></span>
+            <span><small>EMA 8 / 20</small><b id="indicator-ema">—</b></span>
           </div>
         </section>
-      </section>
 
-      <section class="workspace" id="workspaceApp" hidden>
-        <aside class="sidebar" aria-label="Workspace navigation">
-          <div class="sideBrand"><span class="brandMark">L</span><span>LOKI<span>RESEARCH DESK</span></span></div>
-          <p class="navCaption">WORKSPACE</p>
-          <nav class="sideNav">
-            <button class="navItem active" data-view="overview"><span class="navIcon">◫</span>Overview</button>
-            <button class="navItem" data-view="strategy"><span class="navIcon">⌁</span>Strategy lab</button>
-            <button class="navItem" data-view="paper"><span class="navIcon">◉</span>Paper mode <span class="navBadge">SAFE</span></button>
-            <button class="navItem" data-view="journal"><span class="navIcon">▤</span>Trade journal</button>
-            <button class="navItem" data-view="council"><span class="navIcon">✳</span>Strategy council</button>
-          </nav>
-          <div class="sidebarBottom"><div class="liveLock"><span>⌑</span><div><b>Live execution</b><small>Unavailable in public preview</small></div></div><div class="sidebarProfile"><span class="avatar" id="profileAvatar">L</span><span><b id="sidebarNickname">Your workspace</b><small>Local profile</small></span><button class="profileSettings" id="profileSettings" aria-label="Edit profile">···</button></div></div>
-        </aside>
-
-        <div class="workspaceMain">
-          <header class="workspaceTop"><div><span class="crumb">LOKI <b>/</b> <span id="pageCrumb">OVERVIEW</span></span><p id="welcomeGreeting">Good day. Ready to research?</p></div><div class="topRight"><span class="paperChip"><i></i> PAPER ONLY</span><button id="switchProfile" class="userChip" aria-label="Edit profile"><span class="avatar avatarSmall" id="topAvatar">L</span><span id="topNickname">Profile</span><span>⌄</span></button></div></header>
-          <nav class="mobileNav" aria-label="Workspace navigation"><button class="mobileNavItem active" data-view="overview">Home</button><button class="mobileNavItem" data-view="strategy">Strategy</button><button class="mobileNavItem" data-view="paper">Paper</button><button class="mobileNavItem" data-view="journal">Journal</button><button class="mobileNavItem" data-view="council">Council</button></nav>
-
-          <div class="viewStack">
-            <section class="view active" id="view-overview" data-page="overview">
-              <div class="pageHeading"><div><p class="eyebrow">YOUR RESEARCH DESK</p><h1 id="overviewTitle">Stay curious. Stay systematic.</h1><p>Test one frozen set of rules, account for trading costs, and inspect what happened.</p></div><button class="button buttonPrimary" data-go="strategy">Open strategy lab <span>→</span></button></div>
-              <div class="banner syntheticBanner"><span class="bannerIcon">⌁</span><div><b id="datasetTitle">Demo scenario · mixed regimes</b><small id="datasetDescription">Deterministic synthetic prices for interface and logic checks. Not real market history.</small></div><button data-go="strategy">Choose data <span>↗</span></button></div>
-              <div class="metricGrid">
-                <article class="metricCard"><span>HOLDOUT RETURN</span><strong id="metricReturn">—</strong><small id="metricReturnNote">Run a replay to calculate</small><span class="metricGlyph">↗</span></article>
-                <article class="metricCard"><span>MAX DRAWDOWN</span><strong id="metricDrawdown">—</strong><small>Peak-to-trough · after costs</small><span class="metricGlyph">⌄</span></article>
-                <article class="metricCard"><span>TEST TRADES</span><strong id="metricTrades">—</strong><small id="metricWinRate">No test-period trades yet</small><span class="metricGlyph">◎</span></article>
-                <article class="metricCard"><span>TRADING COSTS</span><strong id="metricCosts">—</strong><small>Fees, spread &amp; slippage</small><span class="metricGlyph">⌑</span></article>
-              </div>
-              <div class="overviewGrid">
-                <article class="panel performancePanel"><div class="panelHead"><div><span class="eyebrow">OUT-OF-SAMPLE VIEW</span><h2>Equity replay</h2></div><span class="chartLegend"><i></i> STRATEGY <b></b> BUY &amp; HOLD</span></div><div class="equityChart" id="equityChart"><div class="chartEmpty"><span>↗</span><b>Your first replay starts here</b><small>Choose a market scenario or upload historical OHLC data.</small></div></div><div class="axisLabels"><span id="chartStart">WAITING FOR A REPLAY</span><span id="chartEnd"></span></div></article>
-                <article class="panel quickPanel"><div class="panelHead"><div><span class="eyebrow">CURRENT TEST</span><h2 id="strategyStatus">Rules are frozen</h2></div><span class="readyDot"></span></div><div class="ruleSummary"><div><span>ENTRY</span><p>Price and 50-bar average above the 100-bar average.</p></div><div><span>EXIT</span><p>Close below the 50-bar average, or close 5% under entry.</p></div><div><span>FILL</span><p>Next bar open, with fees, spread and slippage.</p></div></div><button class="button buttonSecondary fullButton" data-go="strategy">Review research setup <span>→</span></button></article>
-              </div>
-              <div class="bottomGrid"><article class="panel bottomCard"><div class="panelHead"><div><span class="eyebrow">THE PROCESS</span><h2>Evidence before confidence.</h2></div></div><p class="mutedText">Keep the later period untouched while adjusting rules. Compare net expectancy, trade count, drawdown and a simple buy-and-hold baseline.</p><button class="inlineAction" data-go="council">See council review <span>→</span></button></article><article class="panel bottomCard riskCard"><span class="riskMark">!</span><div><b>Backtests do not prove profitability.</b><p>Scenarios are synthetic unless you upload market data. Real execution and future returns are not available in this public workspace.</p></div></article></div>
-            </section>
-
-            <section class="view" id="view-strategy" data-page="strategy">
-              <div class="pageHeading"><div><p class="eyebrow">STRATEGY LAB</p><h1>One rule set. Multiple markets.</h1><p>Inspect the entry and exit logic, set realistic costs, and keep the final segment untouched.</p></div><span class="frozenTag"><i></i> RULE SET · VERSION 1.1</span></div>
-              <div class="labGrid"><div class="labMain">
-                <article class="panel strategyCard"><div class="strategyTitle"><span class="strategyGlyph">L1</span><div><span class="eyebrow">LONG-ONLY · NO LEVERAGE</span><h2>Trend continuation</h2></div><span class="frozenTag compact">RULES FROZEN</span></div><div class="strategyRules"><div><span class="ruleNumber">01</span><div><b>Market condition</b><p>Potential uptrend: close is above the 100-bar simple moving average, and the 50-bar average is above the 100-bar average.</p></div></div><div><span class="ruleNumber">02</span><div><b>Entry trigger</b><p>When flat, that condition is true at a bar close. Enter long at the next bar open.</p></div></div><div><span class="ruleNumber">03</span><div><b>Exit trigger</b><p>Exit at the next bar open after a close below the 50-bar average or a close 5% below entry. Close any remaining position at the final bar.</p></div></div></div><p class="assumptionNote"><span>i</span> The code uses only information available at each bar close. Next-bar fills reduce same-bar lookahead.</p><div class="agentRuleBox"><span class="eyebrow">PAPER AGENT CANDIDATES · ALSO FROZEN</span><div><b>20-bar breakout</b><p>Enter next bar after close breaks above the prior 20-bar high with SMA50 above SMA100. Exit next bar below SMA20 or after the shared 5% close stop.</p></div><div><b>Pullback reclaim</b><p>In the same confirmed uptrend, enter next bar when close crosses back above SMA20. Exit next bar below SMA50 or after the shared 5% close stop.</p></div><small>The agent scores all three fixed rule sets on training data only. It needs at least five training trades, positive after-cost return and expectancy, and better results than a matched-cost buy-and-hold baseline on training data; otherwise it stays in cash. It never chooses from the final holdout.</small></div></article>
-                <article class="panel dataCard"><div class="panelHead"><div><span class="eyebrow">PRICE HISTORY</span><h2>Pick a test dataset</h2></div><span class="demoTag" id="dataSourceTag">SYNTHETIC DEMO</span></div><div class="scenarioPicker" role="group" aria-label="Demo market scenario"><button class="scenarioButton active" data-scenario="mixed"><span>◈</span><b>Mixed regimes</b><small>Rise · fall · sideways</small></button><button class="scenarioButton" data-scenario="rising"><span>↗</span><b>Rising</b><small>Persistent uptrend</small></button><button class="scenarioButton" data-scenario="falling"><span>↘</span><b>Falling</b><small>Persistent downtrend</small></button><button class="scenarioButton" data-scenario="sideways"><span>↔</span><b>Sideways</b><small>Range-bound noise</small></button></div><div class="uploadDrop"><div><span class="uploadIcon">↑</span><div><b>Use your own historical data</b><small>CSV columns: date, open, high, low, close, volume · 200+ rows recommended</small></div></div><label class="button buttonSecondary uploadButton">Upload CSV<input type="file" id="csvUpload" accept=".csv,text/csv" /></label></div><p class="dataStatus" id="dataStatus" aria-live="polite">Demo data is locally generated and is not live market data.</p></article>
-              </div><aside class="labSide"><article class="panel costCard"><div class="panelHead"><div><span class="eyebrow">EXECUTION ASSUMPTIONS</span><h2>Model the friction.</h2></div></div><label class="costField"><span>Fee per side <b>basis points</b></span><input id="feeBps" type="number" value="6" min="0" max="100" step="0.5" /><small>Commission charged on each fill.</small></label><label class="costField"><span>Spread per side <b>basis points</b></span><input id="spreadBps" type="number" value="2" min="0" max="200" step="0.5" /><small>Price paid to cross the bid/ask.</small></label><label class="costField"><span>Slippage per side <b>basis points</b></span><input id="slippageBps" type="number" value="3" min="0" max="200" step="0.5" /><small>Extra adverse movement at fill.</small></label><div class="costTotal"><span>MODELED ROUND-TRIP COST</span><b id="roundTripCost">22 bps</b><small>Fees + spread + slippage, both sides.</small></div></article><article class="panel splitCard"><div class="panelHead"><div><span class="eyebrow">OUT-OF-SAMPLE CHECK</span><h2>Hold the ending out.</h2></div></div><label class="splitField"><span>Training period</span><select id="splitPercent"><option value="70">First 70% · test last 30%</option><option value="80">First 80% · test last 20%</option></select></label><p>Indicators warm up on earlier bars. The holdout starts flat; it does not trade before the split.</p><button id="runBacktest" class="button buttonPrimary fullButton">Run full replay <span>→</span></button><small class="lastRun" id="runStatus">No replay run yet.</small></article></aside></div>
-              <div id="resultsPanel" class="panel resultsPanel" hidden><div class="panelHead"><div><span class="eyebrow">REPLAY RESULTS</span><h2>Compare the untouched period.</h2></div><span class="resultCaveat">Research evidence · not a forecast</span></div><div class="resultGrid"><div><span>TEST RETURN</span><b id="resultReturn">—</b></div><div><span>BUY &amp; HOLD</span><b id="resultBaseline">—</b></div><div><span>EXPECTANCY</span><b id="resultExpectancy">—</b></div><div><span>MAX DRAWDOWN</span><b id="resultDrawdown">—</b></div><div><span>WIN RATE</span><b id="resultWinRate">—</b></div><div><span>TRADES</span><b id="resultTrades">—</b></div></div><p class="resultMessage" id="resultMessage"></p></div>
-            </section>
-
-            <section class="view" id="view-paper" data-page="paper">
-              <div class="pageHeading"><div><p class="eyebrow">PAPER MODE</p><h1>Let the agent prove itself on paper.</h1><p>Run frozen rules or let the research agent select a candidate using training data, then simulate only on the untouched holdout.</p></div><span class="paperChip large"><i></i> NO BROKER ORDERS</span></div>
-              <div class="paperBanner"><span class="bannerIcon">◉</span><div><b>Paper trading is available now.</b><small>Historical CSV is processed in this browser. Results are simulated, cost-adjusted, and saved only on this device.</small></div></div>
-              <div class="modeChoiceRow" aria-label="Execution mode"><span class="eyebrow">EXECUTION MODE</span><span class="modeChoice active">PAPER · AVAILABLE</span><span class="modeChoice locked" aria-disabled="true">REAL MODE · LOCKED</span></div>
-              <div class="paperControls panel"><div><span class="eyebrow">FROZEN STRATEGY REPLAY</span><h2>$10,000 <small>virtual starting balance</small></h2><p>One position at a time · long-only · 25% allocation · modeled costs</p></div><button class="button buttonSecondary" id="runPaper">Run fixed-rule holdout <span>→</span></button></div>
-              <article class="panel agentPaperPanel">
-                <div class="agentPaperHead"><div><span class="eyebrow">ADAPTIVE PAPER AGENT · VERSION 0.2</span><h2>Give the research agent a test run.</h2><p>It scores three frozen rule sets on the earlier training segment using net return minus a drawdown penalty. It needs at least five training trades, positive after-cost return and expectancy, and must beat the matched-cost buy-and-hold baseline on training data; otherwise it stays in cash. The selected rules are frozen before the final holdout.</p></div><span class="agentTag">RULE-BASED · AUDITABLE</span></div>
-                <div class="agentStrategyList"><span>Trend continuation · SMA50/SMA100</span><span>Trend-filtered · 20-bar breakout</span><span>Uptrend · pullback reclaim</span></div>
-                <div class="agentActionRow"><button class="button buttonPrimary" id="runAgentPaper">Let agent paper trade <span>→</span></button><span class="agentPaperStatus" id="agentPaperStatus" role="status">Waiting for an agent replay.</span><button class="inlineAction" data-go="journal">Open AI trade journal <span>→</span></button></div>
-                <div class="agentCandidateList" id="agentCandidateList" aria-live="polite"><span class="eyebrow">TRAINING-ONLY CANDIDATE REVIEW</span><p>No selection yet. The holdout stays hidden from the selector.</p></div>
-              </article>
-              <div class="paperStats metricGrid"><article class="metricCard"><span>FIXED-RULE EQUITY</span><strong id="paperEquity">$10,000</strong><small>Latest frozen-rule replay</small></article><article class="metricCard"><span>FIXED-RULE P&amp;L</span><strong id="paperPnl">$0.00</strong><small>Net of modeled costs</small></article><article class="metricCard"><span>FIXED-RULE TRADES</span><strong id="paperTrades">0</strong><small>Saved in this browser only</small></article><article class="metricCard"><span>MODE</span><strong class="paperValue">PAPER</strong><small>No orders reach a broker</small></article></div>
-              <div class="agentStats metricGrid"><article class="metricCard"><span>AGENT HOLDOUT EQUITY</span><strong id="agentEquity">$10,000</strong><small>Last untouched test segment</small></article><article class="metricCard"><span>AGENT HOLDOUT P&amp;L</span><strong id="agentPnl">$0.00</strong><small>Net of modeled costs</small></article><article class="metricCard"><span>AGENT HOLDOUT TRADES</span><strong id="agentTrades">0</strong><small>Not a live track record</small></article><article class="metricCard agentChoiceMetric"><span>AGENT CHOICE</span><strong id="agentChoice">Waiting</strong><small id="agentRule">Training data only</small></article></div>
-              <div class="panel disabledLive"><span class="lockGlyph">⌑</span><div><span class="eyebrow">REAL MARKET · REAL MODE LOCKED</span><h2>Live execution is not connected.</h2><p>This preview has no secure broker adapter, account authorization, or order-routing endpoint. Broker secrets must live server-side. Live mode would also need a symbol allow-list, position and loss limits, paper sign-off, a kill switch, and an explicit per-session confirmation.</p><details class="realSetupDetails"><summary>View what is needed to unlock real mode</summary><ul><li>A named broker and supported market-data feed.</li><li>Secure server-side key storage and account-read permissions.</li><li>Hard limits for order size, daily loss, allowed symbols, and open positions.</li><li>Verified paper logs and a one-click emergency stop.</li><li>Separate confirmation before every live session.</li></ul></details></div><span class="offlineTag">LOCKED · NO ORDERS</span></div>
-            </section>
-
-             <section class="view" id="view-journal" data-page="journal">
-              <div class="pageHeading"><div><p class="eyebrow">TRADE JOURNAL</p><h1>Every trade gets a receipt.</h1><p>Inspect the signal, next-bar fill, exit rule, and costs for each paper position.</p></div><button class="button buttonSecondary" id="clearJournal">Clear local journal <span>⌫</span></button></div>
-              <div class="journalSummary metricGrid"><article class="metricCard"><span>TRADES LOGGED</span><strong id="journalCount">0</strong><small>Stored in this browser</small></article><article class="metricCard"><span>NET EXPECTANCY</span><strong id="journalExpectancy">—</strong><small>Average net P&amp;L per trade</small></article><article class="metricCard"><span>COSTS PAID</span><strong id="journalCosts">$0.00</strong><small>Fees, spread &amp; slippage</small></article><article class="metricCard"><span>RULE VERSION</span><strong class="versionValue">1.1</strong><small>Frozen for this replay</small></article></div>
-              <article class="panel journalPanel"><div class="panelHead"><div><span class="eyebrow">PAPER FILL LEDGER</span><h2>Position history</h2></div><span class="journalSource" id="journalSource">Waiting for paper replay</span></div><div class="tableScroll"><table class="tradeTable"><thead><tr><th>ENTRY · EXIT</th><th>SIDE</th><th>STRATEGY / AGENT</th><th>ENTRY → EXIT</th><th>EXIT RULE</th><th>COSTS</th><th>NET P&amp;L</th></tr></thead><tbody id="journalBody"><tr><td colspan="7" class="emptyTable">No paper trades yet. Run a replay to create your first journal entry.</td></tr></tbody></table></div><p class="tableNote">Fill prices include per-side spread and slippage. Fees are charged on both entry and exit notional. End-of-test positions are closed at the final bar.</p></article>
-            </section>
-
-            <section class="view" id="view-council" data-page="council">
-              <div class="pageHeading"><div><p class="eyebrow">STRATEGY COUNCIL</p><h1>Four roles. One evidence-led review.</h1><p>A structured review of the selected market data and latest replay. No live AI market feed.</p></div><span class="councilBadge"><i></i> REVIEWING RULE SET 1.1</span></div>
-              <div class="councilIntro"><span>✳</span><div><b>The council checks the evidence, it does not predict tomorrow.</b><p>Each voice tests a different failure mode. The chair summarizes the disagreement and the next useful check.</p></div></div>
-              <div class="councilGrid"><article class="panel voiceCard"><div class="voiceHead"><span class="voiceIcon tape">↗</span><div><span class="eyebrow">01 · TAPE READER</span><h2>What did price do?</h2></div><span class="voiceState">DATA</span></div><p id="councilTape">Waiting for a replay. The tape reader will describe the selected price path and trend filter.</p><div class="voiceFoot">INPUT <b>OHLC HISTORY + MOVING AVERAGES</b></div></article><article class="panel voiceCard"><div class="voiceHead"><span class="voiceIcon watcher">⌁</span><div><span class="eyebrow">02 · MARKET WATCHER</span><h2>Where is the risk?</h2></div><span class="voiceState">RISK</span></div><p id="councilRisk">The watcher checks drawdown, choppy conditions, trade count and whether costs overwhelm gross results.</p><div class="voiceFoot">INPUT <b>HOLDOUT + COST MODEL</b></div></article><article class="panel voiceCard"><div class="voiceHead"><span class="voiceIcon skeptic">?</span><div><span class="eyebrow">03 · SKEPTIC</span><h2>What could mislead us?</h2></div><span class="voiceState">CHALLENGE</span></div><p id="councilSkeptic">A profitable in-sample run is not enough. Ask whether the holdout is untouched and the dataset represents real conditions.</p><div class="voiceFoot">INPUT <b>DATA QUALITY + BASELINE</b></div></article><article class="panel chairCard"><div class="voiceHead"><span class="voiceIcon chair">✳</span><div><span class="eyebrow">04 · REVIEW CHAIR</span><h2>What is the next decision?</h2></div><span class="voiceState">SUMMARY</span></div><p id="councilChair">The chair waits for evidence, notes disagreements, and recommends the next test. No broker orders or live-market decisions are made here.</p><div class="chairConclusion"><span class="chairDot"></span><div><b id="chairVerdict">Not enough evidence yet</b><small id="chairNext">Run a replay, then review expectancy, drawdown, trade count and costs.</small></div></div><button class="inlineAction" data-go="strategy">Open the research setup <span>→</span></button></article></div>
-            </section>
+        <section class="panel strategy-panel" aria-labelledby="strategy-title">
+          <div class="panel-header">
+            <div><p class="section-kicker">02 / STRATEGY INTELLIGENCE</p><h2 id="strategy-title">Setup board</h2></div>
+            <span class="score-note">Rule confluence · not a win probability</span>
           </div>
-          <footer class="workspaceFooter"><span>LOKI RESEARCH WORKSPACE <b>·</b> VERSION {{ version }}</span><span>NOT FINANCIAL ADVICE <b>·</b> PAST RESULTS DO NOT PREDICT FUTURE PERFORMANCE</span></footer>
+          <div id="strategy-empty" class="strategy-empty">Load market data to compare momentum, pullback, breakout and reversion rules.</div>
+          <div id="strategy-board" class="strategy-board" hidden>
+            <div class="strategy-focus" id="strategy-focus"></div>
+            <div class="strategy-list" id="strategy-candidates" aria-label="Candidate strategy checklist"></div>
+          </div>
+          <p class="strategy-footnote">Rules describe how the selected timeframe looks now. They do not estimate returns or predict a win rate.</p>
+        </section>
+      </div>
+
+      <aside id="risk-desk" class="side-column">
+        <form id="trade-council-form" class="panel plan-panel">
+          <div class="panel-header">
+            <div><p class="section-kicker">03 / PLAN THE RISK</p><h2>Define your levels</h2></div>
+            <span class="long-only">LONG ONLY</span>
+          </div>
+          <p class="panel-intro">Set the invalidation first. Loki sizes the paper plan from your stop distance and exposure cap.</p>
+          <input type="hidden" name="setup_name" value="" />
+          <input type="hidden" name="setup_score" value="" />
+          <input type="hidden" name="side" value="BUY" />
+          <div class="input-grid two">
+            <label>Capital
+              <span class="input-wrap"><span class="input-prefix">$</span><input name="capital" type="number" value="10000" min="1" step="any" required /></span>
+            </label>
+            <label>Risk budget
+              <span class="input-wrap"><input name="risk_percent" type="number" value="1" min="0.01" max="100" step="0.01" required /><span class="input-suffix">%</span></span>
+            </label>
+          </div>
+          <div class="level-grid">
+            <label><span class="level-label entry-label">ENTRY</span><input name="entry_price" type="number" min="0.000001" step="any" required /></label>
+            <label><span class="level-label stop-label">STOP</span><input name="stop_price" type="number" min="0.000001" step="any" required /></label>
+            <label><span class="level-label target-label">TARGET</span><input name="target_price" type="number" min="0.000001" step="any" required /></label>
+          </div>
+          <details class="advanced-inputs">
+            <summary>Exposure &amp; market gates <span>Adjust thresholds</span></summary>
+            <div class="input-grid two advanced-grid">
+              <label>Max notional <span class="input-wrap"><input name="max_notional_percent" type="number" value="10" min="0.01" max="100" step="any" required /><span class="input-suffix">%</span></span></label>
+              <label>Current price <input name="current_price" type="number" min="0.000001" step="any" required /></label>
+              <label>Trend <select name="trend" required><option value="" disabled selected>Select trend</option><option value="BULLISH">Bullish</option><option value="NEUTRAL">Neutral</option><option value="BEARISH">Bearish</option></select></label>
+              <label>Volatility <span class="input-wrap"><input name="volatility_percent" type="number" min="0" step="any" required /><span class="input-suffix">%</span></span></label>
+              <label>Volume vs baseline <span class="input-wrap"><input name="volume_ratio" type="number" min="0" step="0.01" required /><span class="input-suffix">×</span></span></label>
+              <label>Bid / ask spread <span class="input-wrap"><input name="spread_percent" type="number" min="0" step="0.001" required /><span class="input-suffix">%</span></span></label>
+              <label>Data age <span class="input-wrap"><input name="market_data_age_seconds" type="number" min="0" step="1" required /><span class="input-suffix">sec</span></span></label>
+              <label>Freshness limit <span class="input-wrap"><input name="max_data_age_seconds" type="number" value="60" min="0" step="1" required /><span class="input-suffix">sec</span></span></label>
+              <label>Minimum participation <span class="input-wrap"><input name="min_volume_ratio" type="number" value="0.8" min="0" step="0.05" required /><span class="input-suffix">×</span></span></label>
+              <label>Max volatility <span class="input-wrap"><input name="max_volatility_percent" type="number" value="5" min="0" step="0.1" required /><span class="input-suffix">%</span></span></label>
+              <label>Max spread <span class="input-wrap"><input name="max_spread_percent" type="number" value="0.5" min="0" step="0.05" required /><span class="input-suffix">%</span></span></label>
+              <label>Minimum setup rules <span class="input-wrap"><input name="min_setup_score" type="number" value="80" min="0" max="100" step="5" required /><span class="input-suffix">/ 100</span></span></label>
+              <label>Minimum reward / risk <input name="minimum_reward_risk" type="number" value="1.5" min="0.01" step="any" required /></label>
+              <label>Entry tolerance <span class="input-wrap"><input name="max_entry_deviation_percent" type="number" value="0.5" min="0" step="0.1" required /><span class="input-suffix">%</span></span></label>
+              <label>Market session <select name="market_open" required><option value="" disabled selected>Select session</option><option value="true">Open</option><option value="false">Closed</option></select></label>
+            </div>
+          </details>
+          <button type="submit" id="run-council" class="run-button">Run the Defence Council <span aria-hidden="true">↗</span></button>
+          <p class="form-note"><i></i> Paper analysis only · No broker keys · No orders sent</p>
+        </form>
+
+        <section id="plan-result" class="panel council-panel" aria-live="polite" aria-labelledby="council-heading">
+          <div class="panel-header">
+            <div><p class="section-kicker">04 / TRADE DEFENCE COUNCIL</p><h2 id="council-heading">Council review</h2></div>
+            <span class="council-count">6 GATES</span>
+          </div>
+          <div class="council-placeholder" id="council-placeholder">
+            <span class="council-seal" aria-hidden="true">L</span>
+            <strong>Waiting for a plan</strong>
+            <span>Run the council to see every gate, reason and risk number.</span>
+          </div>
+          <div id="council-output" hidden>
+            <div id="council-decision"></div>
+            <div class="gate-summary" id="gate-summary"></div>
+            <div class="plan-metrics" id="plan-metrics"></div>
+            <div class="plan-map-wrap" id="plan-map-wrap"></div>
+            <ol class="review-list" id="review-list"></ol>
+            <p class="disclaimer" id="council-disclaimer">A calculated stop loss is an estimate; gaps and slippage can increase losses.</p>
+            <div id="decision-journal-actions" class="decision-journal-actions" hidden>
+              <label class="journal-note-label" for="council-note">Add a note to your review
+                <textarea id="council-note" maxlength="500" rows="2" placeholder="What did you see? What would change your mind?"></textarea>
+              </label>
+              <div class="journal-action-buttons">
+                <button id="save-review" class="secondary-button" type="button">Save decision review</button>
+                <button id="track-paper-position" class="run-button track-button" type="button" hidden>Track paper entry <span aria-hidden="true">＋</span></button>
+              </div>
+              <p id="decision-journal-feedback" class="journal-feedback" role="status"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="bot-coach" class="panel bot-chat-panel" aria-labelledby="bot-coach-heading">
+          <div class="panel-header bot-chat-heading">
+            <div><p class="section-kicker">05 / LOKI COACH</p><h2 id="bot-coach-heading">Ask the bot</h2></div>
+            <span class="coach-status"><i></i> CONTEXT READY</span>
+          </div>
+          <p class="bot-chat-intro">Ask why a gate paused, what the risk plan means, or what your journal says about a setup.</p>
+          <p id="bot-context-status" class="bot-context-status">Uses the current screen and a summary of this browser’s journal for each question.</p>
+          <div id="bot-chat-log" class="bot-chat-log" role="log" aria-live="polite" aria-relevant="additions">
+            <article class="bot-message assistant"><span class="bot-message-label">LOKI COACH</span><p>Hi. I can explain this page’s market snapshot, council review, risk plan and recorded setup outcomes. What would you like to understand?</p></article>
+          </div>
+          <div class="bot-prompts" aria-label="Suggested questions">
+            <button type="button" data-bot-prompt="Why did the council say WAIT or SKIP?">Explain my council</button>
+            <button type="button" data-bot-prompt="What is my planned size and downside risk?">Explain my risk</button>
+            <button type="button" data-bot-prompt="How much of my daily loss cap remains?">Daily risk check</button>
+            <button type="button" data-bot-prompt="How has my selected setup performed in the journal?">Review my setup</button>
+          </div>
+          <form id="bot-chat-form" class="bot-chat-form">
+            <label class="sr-only" for="bot-question">Ask Loki a question</label>
+            <textarea id="bot-question" name="question" maxlength="500" rows="2" placeholder="Ask about this market, decision or journal…" required></textarea>
+            <button id="bot-send" class="run-button bot-send" type="submit">Ask Loki <span aria-hidden="true">↑</span></button>
+          </form>
+          <p id="bot-chat-status" class="bot-chat-status" role="status">Local context coach · no outside AI provider · no orders sent.</p>
+        </section>
+      </aside>
+    </section>
+
+    <section id="paper-journal" class="panel journal-panel" aria-labelledby="journal-title">
+      <div class="journal-topline">
+        <div>
+          <p class="section-kicker">06 / REVIEW THE PROCESS</p>
+          <h2 id="journal-title">Paper journal</h2>
+          <p class="journal-intro">Keep the setup, council reasons and outcome together. Entries stay in this browser.</p>
         </div>
+        <div class="journal-tools">
+          <label class="journal-filter-label" for="journal-filter">Show
+            <select id="journal-filter">
+              <option value="all">All entries</option>
+              <option value="open">Open paper</option>
+              <option value="closed">Closed paper</option>
+              <option value="review">Decision reviews</option>
+            </select>
+          </label>
+          <button id="export-journal" class="secondary-button" type="button">Export CSV</button>
+          <button id="clear-journal" class="quiet-button" type="button">Clear history</button>
+        </div>
+      </div>
+
+      <div class="journal-stats" aria-label="Journal performance summary">
+        <article><span>OPEN PAPER</span><strong id="journal-open-count">0</strong><small>Manually tracked</small></article>
+        <article><span>CLOSED</span><strong id="journal-closed-count">0</strong><small>Recorded outcomes</small></article>
+        <article><span>WIN RATE</span><strong id="journal-win-rate">—</strong><small>Closed entries only</small></article>
+        <article><span>AVERAGE R</span><strong id="journal-average-r">—</strong><small>Outcome / planned risk</small></article>
+        <article class="journal-pnl-stat"><span>GROSS P&amp;L · QUOTE UNITS</span><strong id="journal-pnl">—</strong><small>Excludes fees and slippage</small></article>
+      </div>
+
+      <section class="daily-risk-panel" aria-labelledby="daily-risk-title">
+        <div class="daily-risk-header">
+          <div>
+            <span class="section-kicker">RISK GUARD / YOUR LOCAL DAY</span>
+            <h3 id="daily-risk-title">Daily risk guard</h3>
+            <p>See how much of your chosen paper loss cap is committed before considering another setup.</p>
+          </div>
+          <div class="daily-risk-controls">
+            <span id="daily-risk-status" class="daily-risk-status loading" role="status" aria-live="polite">UPDATING</span>
+            <label for="daily-risk-limit">Daily loss cap
+              <span class="input-wrap"><input id="daily-risk-limit" type="number" value="2" min="0.1" max="100" step="0.1" inputmode="decimal" /><span class="input-suffix">%</span></span>
+            </label>
+          </div>
+        </div>
+        <div class="daily-risk-metrics" aria-live="polite">
+          <article><span>CAP AMOUNT</span><strong id="daily-risk-limit-amount">—</strong><small>Based on plan capital</small></article>
+          <article><span>REALIZED P&amp;L TODAY</span><strong id="daily-risk-realized">—</strong><small>Manual journal exits</small></article>
+          <article><span>OPEN PLANNED RISK</span><strong id="daily-risk-open">—</strong><small>Original stop risk</small></article>
+          <article><span>CAP REMAINING</span><strong id="daily-risk-remaining">—</strong><small id="daily-risk-committed">Committed: —</small></article>
+        </div>
+        <div class="daily-risk-meter-row">
+          <div id="daily-risk-meter" class="daily-risk-meter" role="progressbar" aria-label="Daily paper loss cap used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="daily-risk-progress"></span></div>
+          <strong id="daily-risk-utilization">—</strong>
+        </div>
+        <p id="daily-risk-day" class="daily-risk-day">Preparing this browser's local-day summary…</p>
+        <p class="daily-risk-caveat">Advisory estimate from this browser only. Counts gross realized losses and original planned risk on open paper entries; excludes mark-to-market, fees and slippage. It never blocks plans or orders.</p>
       </section>
-    </main>
-  </div>
+
+      <section class="playbook-review" aria-labelledby="playbook-review-title">
+        <div class="playbook-heading">
+          <div><span class="section-kicker">YOUR RECORDED OUTCOMES</span><h3 id="playbook-review-title">Setup feedback</h3></div>
+          <span class="playbook-caveat">Historical notes, not a forecast</span>
+        </div>
+        <div class="playbook-table-wrap">
+          <table class="playbook-table">
+            <thead><tr><th scope="col">Setup</th><th scope="col">Closed</th><th scope="col">Win rate</th><th scope="col">Avg R</th><th scope="col">Gross P&amp;L · quote units</th><th scope="col">Sample read</th></tr></thead>
+            <tbody id="playbook-review-body"></tbody>
+          </table>
+        </div>
+        <p id="playbook-review-empty" class="playbook-empty">Track and close a paper entry to compare outcomes. Under 5 is too small to change rules; 5–19 is an early read; 20+ is reviewable, not proof. Check holdout results and costs too.</p>
+      </section>
+
+      <div class="journal-list-heading"><span id="journal-entry-count">No saved entries</span><span>Close prices are entered manually; no orders or price triggers run here.</span></div>
+      <div id="journal-empty" class="journal-empty">
+        <strong>Your learning loop starts with a record.</strong>
+        <span>Save a council review or track a BUY as a paper entry. Later, record its exit and compare setups.</span>
+      </div>
+      <div id="journal-list" class="journal-list" aria-live="polite"></div>
+    </section>
+
+    <footer class="footer"><span>LOKI / PAPER RESEARCH CONSOLE</span><span>Market data: Binance Spot public API · Read only</span><a href="/health">SYSTEM HEALTH <span aria-hidden="true">↗</span></a></footer>
+  </main>
 </body>
 </html>
 
