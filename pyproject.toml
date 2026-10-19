@@ -121,3 +121,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "@abstractmethod",
 ]
+
+# Explicitly select the lightweight ASGI entrypoint rather than a desktop launcher.
+[tool.vercel]
+entrypoint = "main:app"

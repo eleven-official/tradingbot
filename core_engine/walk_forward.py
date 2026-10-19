@@ -59,6 +59,8 @@ class PurgedWalkForwardValidator:
             raise ValueError("gap must be non-negative and min_train_size positive")
         if min_positive_folds < 1 or min_positive_folds > n_splits:
             raise ValueError("min_positive_folds must be within the split count")
+        if not np.isfinite(min_median_sharpe):
+            raise ValueError("min_median_sharpe must be finite")
         self.n_splits = n_splits
         self.test_size = test_size
         self.gap = gap
@@ -100,27 +102,50 @@ class PurgedWalkForwardValidator:
         """
         if not isinstance(data, pd.DataFrame):
             raise TypeError("data must be a pandas DataFrame")
+        if not data.index.is_monotonic_increasing or not data.index.is_unique:
+            raise ValueError("data index must be sorted and unique")
         folds = list(self.split(len(data)))
         results: List[Dict[str, Any]] = []
+        reasons: List[str] = []
         for fold in folds:
             train = data.iloc[fold.train_start:fold.train_end].copy()
             test = data.iloc[fold.test_start:fold.test_end].copy()
             output = dict(evaluator(train, test, fold.fold))
             output["fold"] = fold.fold
+            for key in ("total_return", "sharpe_ratio"):
+                try:
+                    valid = key in output and np.isfinite(float(output[key]))
+                except (TypeError, ValueError, OverflowError):
+                    valid = False
+                if not valid:
+                    reasons.append(f"fold {fold.fold} has missing or non-finite {key}")
             results.append(output)
 
         summary: Dict[str, float] = {"fold_count": float(len(results))}
-        reasons: List[str] = []
         for key in ("sharpe_ratio", "total_return", "max_drawdown"):
-            values = np.asarray([float(r[key]) for r in results if key in r and np.isfinite(float(r[key]))])
+            clean = []
+            for result in results:
+                try:
+                    value = float(result[key])
+                    if np.isfinite(value):
+                        clean.append(value)
+                except (KeyError, TypeError, ValueError, OverflowError):
+                    continue
+            values = np.asarray(clean)
             if values.size:
                 summary[f"{key}_median"] = float(np.median(values))
                 summary[f"{key}_mean"] = float(np.mean(values))
                 summary[f"{key}_worst"] = float(np.min(values) if key != "max_drawdown" else np.min(values))
 
-        positive_returns = sum(float(r.get("total_return", 0.0)) > 0 for r in results)
+        positive_returns = 0
+        for result in results:
+            try:
+                value = float(result.get("total_return", 0.0))
+                positive_returns += bool(np.isfinite(value) and value > 0)
+            except (TypeError, ValueError, OverflowError):
+                continue
         summary["positive_return_fraction"] = positive_returns / len(results)
-        robust = True
+        robust = not reasons
         if positive_returns < self.min_positive_folds:
             robust = False
             reasons.append("too few positive out-of-sample folds")

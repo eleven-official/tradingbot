@@ -14,26 +14,31 @@ from loki.version import __version__, __version_info__
 
 __all__ = ["__version__", "__version_info__"]
 
-__all__.extend(["LokiBot", "StateManager", "get_LokiBot", "get_StateManager"])
-
-
-def __getattr__(name: str):
-    if name in ("LokiBot", "get_LokiBot"):
-        try:
+if TYPE_CHECKING:
+    from loki.bot import LokiBot  # pragma: no cover
+    from core.state_manager import StateManager  # pragma: no cover
+else:
+    def __getattr__(name):
+        """Keep public classes available without importing broker code eagerly."""
+        if name == "LokiBot":
             from loki.bot import LokiBot
-
             return LokiBot
-        except Exception:
-            from loki_v8.bot import LokiBot
+        if name == "StateManager":
+            from core.state_manager import StateManager
+            return StateManager
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-            return LokiBot
-    if name in ("StateManager", "get_StateManager"):
+    def get_LokiBot():
+        """Return the LokiBot class (imported lazily)."""
+        from loki.bot import LokiBot
+        return LokiBot
+
+    def get_StateManager():
+        """Return the StateManager class (imported lazily)."""
         from core.state_manager import StateManager
-
         return StateManager
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+    __all__.extend(["LokiBot", "StateManager", "get_LokiBot", "get_StateManager"])
 
 import logging
-
 logging.getLogger(__name__).addHandler(logging.NullHandler())

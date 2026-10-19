@@ -66,18 +66,20 @@ class ResearchHarness:
     @staticmethod
     def summary(returns: pd.Series, periods_per_year: int = 252) -> Dict[str, float]:
         """Return conservative core metrics, including cost-neutral diagnostics."""
-        values = pd.to_numeric(returns, errors="coerce").dropna().astype(float)
-        if values.empty or not np.isfinite(values.to_numpy()).all():
+        if isinstance(periods_per_year, bool) or not isinstance(periods_per_year, int) or periods_per_year < 1:
+            raise ValueError("periods_per_year must be a positive integer")
+        values = pd.to_numeric(returns, errors="coerce").astype(float)
+        if values.empty or not np.isfinite(values.to_numpy()).all() or (values < -1).any():
             raise ValueError("returns must contain finite observations")
         equity = (1.0 + values).cumprod()
-        peak = equity.cummax()
+        # Capital exists before the first return; an immediate loss must count.
+        peak = equity.cummax().clip(lower=1.0)
         drawdown = equity / peak - 1.0
-        downside = values[values < 0]
         annualized_return = float(equity.iloc[-1] ** (periods_per_year / len(values)) - 1.0)
         volatility = float(values.std(ddof=1) * np.sqrt(periods_per_year)) if len(values) > 1 else 0.0
         sharpe = float(values.mean() / values.std(ddof=1) * np.sqrt(periods_per_year)) if values.std(ddof=1) > 0 else 0.0
-        downside_std = float(downside.std(ddof=1)) if len(downside) > 1 else 0.0
-        sortino = float(values.mean() / downside_std * np.sqrt(periods_per_year)) if downside_std > 0 else 0.0
+        downside_deviation = float(np.sqrt(np.square(values.clip(upper=0)).mean()))
+        sortino = float(values.mean() / downside_deviation * np.sqrt(periods_per_year)) if downside_deviation > 0 else 0.0
         max_dd = float(drawdown.min())
         return {
             "total_return": float(equity.iloc[-1] - 1.0),

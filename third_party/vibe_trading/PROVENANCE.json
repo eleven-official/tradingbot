@@ -1,0 +1,32 @@
+{
+  "source_archive": "Vibe-Trading-main.zip",
+  "archive_sha256": "7ab43d041d44ca9b4bc0c32e69ec763c6e406972edd9201f6e539be0bc8f8f76",
+  "license": "MIT",
+  "selected_sources": [
+    {
+      "archive_path": "agent/src/shadow_account/indicators.py",
+      "retained_original": "upstream/indicators.py",
+      "original_sha256": "29e849e6d9f800bf7131d4df029b94685f5b0d6b5f042a81dfd771aaf71e5863",
+      "runtime_adaptation": "indicators.py",
+      "changes": "Wilder RSI port: lists and None replace pandas/numpy; causal SMA seed and recursion retained."
+    },
+    {
+      "archive_path": "agent/src/factors/factor_analysis_core.py",
+      "retained_original": "upstream/factor_analysis_core.py",
+      "original_sha256": "7d39b4220b477f3a5de9051b8c19e56dd1ae55fd11c1d276fc5ea4c099a2a940",
+      "runtime_adaptation": "factor_analysis.py",
+      "changes": "Paired-rank Spearman IC and equal-weight quantile diagnostics ported to dict panels and stdlib statistics; deterministic symbol tie breaks replace pandas qcut."
+    },
+    {
+      "archive_path": "agent/src/live/pending_action.py",
+      "retained_original": "upstream/pending_action.py",
+      "original_sha256": "a5235d39047db96e523c668b0bcf4002244d12b8360d09b79e8c428c99960952",
+      "runtime_adaptation": "order_contracts.py",
+      "changes": "PendingOrderRequest class retained verbatim; provider-specific pending-action persistence is replaced with the Loki SQLite order journal."
+    }
+  ],
+  "scope": "Selected source integration only. The full upstream application is not bundled or started.",
+  "runtime_network_access": false,
+  "runtime_model_provider_access": false,
+  "live_order_transport": false
+}

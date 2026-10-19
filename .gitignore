@@ -58,3 +58,16 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Local integration-test scratch files
+.test-tmp/
+
+# Licensed local engines, provider settings, and user paper exports
+.fusion_components/
+fusion.config.local.json
+paper-exports/
+state/real/
+components/mirofish/upstream/backend/uploads/
+components/mirofish/upstream/frontend/node_modules/
+components/mirofish/upstream/frontend/dist/
+components/mirofish/upstream/backend/.venv/
