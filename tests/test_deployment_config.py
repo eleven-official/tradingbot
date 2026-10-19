@@ -44,7 +44,10 @@ class DeploymentConfigTests(unittest.TestCase):
     def test_vercel_does_not_declare_an_invalid_custom_python_runtime(self):
         config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
         function = config["functions"]["main.py"]
-        self.assertEqual(function["includeFiles"], "{templates/**,static/**}")
+        self.assertEqual(
+            function["includeFiles"],
+            "{templates/**,static/**,loki_v8/training_report_snapshot.json}",
+        )
         self.assertNotIn("runtime", function)
         self.assertNotIn("routes", config)
 
