@@ -348,7 +348,7 @@ class LokiCopilot:
         patterns = [
             (
                 "sim_market",
-                r"\b(simulated.market|practice.(?:market|exchange|account|balance|equity|positions?|orders?|pnl|profit)|synthetic.(?:market|account|balance)|market.simulator|paper.mode|real.mode)\b",
+                r"\b(simulated.market|practice.(?:market|exchange|account|balance|equity|positions?|orders?|pnl|profit)|synthetic.(?:market|account|balance)|market.simulator|paper.mode|real.mode|alpaca|paper.ai|ai.paper|broker.(?:keys|connect\w*))\b",
             ),
             (
                 "learning",
@@ -1056,7 +1056,8 @@ class LokiCopilot:
                 f"net practice P&L {_cash(metrics.get('total_pnl'))}. These are synthetic outcomes."
             )
         lines.append(
-            "Real at the top opens genuine exchange account inspection when configured. Manual Kraken spot limit orders require host opt-in, a fresh preview and typed confirmation. Automatic bot execution is disabled; "
+            "Connect Alpaca from the Paper screen using its account form, never by sending keys in chat. Train a selected instrument on a 5/10-year daily history window, inspect the later-date results, then use Start AI paper trader. The paper runner waits in cash when validation finds no entry edge and pauses when that screen is hidden. Pausing does not cancel venue orders or close positions. "
+            "Real at the top opens genuine exchange account inspection when configured. Manual Kraken spot limit orders require host opt-in, a fresh preview and typed confirmation. Automatic real-money execution is disabled; "
             "a mode switch never arms a bot or places a trade. Synthetic wins, generated price paths and practice council feedback cannot establish 70% real-market winning trades."
         )
         return (

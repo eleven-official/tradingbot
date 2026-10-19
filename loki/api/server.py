@@ -13,6 +13,7 @@ from core.copilot import LokiCopilot
 from core.risk_preview import preview_position
 from core.strategy_lab import evaluate_strategy
 from loki.api.fusion import router as fusion_router
+from loki.api.broker_workspace import router as broker_workspace_router
 
 app = FastAPI(
     title="Loki Trading Platform",
@@ -20,6 +21,7 @@ app = FastAPI(
     description="Loki research workspace and read-only trading copilot",
 )
 app.include_router(fusion_router)
+app.include_router(broker_workspace_router)
 
 # Resolve assets independently of the process working directory.
 repo_dir = Path(__file__).resolve().parents[2]

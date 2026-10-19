@@ -25,7 +25,7 @@ def test_real_mode_chat_explains_manual_confirmation_without_implying_autonomous
     answer = LokiCopilot().respond("How does real mode work?")
     assert "sim_market" in answer.topics
     assert "typed confirmation" in answer.text
-    assert "Automatic bot execution is disabled" in answer.text
+    assert "Automatic real-money execution is disabled" in answer.text
 
 
 def test_explicit_practice_balance_does_not_use_the_main_paper_account():

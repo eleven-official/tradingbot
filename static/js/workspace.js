@@ -29,6 +29,7 @@ async function request(url,payload,privileged=false){
 const post=(url,payload)=>{
   if(url==='/api/copilot'&&window.lokiSimulatedMarket?.snapshot()){const sim=window.lokiSimulatedMarket.snapshot();payload={...payload,context:{...payload.context,simulated_market:{quotes:sim.quotes,metrics:sim.metrics,step:sim.state.step,scenario:sim.state.scenario,synthetic:true}}};}
   if(url==='/api/fusion/council'&&$('#miro-native-id').value.trim())return request(url,{...payload,miro_report_id:$('#miro-native-id').value.trim(),miro_reviewed:$('#miro-native-reviewed').checked},true);
+  if(url==='/api/copilot'&&window.lokiBrokerWorkspace?.summary())payload={...payload,context:{...payload.context,broker_connection:window.lokiBrokerWorkspace.summary()}};
   if(url==='/api/copilot'&&learningResult)payload={...payload,context:{...payload.context,market_learning:learningResult}};
   if(url==='/api/copilot'&&pullbackResult&&pullbackDataRevision===datasetRevision)payload={...payload,context:{...payload.context,pullback_research:pullbackResult}};
   return request(url,payload);
