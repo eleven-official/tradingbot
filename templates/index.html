@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
   <meta name="description" content="Loki brings strategy research, structured agent reviews, paper portfolios, and scenario analysis into one evidence-led workspace.">
   <title>Loki · Trading intelligence</title>
-  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css"><link rel="stylesheet" href="/static/css/market.css"><script src="/static/js/workspace.js" defer></script><script src="/static/js/simulated_market.js" defer></script><script src="/static/js/real_account.js" defer></script><script src="/static/js/broker_workspace.js" defer></script><script src="/static/js/trained_book.js" defer></script><script src="/static/js/loki_auth.js" defer></script>
+  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css"><link rel="stylesheet" href="/static/css/market.css"><script src="/static/js/workspace.js" defer></script><script src="/static/js/simulated_market.js" defer></script><script src="/static/js/real_account.js" defer></script><script src="/static/js/broker_workspace.js" defer></script><script src="/static/js/trained_book.js" defer></script><script src="/static/js/ai_trading.js" defer></script><script src="/static/js/loki_auth.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to workspace</a>
@@ -17,6 +17,7 @@
       <a href="#agent-council" data-view="agent-council"><span aria-hidden="true">✳</span> Agent council</a>
       <a href="#portfolio" data-view="portfolio"><span aria-hidden="true">▥</span> Paper portfolio</a>
       <a href="#simulated-market" data-view="simulated-market"><span aria-hidden="true">▥</span> Simulated market</a>
+      <a href="#ai-trading" data-view="ai-trading"><span aria-hidden="true">🤖</span> AI trading</a>
       <a href="#real-market" data-view="real-market"><span aria-hidden="true">↗</span> Real account</a>
       <a href="#scenarios" data-view="scenarios"><span aria-hidden="true">◇</span> Scenarios</a>
       <a href="#copilot" data-view="copilot"><span aria-hidden="true">✧</span> Talk to Loki</a>
@@ -108,6 +109,35 @@
       <section class="panel"><p class="eyebrow">PAPER ORDER TICKET</p><h2>Rehearse the decision.</h2><form id="sim-order-form"><div class="form-grid two-col"><label>Side<select name="side"><option value="buy">Buy</option><option value="sell">Sell / reduce long</option></select></label><label>Order type<select name="order_type" id="sim-order-type"><option value="market">Market</option><option value="limit">Limit · later candle</option></select></label><label>Quantity<input name="quantity" type="number" min="0.000001" step="any" value="0.01" required></label><label id="sim-limit-label" hidden>Limit price<input name="limit_price" type="number" min="0.000001" step="any"></label><label>Protective stop (buy only)<input name="stop_loss" type="number" min="0.000001" step="any" placeholder="Optional generated quote price"></label></div><p id="sim-order-estimate" class="caption"></p><div class="button-row"><button class="button primary" type="submit">Place paper order →</button><button class="button secondary" id="sim-close-position" type="button">Close held position</button></div></form><p class="caption">Cash-funded long positions. 10 bps fee + 5 bps adverse slippage per side, plus the synthetic spread. Stops can gap. Limits never fill before the next candle.</p><h3>Illustrative depth</h3><div id="sim-depth" class="table-scroll"></div><button id="sim-council" class="button secondary" type="button">Ask council about this market →</button><p id="sim-council-summary" class="caption">Council feedback uses synthetic evidence and cannot establish a market edge.</p></section></div>
       <section class="panel"><div class="section-title"><h2>Practice journal.</h2><button id="sim-export" class="button secondary" type="button">Export practice session ↓</button></div><h3>Open positions</h3><div id="sim-positions" class="table-scroll"></div><h3>Limit orders</h3><div id="sim-orders" class="table-scroll"></div><h3>Recent fills</h3><div id="sim-fills" class="table-scroll"></div><details><summary>Market events &amp; fill assumptions</summary><div id="sim-events"></div><div id="sim-assumptions"></div></details></section>
       <section class="panel"><p class="eyebrow">NEW PRACTICE SESSION</p><h2>Try a different market.</h2><form id="sim-reset-form"><div class="form-grid"><label>Scenario<select name="scenario"><option value="balanced">Balanced</option><option value="uptrend">Uptrend</option><option value="downtrend">Downtrend</option><option value="range">Range / mean reversion</option><option value="volatile">High volatility</option><option value="crash">Flash crash &amp; recovery</option></select></label><label>Seed<input name="seed" type="number" min="0" max="2147483647" value="42" required></label><label>Practice capital (USD)<input name="initial_capital" type="number" min="1" max="1000000000" value="10000" required></label></div><button class="button secondary" type="submit">Reset practice account &amp; market</button><p class="caption">Replaces only this practice session. Export it first to retain the journal. The same seed and scenario reproduce the same generated price path.</p></form></section>
+    </section>
+    <section id="ai-trading" class="workspace-view" aria-label="AI trading" hidden>
+      <div class="page-heading"><p class="eyebrow">AI TRADING / AUTONOMOUS PAPER</p><h1>Let the AI work the plan.</h1><p class="muted">Loki's AI runs its full Director → Quant → Risk pipeline on live data using each symbol's trained, out-of-sample-verified profile — then fills paper orders in your browser journal. Paper money only; no real orders, ever.</p></div>
+      <section class="panel">
+        <div class="section-title"><div><p class="eyebrow">CONTROL ROOM</p><h2>Start, pause, inspect.</h2></div><span class="tag" id="ai-status-tag">Idle</span></div>
+        <div class="form-grid two-col">
+          <label>Symbol<select id="ai-symbol"><option>SPY</option></select></label>
+          <label>Paper capital (USD)<input id="ai-capital" type="number" value="10000" min="100" max="10000000" step="100"></label>
+        </div>
+        <div class="button-row">
+          <button id="ai-start" class="button primary" type="button">Start AI trading</button>
+          <button id="ai-stop" class="button secondary" type="button" disabled>Pause</button>
+          <button id="ai-reset" class="button secondary" type="button">Reset paper account</button>
+        </div>
+        <p id="ai-message" class="form-message" role="status"></p>
+        <p class="caption">Checks the market every 20 seconds while this tab is visible. Fills are simulated at the latest traded price, with the AI's own stop and target enforced. Decisions come from the same verified profiles shown on Overview.</p>
+      </section>
+      <section class="panel">
+        <div class="section-title"><div><p class="eyebrow">LATEST DECISION</p><h2>The AI's reasoning, in the open.</h2></div></div>
+        <div id="ai-trail"><p class="muted">Start AI trading to watch the Director → Quant → Risk reasoning stream in here, step by step.</p></div>
+      </section>
+      <section class="panel">
+        <div class="section-title"><div><p class="eyebrow">PAPER BOOK</p><h2>Equity &amp; results.</h2></div></div>
+        <div id="ai-stats" class="inline-metrics"></div>
+        <div id="ai-position"></div>
+        <div id="ai-trades" class="table-scroll"></div>
+        <h3 style="margin-top:18px">Decision log</h3>
+        <div id="ai-log"></div>
+      </section>
     </section>
     <section id="real-market" class="workspace-view" aria-label="Real account" hidden>
       <div class="page-heading"><p class="eyebrow">REAL MODE / EXCHANGE CONNECTION</p><h1>Your real account.</h1><p class="muted">Inspect the actual connection before making a real-money decision. Paper and simulated accounts do not become real balances.</p></div>

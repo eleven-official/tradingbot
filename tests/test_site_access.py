@@ -21,6 +21,8 @@ class TestAccessCode:
         assert site_access.code_matches("Beef  Jerky")
         assert site_access.code_matches("beefjerky")
         assert site_access.code_matches("  BEEF JERKY  ")
+        assert site_access.code_matches("beef, jerky!")
+        assert site_access.code_matches("beef-jerky")
         assert not site_access.code_matches("beef jerki")
         assert not site_access.code_matches("")
 

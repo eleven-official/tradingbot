@@ -82,11 +82,20 @@
             nickname: $('nickname').value.trim() || null
           })
         });
-        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) || {}).detail || 'Something went wrong.');
+        if (!res.ok) {
+          const detail = ((await res.json().catch(() => ({}))) || {}).detail;
+          if (res.status === 503 || res.status === 404 || res.status >= 500) {
+            msg.textContent = 'The account service is waking up — give it a minute and try again.';
+          } else {
+            msg.textContent = detail || 'Something went wrong. Try again.';
+          }
+          btn.disabled = false;
+          return;
+        }
         msg.className = 'ok'; msg.textContent = 'Welcome in…';
         window.location.href = '/#overview';
       } catch (err) {
-        msg.textContent = err.message || 'Try again.';
+        msg.textContent = 'Connection hiccup — check the internet and try again.';
         btn.disabled = false;
       }
     });

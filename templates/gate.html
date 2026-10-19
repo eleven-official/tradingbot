@@ -36,31 +36,43 @@
     <p class="muted">This workspace opens with a passphrase. It stays between Loki and you.</p>
     <form id="gate-form" autocomplete="off">
       <label for="code">Access code</label>
-      <input id="code" name="code" type="text" inputmode="text" autofocus required placeholder="type the code" />
+      <input id="code" name="code" type="text" inputmode="text" autofocus required
+             placeholder="type the code" autocapitalize="none" autocorrect="off" spellcheck="false" />
       <button id="go" type="submit">Open Loki ↗</button>
     </form>
     <div id="msg" role="status" aria-live="polite"></div>
-    <p class="hint">Already through? You'll be redirected automatically.</p>
+    <p class="hint">Tip: spacing and capitalization don't matter.</p>
   </div>
   <script>
     const formEl = document.getElementById('gate-form');
     const msgEl = document.getElementById('msg');
+    const setMsg = (text, ok) => { msgEl.className = ok ? 'ok' : ''; msgEl.textContent = text; };
     formEl.addEventListener('submit', async (event) => {
       event.preventDefault();
       const btn = document.getElementById('go');
+      const code = document.getElementById('code').value;
       btn.disabled = true;
-      msgEl.className = ''; msgEl.textContent = 'Checking…';
+      setMsg('Checking…');
       try {
         const res = await fetch('/api/gate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: document.getElementById('code').value })
+          body: JSON.stringify({ code })
         });
-        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) || {}).detail || 'Not the code.');
-        msgEl.className = 'ok'; msgEl.textContent = 'Welcome in — opening the workspace…';
+        if (res.status === 403) {
+          setMsg('That is not the code. Check it and try again — spacing doesn\u2019t matter.');
+          btn.disabled = false;
+          return;
+        }
+        if (!res.ok) {
+          setMsg('Loki is updating right now — give it a minute and try again.');
+          btn.disabled = false;
+          return;
+        }
+        setMsg('Welcome in — opening the workspace…', true);
         window.location.href = '/';
       } catch (err) {
-        msgEl.textContent = err.message || 'Try again.';
+        setMsg('Connection hiccup — check the internet and try again.');
         btn.disabled = false;
       }
     });

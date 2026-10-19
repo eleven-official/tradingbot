@@ -15,6 +15,7 @@ from core.copilot import LokiCopilot
 from core.risk_preview import preview_position
 from core.strategy_lab import evaluate_strategy
 from loki.api import site_access
+from loki.api.ai_paper import router as ai_paper_router
 from loki.api.fusion import router as fusion_router
 from loki.api.broker_workspace import router as broker_workspace_router
 
@@ -25,6 +26,7 @@ app = FastAPI(
 )
 app.include_router(fusion_router)
 app.include_router(broker_workspace_router)
+app.include_router(ai_paper_router)
 from loki.api.paper_tools import router as paper_tools_router
 
 app.include_router(paper_tools_router)

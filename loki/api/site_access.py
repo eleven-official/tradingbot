@@ -51,9 +51,13 @@ def expected_code() -> str:
     return _normalize_code(raw)
 
 
+_PUNCTUATION = set(".,!?'\";:-_~`@#$%^&*()+={}[]|\\/<>\u00b7")
+
+
 def _normalize_code(value: str) -> str:
-    """Lowercase, strip accents/padding, and collapse every inner space run."""
+    """Lowercase, drop punctuation/padding, and collapse inner space runs."""
     value = unicodedata.normalize("NFKC", value or "").strip().lower()
+    value = "".join(ch for ch in value if ch not in _PUNCTUATION)
     return " ".join(value.split())
 
 

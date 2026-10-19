@@ -14,3 +14,8 @@
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button,.workflow-card{transition:none}}
 
 .integrated-terminal{width:100%;height:calc(100vh - 230px);min-height:600px;border:1px solid var(--border,#263342);border-radius:16px;background:#080f19}
+
+/* AI trading section (additive) */
+.ai-log{max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:rgba(10,18,32,.4)}
+#ai-trail .tag{margin-left:8px}
+#ai-trades table{width:100%}
