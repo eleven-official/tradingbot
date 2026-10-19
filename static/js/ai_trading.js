@@ -22,6 +22,7 @@
     trades: [],
     log: [],
     curve: [],
+    lastTrail: null,
     lastPrice: null
   });
 
@@ -56,8 +57,11 @@
     if (state.log.length > 60) state.log.length = 60;
   }
 
-  const fmtMoney = (value) =>
-    (value < 0 ? '-$' : '$') + Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  const fmtMoney = (value) => {
+    if (window.LokiCurrency) return window.LokiCurrency.format(value);
+    return (value < 0 ? '-$' : '$') + Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  };
+  document.addEventListener('loki:currency', () => render());
 
   const fmtTime = (iso) => {
     try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
@@ -167,6 +171,13 @@
         logLine(`HOLD ${data.symbol} @ ${data.price.toFixed(2)}${reason ? ' — ' + reason : ''}`, 'info');
       }
       renderTrail(data);
+      state.lastTrail = {
+        symbol: data.symbol,
+        price: data.price,
+        regime: data.regime,
+        trained_profile_applied: data.trained_profile_applied,
+        trail: data.trail
+      };
       state.curve.push({ t: Date.now(), e: equityNow() });
       if (state.curve.length > 240) state.curve.splice(0, state.curve.length - 240);
       render();
@@ -273,7 +284,23 @@
     }
   }
 
+  function renderNavIndicator() {
+    const navLink = document.querySelector('.sidebar nav a[data-view="ai-trading"]');
+    if (!navLink) return;
+    const existing = navLink.querySelector('.ai-live-dot');
+    if (state.running && !existing) {
+      const dot = document.createElement('span');
+      dot.className = 'ai-live-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      dot.title = 'AI trading is running';
+      navLink.appendChild(dot);
+    } else if (!state.running && existing) {
+      existing.remove();
+    }
+  }
+
   function render() {
+    renderNavIndicator();
     const stats = $('ai-stats');
     if (stats) {
       const wins = state.trades.filter((t) => t.pnl > 0).length;
@@ -300,9 +327,9 @@
         posTarget.innerHTML =
           `<div class="inline-metrics" style="margin:10px 0">` +
           metric('Open', `${pos.qty} ${escapeHtml(pos.symbol)}`) +
-          metric('Entry', '$' + Number(pos.entry).toFixed(2)) +
-          metric('Stop', pos.stop ? '$' + Number(pos.stop).toFixed(2) : '—') +
-          metric('Target', pos.target ? '$' + Number(pos.target).toFixed(2) : '—') +
+          metric('Entry', fmtMoney(pos.entry)) +
+          metric('Stop', pos.stop ? fmtMoney(pos.stop) : '—') +
+          metric('Target', pos.target ? fmtMoney(pos.target) : '—') +
           metric('Unrealized', unrealized === null ? '—' : fmtMoney(unrealized)) +
           `</div>`;
       }
@@ -314,7 +341,7 @@
       } else {
         const rows = state.trades.slice(0, 12).map((t) =>
           `<tr><td>${fmtTime(t.closed)}</td><td>${escapeHtml(t.symbol)}</td><td>${escapeHtml(String(t.qty))}</td>` +
-          `<td>$${Number(t.entry).toFixed(2)}</td><td>$${Number(t.exit).toFixed(2)}</td>` +
+          `<td>${fmtMoney(t.entry)}</td><td>${fmtMoney(t.exit)}</td>` +
           `<td style="color:${t.pnl >= 0 ? '#b8f0d8' : '#ff9d9d'}">${fmtMoney(t.pnl)}</td><td>${escapeHtml(t.reason)}</td></tr>`);
         trades.innerHTML =
           `<table><thead><tr><th>Closed</th><th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Why</th></tr></thead>` +
@@ -462,6 +489,7 @@
     await loadSymbols();
     bind();
     $('ai-capital').value = state.startCash;
+    if (state.lastTrail) renderTrail(state.lastTrail);
     render();
     if (state.running) {
       startLoop();
