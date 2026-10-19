@@ -467,6 +467,31 @@ class TestMonthsRanking:
         board = sorted([entry_t, entry_r], key=lambda e: T._rank_key(e, "sharpe"), reverse=True)
         assert board[0] is entry_r
 
+    def test_within_90_band_months_decides(self):
+        # Both candidates clear the 90% band: the steadier monthly profile
+        # wins even when it gives up a fraction of a point of hit rate.
+        a = {
+            "trades": 147,
+            "win_rate_pct": 92.5,
+            "profit_factor": 2.8,
+            "return_pct": 8.0,
+            "sharpe": 1.2,
+            "month_profit_rate_pct": 40.0,
+        }
+        b = dict(
+            a, win_rate_pct=92.0, profit_factor=3.0, return_pct=8.5, month_profit_rate_pct=75.0
+        )
+        # A below-band candidate can never sneak past the band on months.
+        c = dict(a, win_rate_pct=89.9, profit_factor=3.2, month_profit_rate_pct=85.0)
+        ea, eb, ec = (
+            {"params": {}, "train": a},
+            {"params": {}, "train": b},
+            {"params": {}, "train": c},
+        )
+        board = sorted([ea, eb, ec], key=lambda e: T._rank_key(e, "win_rate"), reverse=True)
+        assert board[0] is eb  # months king inside the band
+        assert board[1] is ea  # 92.5 with weak months beats 89.9 with great months
+
     def test_train_metrics_include_months(self):
         df = pd.DataFrame(
             {

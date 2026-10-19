@@ -281,16 +281,21 @@ def _rank_key(entry: Dict[str, Any], objective: str = "sharpe"):
     months = m.get("month_profit_rate_pct", 0.0)
     if objective == "win_rate":
         # Prefer high hit rates, but never prefer a money-losing profile.
-        # Among candidates with near-identical hit rates, the steadier
-        # monthly profile wins — it is what the profitable-months hurdle
-        # measures out-of-sample, so ranking on it closes that gap.
+        # Win% is graded in half-point buckets: inside the band that keeps
+        # the >=90% hurdle in reach (and below it too), the steadier monthly
+        # profile wins — it is what the profitable-months hurdle measures
+        # out-of-sample, so ranking on it closes that gap. Crossing the
+        # 90% band itself still dominates everything.
         breakeven = pf >= 1.0
+        win_bucket = round(m["win_rate_pct"] * 2.0) / 2.0
+        in_win_band = m["win_rate_pct"] >= 90.0
         return (
             enough_trades,
             rich_trades,
             breakeven,
-            m["win_rate_pct"],
+            in_win_band,
             months,
+            win_bucket,
             pf,
             m["return_pct"],
         )
@@ -551,15 +556,17 @@ def train_symbol(
             preset_name0 = top0["weight_preset"]
             weights0 = top0["factor_weights"]
             tp0 = float(base_params.get("take_profit_atr", base_cfg.take_profit_atr))
-            # Vol-gate polish candidates scale with the symbol's own ATR%
-            # distribution: crypto runs 3-4x the daily range of equities, so
-            # a one-size absolute gate starved high-vol symbols of entries.
+            # Vol-gate polish candidates are strictly TIGHTER than the gate
+            # the current winner already uses (never looser, never absolute):
+            # fewer crash-era entries is the goal, and the rich-trades layer
+            # in _rank_key stops an over-tight gate from tunneling through.
             try:
-                med_atr_pct = float(factors["atr_pct"].iloc[:split_idx].median())
+                cur_gate = float(base_params.get("max_atr_pct") or base_cfg.max_atr_pct)
             except Exception:  # noqa: BLE001
-                med_atr_pct = 0.0
-            vol_gate_hi = round(max(4.0, 1.5 * med_atr_pct) if med_atr_pct > 0 else 4.0, 2)
-            vol_gate_lo = round(max(3.2, 1.3 * med_atr_pct) if med_atr_pct > 0 else 3.2, 2)
+                cur_gate = float(base_cfg.max_atr_pct)
+            cur_gate = max(2.0, cur_gate)
+            vol_gate_hi = round(max(2.5, cur_gate * 0.9), 2)
+            vol_gate_lo = round(max(2.5, cur_gate * 0.75), 2)
             polish_upgrades: List[Dict[str, Any]] = [
                 {"partial_tp_atr": round(max(0.4, tp0 * 2.0), 2)},  # scale-out leg
                 {"conviction_sizing": True},
