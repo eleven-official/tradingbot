@@ -547,6 +547,59 @@ class TestPreserveMissingSymbols:
         assert [s["symbol"] for s in fresh["symbols"]] == ["NEW"]
 
 
+class TestTrainedBacktest:
+    """bot.backtest_trained: trained profile applied on an ephemeral config."""
+
+    def _long_trend_df(self):
+        closes = _flat(215) + [100.0 + 0.8 * i for i in range(1, 14)] + _flat(60, 110.4)
+        return _candles(closes)
+
+    def test_applies_profile_without_touching_live_bot(self, tmp_path):
+        cfg = LokiConfig(state_dir=str(tmp_path))
+        bot = LokiBot(cfg)
+        df = self._long_trend_df()
+        bot.provider.fetch_history = lambda sym, period, interval: df
+        report = {
+            "symbols": [
+                {
+                    "symbol": "AAPL",
+                    "ok": True,
+                    "best_params": {
+                        "signal_threshold": 25.0,
+                        "stop_loss_atr": 5.0,
+                        "take_profit_atr": 0.5,
+                        "breakeven_atr": 0.5,
+                        "trailing_stop_atr": 0.6,
+                        "arm_trailing_atr": 1.0,
+                    },
+                }
+            ]
+        }
+        T.save_report(report, cfg)
+        assert T.load_report(cfg) is not None
+
+        res, applied = bot.backtest_trained("AAPL", period="1y")
+        assert applied.get("signal_threshold") == 25.0
+        assert applied.get("trailing_stop_atr") == 0.6
+        assert applied.get("breakeven_atr") == 0.5
+        assert res.total_trades >= 0
+
+        # The shared live bot must be untouched by the ephemeral profile.
+        assert bot.cfg.stop_loss_atr == 2.0
+        assert bot.cfg.signal_threshold == 20.0
+        assert bot.cfg.breakeven_atr == 0.0
+        assert bot.cfg.trailing_stop_atr == 0.0
+
+    def test_falls_back_without_report(self, tmp_path):
+        cfg = LokiConfig(state_dir=str(tmp_path))
+        bot = LokiBot(cfg)
+        df = self._long_trend_df()
+        bot.provider.fetch_history = lambda sym, period, interval: df
+        res, applied = bot.backtest_trained("AAPL", period="1y")
+        assert applied == {}
+        assert res.final_equity > 0.0
+
+
 # ---------------------------------------------------------------------------
 # Whole-engine journeys with the knobs on
 # ---------------------------------------------------------------------------

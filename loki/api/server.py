@@ -530,7 +530,7 @@ async def get_council(symbols: Optional[str] = Query(None)):
 async def run_backtest_endpoint(symbol: str = "AAPL", period: str = "2y"):
     bot = get_bot()
     try:
-        res = bot.backtest(symbol.strip().upper(), period=period)
+        res, trained_profile = bot.backtest_trained(symbol.strip().upper(), period=period)
 
         # Downsample the full equity curve so the UI can draw the real
         # account trajectory instead of reconstructing it from the last 15 trades.
@@ -555,6 +555,8 @@ async def run_backtest_endpoint(symbol: str = "AAPL", period: str = "2y"):
 
         return {
             "symbol": res.symbol,
+            "trained_profile_applied": bool(trained_profile),
+            "trained_profile": trained_profile,
             "initial_capital": _safe_number(res.initial_capital),
             "final_equity": _safe_number(res.final_equity),
             "total_return_pct": _safe_number(res.total_return_pct),
@@ -686,7 +688,7 @@ async def run_montecarlo(
     bot = get_bot()
 
     def _run():
-        res = bot.backtest(symbol.strip().upper(), period=period)
+        res, trained_profile = bot.backtest_trained(symbol.strip().upper(), period=period)
         mc = monte_carlo_simulation(
             res.trades,
             initial_equity=res.initial_capital,
@@ -701,7 +703,14 @@ async def run_montecarlo(
             "max_drawdown_pct": _safe_number(res.max_drawdown_pct),
             "total_trades": res.total_trades,
         }
-        return {"symbol": res.symbol, "period": period, "backtest": summary, "monte_carlo": mc}
+        return {
+            "symbol": res.symbol,
+            "period": period,
+            "trained_profile_applied": bool(trained_profile),
+            "trained_profile": trained_profile,
+            "backtest": summary,
+            "monte_carlo": mc,
+        }
 
     try:
         return await asyncio.to_thread(_run)

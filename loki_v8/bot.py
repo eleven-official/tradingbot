@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Dict, List, Optional
+from dataclasses import replace as dataclass_replace
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -35,6 +36,8 @@ from .persistence import get_logger as get_db_logger
 from .regime import Regime, detect_regime
 from .risk import RiskManager
 from .strategy import EnsembleStrategy, Signal
+from .train import apply_best as _train_apply_best
+from .train import load_report as _train_load_report
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +119,37 @@ class LokiBot:
             raise RuntimeError(f"no data for {symbol}")
         bpy = bars_per_year_for(interval, crypto=is_crypto(symbol))
         return run_backtest(df, self.cfg, self.strategy, symbol, bars_per_year=bpy)
+
+    def backtest_trained(
+        self, symbol: str, period: Optional[str] = None, interval: Optional[str] = None
+    ) -> Tuple[BacktestResult, Dict[str, Any]]:
+        """Backtest with the symbol's trained profile applied.
+
+        The training report's per-symbol winner (threshold, stops, smart-exit
+        knobs, factor weights) is applied to an EPHEMERAL config + strategy
+        pair, so the shared live bot is never mutated. When no trained
+        profile exists for the symbol (e.g. a fresh deployment), it degrades
+        gracefully to the plain config. Returns ``(result, applied_params)``.
+        """
+        interval = interval or self.cfg.timeframe
+        df = self.provider.fetch_history(symbol, period or self.cfg.period, interval)
+        if df.empty:
+            raise RuntimeError(f"no data for {symbol}")
+        cfg = dataclass_replace(self.cfg)
+        applied: Dict[str, Any] = {}
+        try:
+            report = _train_load_report(cfg)
+            if report:
+                applied = _train_apply_best(report, symbol, cfg)
+        except Exception as exc:  # noqa: BLE001 - analytics must not break on a bad file
+            logger.warning("trained profile unavailable for %s: %s", symbol, exc)
+        if applied:
+            strategy = EnsembleStrategy(cfg)
+        else:
+            strategy = self.strategy
+        bpy = bars_per_year_for(interval, crypto=is_crypto(symbol))
+        res = run_backtest(df, cfg, strategy, symbol, bars_per_year=bpy)
+        return res, applied
 
     def backtest_all(self, symbols: Optional[List[str]] = None) -> Dict[str, BacktestResult]:
         out: Dict[str, BacktestResult] = {}
