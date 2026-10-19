@@ -15,6 +15,7 @@ already-tested building blocks rather than reimplementing them:
 The resulting bot exposes a Flask app whose ``POST /webhook/tradingview``
 endpoint is safe to point a TradingView alert at.
 """
+
 from __future__ import annotations
 
 import logging
@@ -168,12 +169,15 @@ class LokiBot:
             raise OrderExecutionError("Consecutive-loss limit reached; order blocked")
 
         notional = float(signal.price) * float(signal.quantity or 0.0)
-        max_order_notional = equity * (float(exec_cfg.get("max_order_notional_percent", 20)) / 100.0)
+        max_order_notional = equity * (
+            float(exec_cfg.get("max_order_notional_percent", 20)) / 100.0
+        )
         if max_order_notional > 0 and notional > max_order_notional:
             raise OrderExecutionError("Order notional exceeds the configured cap")
 
         current_market_value = sum(
-            float(position.get("market_value", 0.0)) for position in self.execution_broker.get_positions()
+            float(position.get("market_value", 0.0))
+            for position in self.execution_broker.get_positions()
         )
         gross_exposure = current_market_value + notional
         max_exposure = equity * (float(exec_cfg.get("max_gross_exposure_percent", 30)) / 100.0)

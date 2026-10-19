@@ -7,10 +7,10 @@ from loki.brokers.binance_broker import BinanceBrokerAdapter
 from loki.brokers.broker_factory import BrokerFactory
 
 __all__ = [
-    'BaseBroker',
-    'BrokerCapabilities',
-    'AlpacaBrokerAdapter',
-    'InteractiveBrokersAdapter',
-    'BinanceBrokerAdapter',
-    'BrokerFactory'
+    "BaseBroker",
+    "BrokerCapabilities",
+    "AlpacaBrokerAdapter",
+    "InteractiveBrokersAdapter",
+    "BinanceBrokerAdapter",
+    "BrokerFactory",
 ]

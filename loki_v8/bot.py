@@ -9,18 +9,30 @@ Wires the subsystems together and exposes the three operating modes:
 Both paper and live consume the *same* live market data, so the only
 difference between the modes is where orders are routed.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from typing import Dict, List, Optional
 
+import numpy as np
+import pandas as pd
+
 from .agents import LokiAgentPipeline
-from .backtest import (BacktestResult, bars_per_year_for, monte_carlo,
-                       portfolio_backtest, run_backtest, walk_forward)
+from .backtest import (
+    BacktestResult,
+    bars_per_year_for,
+    monte_carlo,
+    portfolio_backtest,
+    run_backtest,
+    walk_forward,
+)
 from .broker import PaperBroker, make_broker
 from .config import LokiConfig, default_config
 from .data import get_provider, is_crypto
+from .persistence import get_logger as get_db_logger
+from .regime import Regime, detect_regime
 from .risk import RiskManager
 from .strategy import EnsembleStrategy, Signal
 
@@ -36,6 +48,16 @@ class LokiBot:
         self.broker = make_broker(self.cfg)
         self.mode = self.cfg.mode
         self.last_quotes: Dict[str, float] = {}
+        # Per-symbol latest-bar context (ATR) for smart exit management
+        self._last_context: Dict[str, Dict[str, float]] = {}
+        # Symbols that already had a partial scale-out this position life
+        self._scaled_out: set = set()
+        # Optional Supabase vault logging state (no-op unless configured)
+        self._db = get_db_logger()
+        self._db_trades_logged = 0
+        self._last_equity_log = 0.0
+        self._last_regime_check = 0.0
+        self._last_regimes: Dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Mode switching
@@ -55,9 +77,15 @@ class LokiBot:
     def scan(self, symbols: Optional[List[str]] = None) -> List[Signal]:
         """Generate current signals for a list of symbols."""
         signals: List[Signal] = []
-        for sym in (symbols or self.cfg.symbols):
+        for sym in symbols or self.cfg.symbols:
             try:
                 df = self.provider.fetch_history(sym, self.cfg.period, self.cfg.timeframe)
+                frame = self.strategy.score_frame(df)
+                if len(frame):
+                    last = frame.iloc[-1]
+                    raw_atr = last.get("atr", float("nan"))
+                    atr_val = float(raw_atr) if np.isfinite(raw_atr) else 0.0
+                    self._last_context[sym] = {"atr": max(atr_val, 0.0)}
                 sig = self.strategy.generate_signal(df, sym)
                 if sig is not None:
                     signals.append(sig)
@@ -79,8 +107,9 @@ class LokiBot:
     # ------------------------------------------------------------------
     # Backtest
     # ------------------------------------------------------------------
-    def backtest(self, symbol: str, period: Optional[str] = None,
-                 interval: Optional[str] = None) -> BacktestResult:
+    def backtest(
+        self, symbol: str, period: Optional[str] = None, interval: Optional[str] = None
+    ) -> BacktestResult:
         interval = interval or self.cfg.timeframe
         df = self.provider.fetch_history(symbol, period or self.cfg.period, interval)
         if df.empty:
@@ -90,23 +119,25 @@ class LokiBot:
 
     def backtest_all(self, symbols: Optional[List[str]] = None) -> Dict[str, BacktestResult]:
         out: Dict[str, BacktestResult] = {}
-        for sym in (symbols or self.cfg.symbols):
+        for sym in symbols or self.cfg.symbols:
             try:
                 out[sym] = self.backtest(sym)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("backtest failed for %s: %s", sym, exc)
         return out
 
-    def walk_forward(self, symbol: str, n_splits: int = 4,
-                     period: str = "10y") -> List[BacktestResult]:
+    def walk_forward(
+        self, symbol: str, n_splits: int = 4, period: str = "10y"
+    ) -> List[BacktestResult]:
         df = self.provider.fetch_history(symbol, period, self.cfg.timeframe)
         return walk_forward(df, self.cfg, symbol, n_splits=n_splits)
 
-    def portfolio_backtest(self, symbols: Optional[List[str]] = None,
-                           period: str = "5y") -> BacktestResult:
+    def portfolio_backtest(
+        self, symbols: Optional[List[str]] = None, period: str = "5y"
+    ) -> BacktestResult:
         """Backtest an equal-weight portfolio of symbols with shared capital."""
-        dfs: Dict[str, "pd.DataFrame"] = {}
-        for sym in (symbols or self.cfg.symbols):
+        dfs: Dict[str, pd.DataFrame] = {}
+        for sym in symbols or self.cfg.symbols:
             df = self.provider.fetch_history(sym, period, self.cfg.timeframe)
             if not df.empty:
                 dfs[sym] = df
@@ -121,26 +152,103 @@ class LokiBot:
         return quotes
 
     def _manage_exits(self, quotes: Dict[str, float]):
-        """Close paper positions whose stop/target is hit (long or short)."""
+        """Manage open paper positions.
+
+        Order of operations mirrors the backtester:
+        1. legacy stop/target check on the remaining quantity,
+        2. smart management — breakeven lock once up ``cfg.breakeven_atr``
+           ATR (stop moved to entry + a small cost cushion), optional
+           (``cfg.arm_trailing_atr``-armed) ATR trailing ratchet,
+        3. one-time partial scale-out at ``cfg.partial_tp_atr`` ATR banking
+           ``cfg.partial_fraction`` of the position.
+        """
         for sym in list(self.broker.positions.keys()):
             price = quotes.get(sym)
             if price is None:
                 continue
             pos = self.broker.positions[sym]
-            if pos.qty >= 0:  # long: stop below, target above
+            long = pos.qty >= 0
+
+            # 1) Legacy stop / target on the remaining quantity
+            if long:
                 if pos.stop_loss > 0 and price <= pos.stop_loss:
                     self.broker.close(sym, price)
+                    self._scaled_out.discard(sym)
                     logger.info("STOP hit: %s @ %.2f", sym, price)
+                    continue
                 elif pos.take_profit > 0 and price >= pos.take_profit:
                     self.broker.close(sym, price)
+                    self._scaled_out.discard(sym)
                     logger.info("TARGET hit: %s @ %.2f", sym, price)
-            else:  # short: stop above, target below
+                    continue
+            else:
                 if pos.stop_loss > 0 and price >= pos.stop_loss:
                     self.broker.close(sym, price)
+                    self._scaled_out.discard(sym)
                     logger.info("SHORT STOP hit: %s @ %.2f", sym, price)
+                    continue
                 elif pos.take_profit > 0 and price <= pos.take_profit:
                     self.broker.close(sym, price)
+                    self._scaled_out.discard(sym)
                     logger.info("SHORT TARGET hit: %s @ %.2f", sym, price)
+                    continue
+
+            atr = float(self._last_context.get(sym, {}).get("atr", 0.0))
+            if atr <= 0 or price <= 0:
+                continue
+            entry = pos.avg_entry
+            gain = (price - entry) / atr if long else (entry - price) / atr
+
+            # 2) Breakeven lock + (optionally armed) trailing ratchet
+            if self.cfg.breakeven_atr > 0 and gain >= self.cfg.breakeven_atr:
+                be_stop = entry + 0.05 * atr if long else entry - 0.05 * atr
+                applied = False
+                if long and pos.stop_loss < be_stop:
+                    pos.stop_loss = be_stop
+                    applied = True
+                elif not long and (pos.stop_loss <= 0 or pos.stop_loss > be_stop):
+                    pos.stop_loss = be_stop
+                    applied = True
+                if applied:
+                    logger.info("BREAKEVEN locked: %s stop -> %.2f", sym, be_stop)
+            if self.cfg.trailing_stop_atr > 0 and (
+                self.cfg.arm_trailing_atr <= 0 or gain >= self.cfg.arm_trailing_atr
+            ):
+                ns = (
+                    price - self.cfg.trailing_stop_atr * atr
+                    if long
+                    else price + self.cfg.trailing_stop_atr * atr
+                )
+                if long and ns > pos.stop_loss:
+                    pos.stop_loss = ns
+                    logger.info("TRAIL raised: %s stop -> %.2f", sym, ns)
+                elif not long and (pos.stop_loss <= 0 or ns < pos.stop_loss):
+                    pos.stop_loss = ns
+                    logger.info("TRAIL lowered: %s stop -> %.2f", sym, ns)
+
+            # 3) One-time partial scale-out
+            if self.cfg.partial_tp_atr > 0 and sym not in self._scaled_out and abs(pos.qty) > 1e-12:
+                plevel = entry + self.cfg.partial_tp_atr * atr * (1.0 if long else -1.0)
+                hit_partial = price >= plevel if long else price <= plevel
+                if hit_partial:
+                    frac = min(0.9, max(0.1, self.cfg.partial_fraction))
+                    leg_qty = abs(pos.qty) * frac
+                    if long:
+                        self.broker.sell(sym, leg_qty, price)
+                    else:
+                        self.broker.buy_to_cover(sym, leg_qty, price)
+                    self._scaled_out.add(sym)
+                    if long and price > pos.stop_loss:
+                        pos.stop_loss = price
+                    elif not long and (pos.stop_loss <= 0 or price < pos.stop_loss):
+                        pos.stop_loss = price
+                    logger.info(
+                        "SCALE-OUT %s %.4f @ %.2f (stop -> %.2f)",
+                        sym,
+                        leg_qty,
+                        price,
+                        pos.stop_loss,
+                    )
 
     def step(self):
         """One iteration: fetch live data, act on signals, manage risk."""
@@ -168,8 +276,10 @@ class LokiBot:
                         p = self.broker.positions[sig.symbol]
                         p.stop_loss = sig.stop_loss
                         p.take_profit = sig.take_profit
-                        logger.info("BUY  %s x%.4f @ %.2f (score %.1f)",
-                                    sig.symbol, qty, price, sig.score)
+                        self._scaled_out.discard(sig.symbol)
+                        logger.info(
+                            "BUY  %s x%.4f @ %.2f (score %.1f)", sig.symbol, qty, price, sig.score
+                        )
                 elif pos.qty < 0:
                     self.broker.buy_to_cover(sig.symbol, -pos.qty, price)
                     logger.info("COVER %s @ %.2f (score %.1f)", sig.symbol, price, sig.score)
@@ -181,24 +291,102 @@ class LokiBot:
                             p = self.broker.positions[sig.symbol]
                             p.stop_loss = sig.stop_loss
                             p.take_profit = sig.take_profit
-                            logger.info("SHORT %s x%.4f @ %.2f (score %.1f)",
-                                        sig.symbol, qty, price, sig.score)
+                            self._scaled_out.discard(sig.symbol)
+                            logger.info(
+                                "SHORT %s x%.4f @ %.2f (score %.1f)",
+                                sig.symbol,
+                                qty,
+                                price,
+                                sig.score,
+                            )
                 elif pos.qty > 0:
                     self.broker.close(sig.symbol, price)
                     logger.info("SELL %s @ %.2f (score %.1f)", sig.symbol, price, sig.score)
 
         self.broker.save_state(quotes)
+        self._log_vault(quotes, signals, equity)
         return equity
+
+    def _log_vault(self, quotes: Dict[str, float], signals: List[Signal], equity: float):
+        """Best-effort Supabase logging — never touches trading behaviour."""
+        try:
+            if not self._db.configured():
+                return
+            now = time.time()
+            if now - self._last_equity_log > 60.0:
+                self._last_equity_log = now
+                self._db.log_equity_snapshot(
+                    equity=equity,
+                    cash=self.broker.cash,
+                    open_positions=len(self.broker.positions),
+                    mode=self.mode,
+                )
+            trades = self.broker.trades
+            for t in trades[self._db_trades_logged :]:
+                self._db.log_trade(
+                    symbol=t.symbol,
+                    side=t.side,
+                    qty=t.qty,
+                    entry_price=t.entry_price,
+                    exit_price=t.exit_price,
+                    pnl=t.pnl,
+                    pnl_pct=t.pnl_pct,
+                    exit_reason=t.exit_reason,
+                    mode=self.mode,
+                    source="engine",
+                )
+            self._db_trades_logged = len(trades)
+            for sig in signals[:5]:
+                if sig.action in ("BUY", "SELL"):
+                    self._db.log_signal(
+                        symbol=sig.symbol,
+                        action=sig.action,
+                        score=sig.score,
+                        confidence=sig.confidence,
+                        entry_price=sig.entry_price,
+                        stop_loss=sig.stop_loss,
+                        take_profit=sig.take_profit,
+                        timeframe=self.cfg.timeframe,
+                    )
+            # Regime-change events (throttled to every 5 minutes)
+            if now - self._last_regime_check > 300.0:
+                self._last_regime_check = now
+                for sym in self.cfg.symbols:
+                    try:
+                        r: Regime = detect_regime(
+                            self.provider.fetch_history(sym, self.cfg.period, self.cfg.timeframe)
+                        )
+                        prev = self._last_regimes.get(sym)
+                        if prev is not None and prev != r.state:
+                            self._db.log_regime_event(
+                                symbol=sym,
+                                from_state=prev,
+                                to_state=r.state,
+                                confidence=r.confidence,
+                            )
+                        self._last_regimes[sym] = r.state
+                    except Exception:  # noqa: BLE001
+                        continue
+        except Exception as exc:  # noqa: BLE001 — vault must never crash the loop
+            logger.debug("vault logging skipped: %s", exc)
 
     def run(self, interval: float = 60.0, once: bool = False):
         """Run the trading loop (paper or live)."""
-        logger.info("Starting %s loop (interval=%.0fs, %d symbols)",
-                    self.mode.upper(), interval, len(self.cfg.symbols))
+        logger.info(
+            "Starting %s loop (interval=%.0fs, %d symbols)",
+            self.mode.upper(),
+            interval,
+            len(self.cfg.symbols),
+        )
         while True:
             try:
                 equity = self.step()
-                logger.info("Equity: $%.2f | positions: %d | trades: %d",
-                            equity, len(self.broker.positions), len(self.broker.trades))
+                logger.info(
+                    "Equity: $%.2f | positions: %d | trades: %d",
+                    equity,
+                    len(self.broker.positions),
+                    len(self.broker.trades),
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("loop error: %s", exc)
             if once:

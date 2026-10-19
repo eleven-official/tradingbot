@@ -2,13 +2,20 @@
 Alpaca Broker Adapter
 Implements unified broker interface for Alpaca
 """
+
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import logging
 
 from loki.brokers.base import (
-    BaseBroker, BrokerCapabilities, Position, Order, AccountInfo,
-    OrderSide, OrderType, OrderStatus
+    BaseBroker,
+    BrokerCapabilities,
+    Position,
+    Order,
+    AccountInfo,
+    OrderSide,
+    OrderType,
+    OrderStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -19,7 +26,7 @@ class AlpacaBrokerAdapter(BaseBroker):
     Alpaca broker implementation
     Supports stocks and crypto trading
     """
-    
+
     @property
     def capabilities(self) -> BrokerCapabilities:
         return BrokerCapabilities(
@@ -29,29 +36,29 @@ class AlpacaBrokerAdapter(BaseBroker):
             supports_extended_hours=True,
             supports_short_selling=True,
             min_order_value=1.0,
-            commission_per_trade=0.0  # Commission-free
+            commission_per_trade=0.0,  # Commission-free
         )
-    
+
     async def connect(self) -> bool:
         """Establish connection to Alpaca"""
         try:
             # TODO: Initialize Alpaca API client
             # from alpaca.trading.client import TradingClient
             # self.client = TradingClient(self.api_key, self.api_secret, paper=self.paper)
-            
+
             self._connected = True
             logger.info(f"Connected to Alpaca (paper={self.paper})")
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Alpaca: {e}")
             return False
-    
+
     async def disconnect(self) -> bool:
         """Disconnect from Alpaca"""
         self._connected = False
         logger.info("Disconnected from Alpaca")
         return True
-    
+
     async def get_account_info(self) -> AccountInfo:
         """Get Alpaca account information"""
         # TODO: Implement with real Alpaca API
@@ -62,9 +69,9 @@ class AlpacaBrokerAdapter(BaseBroker):
             buying_power=100000.0,
             equity=105432.50,
             positions_value=55432.50,
-            is_paper=self.paper
+            is_paper=self.paper,
         )
-    
+
     async def get_positions(self) -> List[Position]:
         """Get all open positions"""
         # TODO: Implement with real Alpaca API
@@ -76,10 +83,10 @@ class AlpacaBrokerAdapter(BaseBroker):
                 current_price=178.20,
                 unrealized_pnl=270.00,
                 market_value=17820.00,
-                cost_basis=17550.00
+                cost_basis=17550.00,
             )
         ]
-    
+
     async def get_position(self, symbol: str) -> Optional[Position]:
         """Get position for specific symbol"""
         positions = await self.get_positions()
@@ -87,7 +94,7 @@ class AlpacaBrokerAdapter(BaseBroker):
             if pos.symbol == symbol:
                 return pos
         return None
-    
+
     async def place_order(
         self,
         symbol: str,
@@ -96,12 +103,12 @@ class AlpacaBrokerAdapter(BaseBroker):
         order_type: OrderType = OrderType.MARKET,
         limit_price: Optional[float] = None,
         stop_price: Optional[float] = None,
-        time_in_force: str = "day"
+        time_in_force: str = "day",
     ) -> Order:
         """Place order on Alpaca"""
         # TODO: Implement with real Alpaca API
         logger.info(f"Placing {order_type.value} {side.value} order for {quantity} {symbol}")
-        
+
         return Order(
             order_id=f"alpaca_{datetime.now().timestamp()}",
             symbol=symbol,
@@ -113,14 +120,14 @@ class AlpacaBrokerAdapter(BaseBroker):
             price=limit_price,
             filled_price=None,
             created_at=datetime.now(),
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
-    
+
     async def cancel_order(self, order_id: str) -> bool:
         """Cancel order"""
         logger.info(f"Cancelling order {order_id}")
         return True
-    
+
     async def get_order(self, order_id: str) -> Order:
         """Get order status"""
         # TODO: Implement with real Alpaca API
@@ -135,63 +142,50 @@ class AlpacaBrokerAdapter(BaseBroker):
             price=None,
             filled_price=178.50,
             created_at=datetime.now(),
-            updated_at=datetime.now()
+            updated_at=datetime.now(),
         )
-    
+
     async def get_orders(
-        self,
-        status: Optional[OrderStatus] = None,
-        limit: int = 100
+        self, status: Optional[OrderStatus] = None, limit: int = 100
     ) -> List[Order]:
         """Get all orders"""
         # TODO: Implement with real Alpaca API
         return []
-    
-    async def close_position(
-        self,
-        symbol: str,
-        quantity: Optional[float] = None
-    ) -> Order:
+
+    async def close_position(self, symbol: str, quantity: Optional[float] = None) -> Order:
         """Close position"""
         position = await self.get_position(symbol)
         if not position:
             raise ValueError(f"No position found for {symbol}")
-        
+
         close_quantity = quantity or position.quantity
         side = OrderSide.SELL if position.quantity > 0 else OrderSide.BUY
-        
+
         return await self.place_order(
-            symbol=symbol,
-            side=side,
-            quantity=abs(close_quantity),
-            order_type=OrderType.MARKET
+            symbol=symbol, side=side, quantity=abs(close_quantity), order_type=OrderType.MARKET
         )
-    
+
     async def close_all_positions(self) -> List[Order]:
         """Close all positions"""
         positions = await self.get_positions()
         orders = []
-        
+
         for position in positions:
             try:
                 order = await self.close_position(position.symbol)
                 orders.append(order)
             except Exception as e:
                 logger.error(f"Failed to close {position.symbol}: {e}")
-        
+
         return orders
-    
+
     async def get_market_price(self, symbol: str) -> float:
         """Get current market price"""
         # TODO: Implement with real Alpaca API
         return 178.50
-    
+
     async def get_historical_data(
-        self,
-        symbol: str,
-        start_date: datetime,
-        end_date: datetime,
-        timeframe: str = "1D"
+        self, symbol: str, start_date: datetime, end_date: datetime, timeframe: str = "1D"
     ) -> List[Dict[str, Any]]:
         """Get historical price data"""
         # TODO: Implement with real Alpaca API

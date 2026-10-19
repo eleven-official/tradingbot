@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 from datetime import datetime
 from pathlib import Path
@@ -26,8 +27,13 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from loki.version import __version__
+from loki_v8 import train as train_module
 from loki_v8.bot import LokiBot
 from loki_v8.config import default_config
+from loki_v8.montecarlo import monte_carlo_simulation
+from loki_v8.persistence import get_logger as get_db_logger
+from loki_v8.regime import detect_regime, regime_distribution
+from loki_v8.strategy import EnsembleStrategy
 
 logger = logging.getLogger("loki.api")
 
@@ -58,6 +64,15 @@ def get_bot() -> LokiBot:
     return _bot
 
 
+def _safe_number(value, digits: int = 2):
+    """Round a numeric value to JSON-safe form (NaN/inf become ``None``)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(number, digits) if math.isfinite(number) else None
+
+
 # ---------------------------------------------------------------------------
 # Background Autonomous Trading Engine
 # ---------------------------------------------------------------------------
@@ -78,7 +93,9 @@ class AutonomousEngineState:
 
     async def _loop(self):
         bot = get_bot()
-        self.add_log(f"Autonomous Trading Engine STARTED ({bot.mode.upper()} mode, interval={self.interval}s)")
+        self.add_log(
+            f"Autonomous Trading Engine STARTED ({bot.mode.upper()} mode, interval={self.interval}s)"
+        )
         while self.is_running:
             try:
                 self.iterations += 1
@@ -86,7 +103,9 @@ class AutonomousEngineState:
                 report = await asyncio.to_thread(bot.agent_scan, bot.cfg.symbols)
                 exec_count = report.get("executed", 0)
                 sig_count = report.get("signals", 0)
-                self.add_log(f"Cycle #{self.iterations}: {sig_count} signals evaluated, {exec_count} orders executed.")
+                self.add_log(
+                    f"Cycle #{self.iterations}: {sig_count} signals evaluated, {exec_count} orders executed."
+                )
             except Exception as exc:
                 self.add_log(f"Cycle #{self.iterations} exception: {exc}")
             await asyncio.sleep(self.interval)
@@ -160,13 +179,17 @@ async def root(request: Request):
     """Render the web command center for browsers, or JSON for API test clients."""
     accept = request.headers.get("accept", "")
     ua = request.headers.get("user-agent", "").lower()
-    is_browser = "text/html" in accept or ("mozilla" in ua or "chrome" in ua or "safari" in ua or "edge" in ua)
+    is_browser = "text/html" in accept or (
+        "mozilla" in ua or "chrome" in ua or "safari" in ua or "edge" in ua
+    )
     if not is_browser:
-        return JSONResponse({
-            "application": "Loki Trading Platform",
-            "version": __version__,
-            "status": "operational",
-        })
+        return JSONResponse(
+            {
+                "application": "Loki Trading Platform",
+                "version": __version__,
+                "status": "operational",
+            }
+        )
 
     bot = get_bot()
     context = {
@@ -181,22 +204,26 @@ async def root(request: Request):
 @app.get("/health")
 async def health():
     bot = get_bot()
-    return JSONResponse({
-        "status": "healthy",
-        "service": "loki",
-        "version": __version__,
-        "uptime_seconds": 3600,
-        "active_strategies": len(_strategies_store),
-        "market_connection": True,
-        "mode": bot.mode,
-        "open_positions": len(bot.broker.positions),
-    })
+    return JSONResponse(
+        {
+            "status": "healthy",
+            "service": "loki",
+            "version": __version__,
+            "uptime_seconds": 3600,
+            "active_strategies": len(_strategies_store),
+            "market_connection": True,
+            "mode": bot.mode,
+            "open_positions": len(bot.broker.positions),
+        }
+    )
 
 
 @app.get("/api/status")
 async def get_status():
     bot = get_bot()
-    quotes = bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+    quotes = (
+        bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+    )
     eq = bot.broker.equity(quotes)
     open_pos = len(bot.broker.positions)
     pnl = eq - bot.cfg.initial_cash
@@ -214,7 +241,11 @@ async def get_status():
         "open_positions": open_pos,
         "total_trades": len(bot.broker.trades),
         "symbols": bot.cfg.symbols,
+        "max_open_positions": bot.cfg.max_open_positions,
+        "server_time": datetime.now().isoformat(),
         "autonomous_running": auto_engine.is_running,
+        "factor_weights": bot.cfg.factor_weights,
+        "supabase": get_db_logger().status(),
     }
 
 
@@ -240,7 +271,9 @@ def verify_bearer(authorization: Optional[str] = Header(None)):
 @app.get("/api/v1/portfolio")
 async def get_portfolio_v1(auth: str = Depends(verify_bearer)):
     bot = get_bot()
-    quotes = bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+    quotes = (
+        bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+    )
     eq = bot.broker.equity(quotes)
     return {
         "total_value": eq,
@@ -318,24 +351,41 @@ async def stop_strategy_v1(name: str, auth: str = Depends(verify_bearer)):
 @app.get("/api/scan")
 async def get_scan(symbols: Optional[str] = Query(None)):
     bot = get_bot()
-    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else bot.cfg.symbols
+    sym_list = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else bot.cfg.symbols
+    )
     signals = bot.scan(sym_list)
     results = []
     for s in signals:
-        results.append({
-            "symbol": s.symbol,
-            "action": s.action,
-            "score": round(s.score, 1),
-            "confidence": round(s.confidence, 1),
-            "entry_price": round(s.entry_price, 2),
-            "stop_loss": round(s.stop_loss, 2),
-            "take_profit": round(s.take_profit, 2),
-            "target_2": round(getattr(s, "target_2", 0.0), 2),
-            "risk_reward": getattr(s, "risk_reward", 1.5),
-            "squeeze_status": getattr(s, "squeeze_status", "OFF"),
-            "reasons": getattr(s, "reasons", []),
-        })
-    return {"count": len(results), "signals": results}
+        results.append(
+            {
+                "symbol": s.symbol,
+                "action": s.action,
+                "score": round(s.score, 1),
+                "confidence": round(s.confidence, 1),
+                "entry_price": round(s.entry_price, 2),
+                "stop_loss": round(s.stop_loss, 2),
+                "take_profit": round(s.take_profit, 2),
+                "target_2": round(getattr(s, "target_2", 0.0), 2),
+                "risk_reward": getattr(s, "risk_reward", 1.5),
+                "squeeze_status": getattr(s, "squeeze_status", "OFF"),
+                "reasons": getattr(s, "reasons", []),
+            }
+        )
+    # Regime context per symbol (cheap: provider cache is warm from the scan).
+    regimes = {}
+    for sym in sym_list:
+        try:
+            r = detect_regime(bot.provider.fetch_history(sym, bot.cfg.period, bot.cfg.timeframe))
+            regimes[sym] = {
+                "state": r.state,
+                "confidence": r.confidence,
+                "volatility_rank": r.volatility_rank,
+                "description": r.description,
+            }
+        except Exception:  # noqa: BLE001 — regime context must never break the scan
+            continue
+    return {"count": len(results), "signals": results, "regimes": regimes}
 
 
 @app.get("/api/portfolio")
@@ -352,30 +402,34 @@ async def get_portfolio():
         pos_invested = pos.avg_entry * abs(pos.qty)
         unrealized_pct = (unrealized / pos_invested) * 100.0 if pos_invested > 0 else 0.0
 
-        positions_data.append({
-            "symbol": sym,
-            "side": pos.side,
-            "qty": round(pos.qty, 4),
-            "avg_entry": round(pos.avg_entry, 2),
-            "current_price": round(cur_price, 2),
-            "market_value": round(val, 2),
-            "unrealized_pnl": round(unrealized, 2),
-            "unrealized_pnl_pct": round(unrealized_pct, 2),
-            "stop_loss": round(pos.stop_loss, 2),
-            "take_profit": round(pos.take_profit, 2),
-        })
+        positions_data.append(
+            {
+                "symbol": sym,
+                "side": pos.side,
+                "qty": round(pos.qty, 4),
+                "avg_entry": round(pos.avg_entry, 2),
+                "current_price": round(cur_price, 2),
+                "market_value": round(val, 2),
+                "unrealized_pnl": round(unrealized, 2),
+                "unrealized_pnl_pct": round(unrealized_pct, 2),
+                "stop_loss": round(pos.stop_loss, 2),
+                "take_profit": round(pos.take_profit, 2),
+            }
+        )
 
     trades_data = []
     for t in reversed(bot.broker.trades[-20:]):
-        trades_data.append({
-            "symbol": t.symbol,
-            "side": t.side,
-            "qty": round(t.qty, 4),
-            "entry_price": round(t.entry_price, 2),
-            "exit_price": round(t.exit_price, 2),
-            "pnl": round(t.pnl, 2),
-            "pnl_pct": round(t.pnl_pct, 2),
-        })
+        trades_data.append(
+            {
+                "symbol": t.symbol,
+                "side": t.side,
+                "qty": round(t.qty, 4),
+                "entry_price": round(t.entry_price, 2),
+                "exit_price": round(t.exit_price, 2),
+                "pnl": round(t.pnl, 2),
+                "pnl_pct": round(t.pnl_pct, 2),
+            }
+        )
 
     eq = bot.broker.equity(quotes)
     return {
@@ -413,6 +467,33 @@ async def place_order(order: OrderRequest):
     # Persist state
     bot.broker.save_state({sym: price})
 
+    # Fire-and-forget vault log for manual orders
+    if success:
+        if action == "BUY":
+            get_db_logger().log_trade(
+                symbol=sym,
+                side="long",
+                qty=order.qty or 0.0,
+                entry_price=price,
+                mode=bot.mode,
+                source="manual",
+                equity_at_trade=bot.broker.cash,
+            )
+        elif action == "SELL" and bot.broker.trades:
+            t = bot.broker.trades[-1]
+            get_db_logger().log_trade(
+                symbol=t.symbol,
+                side=t.side,
+                qty=t.qty,
+                entry_price=t.entry_price,
+                exit_price=t.exit_price,
+                pnl=t.pnl,
+                pnl_pct=t.pnl_pct,
+                exit_reason="manual",
+                mode=bot.mode,
+                source="manual",
+            )
+
     return {
         "success": success,
         "symbol": sym,
@@ -436,7 +517,11 @@ async def switch_mode(req: ModeRequest):
 @app.get("/api/council")
 async def get_council(symbols: Optional[str] = Query(None)):
     bot = get_bot()
-    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()] if symbols else bot.cfg.symbols[:6]
+    sym_list = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else bot.cfg.symbols[:6]
+    )
     report = bot.agent_scan(sym_list)
     return report
 
@@ -446,18 +531,41 @@ async def run_backtest_endpoint(symbol: str = "AAPL", period: str = "2y"):
     bot = get_bot()
     try:
         res = bot.backtest(symbol.strip().upper(), period=period)
+
+        # Downsample the full equity curve so the UI can draw the real
+        # account trajectory instead of reconstructing it from the last 15 trades.
+        curve_points = []
+        try:
+            equity = res.equity_curve
+            if equity is not None and len(equity) > 0:
+                step = max(1, len(equity) // 220)
+                sampled = list(zip(equity.index, equity.values))[::step]
+                last_index = equity.index[-1]
+                if sampled and sampled[-1][0] != last_index:
+                    sampled.append((last_index, equity.iloc[-1]))
+                curve_points = [
+                    {
+                        "t": idx.isoformat() if hasattr(idx, "isoformat") else str(idx),
+                        "v": _safe_number(value),
+                    }
+                    for idx, value in sampled
+                ]
+        except Exception:  # noqa: BLE001 — chart data must never break the endpoint
+            curve_points = []
+
         return {
             "symbol": res.symbol,
-            "initial_capital": res.initial_capital,
-            "final_equity": round(res.final_equity, 2),
-            "total_return_pct": round(res.total_return_pct, 2),
-            "cagr_pct": round(res.cagr_pct, 2),
-            "win_rate_pct": round(res.win_rate_pct, 2),
-            "profit_factor": round(res.profit_factor, 2),
-            "max_drawdown_pct": round(res.max_drawdown_pct, 2),
-            "sharpe": round(res.sharpe, 2),
-            "sortino": round(res.sortino, 2),
+            "initial_capital": _safe_number(res.initial_capital),
+            "final_equity": _safe_number(res.final_equity),
+            "total_return_pct": _safe_number(res.total_return_pct),
+            "cagr_pct": _safe_number(res.cagr_pct),
+            "win_rate_pct": _safe_number(res.win_rate_pct),
+            "profit_factor": _safe_number(res.profit_factor),
+            "max_drawdown_pct": _safe_number(res.max_drawdown_pct),
+            "sharpe": _safe_number(res.sharpe),
+            "sortino": _safe_number(res.sortino),
             "total_trades": res.total_trades,
+            "equity_curve": curve_points,
             "trades": [
                 {
                     "side": t.side,
@@ -472,6 +580,212 @@ async def run_backtest_endpoint(symbol: str = "AAPL", period: str = "2y"):
         }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Strategy Trainer — walk-forward parameter training on historical data
+# ---------------------------------------------------------------------------
+class ApplyTrainingRequest(BaseModel):
+    symbol: str
+
+
+@app.get("/api/training/run")
+async def run_training(
+    symbols: Optional[str] = Query(None),
+    period: str = Query("5y"),
+    train_frac: float = Query(0.7, ge=0.5, le=0.9),
+    optimize_weights: bool = Query(False, description="Sweep the 14 factor-weight presets"),
+    refine_rounds: int = Query(
+        1, ge=1, le=3, description="Auto-refinement rounds until hurdles pass"
+    ),
+    objective: str = Query("sharpe", pattern="^(sharpe|win_rate|return)$"),
+    target_win_rate: Optional[float] = Query(None, ge=1.0, le=100.0),
+    target_profitable_months: Optional[float] = Query(None, ge=1.0, le=100.0),
+):
+    """Train ensemble parameters on historical bars (walk-forward, honest OOS).
+
+    ``objective="win_rate"`` + ``target_win_rate=90`` is the aggressive mode:
+    it keeps refining the search neighborhood (small take-profits, wide
+    stops, re-weighted factors) until the 90% profitability target is met —
+    or plainly reports the best verified configuration.
+    """
+    bot = get_bot()
+    sym_list = (
+        [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        if symbols
+        else list(bot.cfg.symbols)
+    )
+    try:
+        report = await asyncio.to_thread(
+            train_module.train,
+            sym_list,
+            bot.cfg,
+            period=period,
+            train_frac=train_frac,
+            optimize_weights=optimize_weights,
+            refine_rounds=refine_rounds,
+            objective=objective,
+            target_win_rate=target_win_rate,
+            target_profitable_months=target_profitable_months,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"training failed: {exc}")
+
+    # Vault: persist a trimmed summary of the run (fire-and-forget).
+    good = [s["symbol"] for s in report.get("symbols", []) if s.get("good")]
+    get_db_logger().log_training_report(
+        period=str(period),
+        payload={
+            "period": period,
+            "generated_at": report.get("generated_at"),
+            "objective": report.get("objective"),
+            "target_win_rate": target_win_rate,
+            "symbols_trained": len(report.get("symbols", [])),
+            "good_symbols": good,
+            "consensus": report.get("consensus"),
+        },
+    )
+    return report
+
+
+@app.get("/api/training/report")
+async def get_training_report():
+    """Return the most recent persisted training report (empty if none)."""
+    report = train_module.load_report(get_bot().cfg)
+    if report is None:
+        return {"generated_at": None, "symbols": []}
+    return report
+
+
+@app.post("/api/training/apply-consensus")
+async def apply_consensus_training():
+    """Apply the cross-symbol consensus parameters to every symbol's config."""
+    bot = get_bot()
+    report = train_module.load_report(bot.cfg)
+    if not report:
+        raise HTTPException(status_code=404, detail="no training report found")
+    applied = train_module.apply_consensus(report, bot.cfg)
+    if not applied:
+        raise HTTPException(status_code=400, detail="report has no consensus to apply")
+    return {"symbol": "ALL", "applied": applied, "success": True}
+
+
+# ---------------------------------------------------------------------------
+# Monte Carlo risk engine — bootstrap thousands of replayed trade sequences
+# ---------------------------------------------------------------------------
+@app.get("/api/montecarlo")
+async def run_montecarlo(
+    symbol: str = "AAPL",
+    period: str = "2y",
+    n_sims: int = Query(2000, ge=100, le=10000),
+    seed: Optional[int] = Query(None),
+):
+    """Backtest the current config on history, then bootstrap the trade
+    sequence into ``n_sims`` alternate lifetimes (percentile fan, drawdown
+    distribution, VaR/CVaR, risk-of-ruin)."""
+    bot = get_bot()
+
+    def _run():
+        res = bot.backtest(symbol.strip().upper(), period=period)
+        mc = monte_carlo_simulation(
+            res.trades,
+            initial_equity=res.initial_capital,
+            n_sims=n_sims,
+            seed=seed,
+        )
+        summary = {
+            "initial_capital": _safe_number(res.initial_capital),
+            "total_return_pct": _safe_number(res.total_return_pct),
+            "win_rate_pct": _safe_number(res.win_rate_pct, 1),
+            "profit_factor": _safe_number(res.profit_factor),
+            "max_drawdown_pct": _safe_number(res.max_drawdown_pct),
+            "total_trades": res.total_trades,
+        }
+        return {"symbol": res.symbol, "period": period, "backtest": summary, "monte_carlo": mc}
+
+    try:
+        return await asyncio.to_thread(_run)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Market Regime Monitor — trend/vol classification per symbol
+# ---------------------------------------------------------------------------
+@app.get("/api/regime")
+async def get_regime(
+    symbols: Optional[str] = Query(None),
+    period: str = Query("5y"),
+):
+    """Regime classification (STRONG_BULL/BULL/RANGING/BEAR/CRISIS) plus the
+    share of history each symbol spent in each regime."""
+    bot = get_bot()
+    raw = symbols or ",".join(bot.cfg.symbols[:6])
+    sym_list = [s.strip().upper() for s in raw.split(",") if s.strip()][:8]
+
+    def _run():
+        out = []
+        for sym in sym_list:
+            try:
+                df = bot.provider.fetch_history(sym, period, bot.cfg.timeframe)
+                r = detect_regime(df)
+                dist = regime_distribution(EnsembleStrategy(bot.cfg).compute_factors(df))
+                out.append(
+                    {
+                        "symbol": sym,
+                        "state": r.state,
+                        "confidence": r.confidence,
+                        "trend_score": r.trend_score,
+                        "adx": round(r.adx, 1),
+                        "volatility_pct": round(r.volatility_pct, 3),
+                        "volatility_rank": r.volatility_rank,
+                        "description": r.description,
+                        "distribution": dist,
+                        "bars": int(len(df)),
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001 — one bad ticker must not kill the panel
+                out.append({"symbol": sym, "error": str(exc)})
+        states = [s["state"] for s in out if "state" in s]
+        summary = {
+            st: states.count(st)
+            for st in ("STRONG_BULL", "BULL", "RANGING", "BEAR", "CRISIS")
+            if states.count(st)
+        }
+        return {"symbols": out, "summary": summary}
+
+    try:
+        return await asyncio.to_thread(_run)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Supabase Data Vault — optional cloud persistence (configure any time)
+# ---------------------------------------------------------------------------
+@app.get("/api/supabase/status")
+async def supabase_status():
+    return get_db_logger().status()
+
+
+@app.post("/api/supabase/test")
+async def supabase_test():
+    """Synchronous connection test: writes one row to ``loki_events``."""
+    return await asyncio.to_thread(get_db_logger().test_connection)
+
+
+@app.post("/api/training/apply")
+async def apply_training(req: ApplyTrainingRequest):
+    """Apply a symbol's best trained parameters to the running engine."""
+    bot = get_bot()
+    report = train_module.load_report(bot.cfg)
+    if report is None:
+        raise HTTPException(status_code=404, detail="no training report; run training first")
+    symbol = req.symbol.strip().upper()
+    applied = train_module.apply_best(report, symbol, bot.cfg)
+    if not applied:
+        raise HTTPException(status_code=404, detail=f"no successful training result for {symbol}")
+    return {"symbol": symbol, "applied": applied}
 
 
 # ---------------------------------------------------------------------------
@@ -514,24 +828,38 @@ async def websocket_market_data(websocket: WebSocket):
     await websocket.accept()
     bot = get_bot()
     try:
-        # Initial heartbeat
-        quotes = bot.provider.get_quotes(list(bot.broker.positions.keys())) if bot.broker.positions else {}
+        # Initial heartbeat. Quote fetching touches the network, so it must
+        # never prevent the first message: if quotes fail we still send the
+        # heartbeat with cached/zeroed equity (a silent close here would hang
+        # clients waiting for data).
+        try:
+            quotes = (
+                bot.provider.get_quotes(list(bot.broker.positions.keys()))
+                if bot.broker.positions
+                else {}
+            )
+        except Exception:
+            quotes = {}
         eq = bot.broker.equity(quotes)
-        await websocket.send_json({
-            "timestamp": datetime.now().isoformat(),
-            "portfolio_value": eq,
-            "cash": bot.broker.cash,
-            "open_positions": len(bot.broker.positions),
-            "mode": bot.mode,
-        })
+        await websocket.send_json(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "portfolio_value": eq,
+                "cash": bot.broker.cash,
+                "open_positions": len(bot.broker.positions),
+                "mode": bot.mode,
+            }
+        )
         while True:
             # Echo or stream
             data = await websocket.receive_text()
-            await websocket.send_json({
-                "timestamp": datetime.now().isoformat(),
-                "portfolio_value": bot.broker.equity({}),
-                "received": data,
-            })
+            await websocket.send_json(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "portfolio_value": bot.broker.equity({}),
+                    "received": data,
+                }
+            )
     except (WebSocketDisconnect, Exception):
         pass
 

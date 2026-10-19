@@ -14,6 +14,20 @@ authors = [
 ]
 keywords = ["trading", "algorithmic-trading", "machine-learning", "finance", "quantitative-finance"]
 
+# Runtime dependencies for the deployed site. Vercel's Python runtime installs
+# from THIS table (not requirements.txt) — keep the two lists in sync.
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "jinja2>=3.1.2",
+    "aiofiles>=23.1.0",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0.0",
+    "structlog>=24.1.0",
+    "yfinance>=0.2.40",
+    "requests>=2.31.0",
+]
+
 [project.urls]
 Homepage = "https://lokitrading.ai"
 Documentation = "https://docs.lokitrading.ai"
@@ -44,6 +58,10 @@ extend-exclude = '''
 )/
 '''
 
+# Point Vercel at the lightweight ASGI entrypoint (avoids desktop launchers).
+[tool.vercel]
+entrypoint = "main:app"
+
 [tool.isort]
 profile = "black"
 line_length = 100
@@ -69,6 +87,9 @@ strict_equality = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"
+# Make the repo root importable so bare `pytest` (CI) can import loki,
+# loki_v8, core_engine, etc. without each test file needing sys.path hacks.
+pythonpath = ["."]
 addopts = "-ra -q --strict-markers --cov=loki --cov-report=html --cov-report=term-missing"
 testpaths = ["tests"]
 python_files = ["test_*.py"]

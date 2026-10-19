@@ -6,6 +6,7 @@ Each agent emits a structured JSON decision so the whole chain is auditable.
 The pipeline is deterministic (no LLM key required); an LLM reasoning hook can
 be slotted into the Director later without changing the interface.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,7 @@ from typing import Dict, List, Optional
 from .broker import make_broker
 from .config import LokiConfig
 from .data import get_provider
-from .regime import Regime, detect_regime
+from .regime import Regime, detect_regime, is_bearish, is_bullish
 from .risk import RiskManager
 from .strategy import EnsembleStrategy, Signal
 
@@ -34,18 +35,33 @@ class DirectorAgent:
         self.cfg = cfg
 
     def run(self, symbol: str, regime: Regime) -> Dict:
-        if regime.state == "BULL":
+        state = regime.state
+        if is_bullish(state):
             posture = "long"
-            thesis = f"{symbol}: uptrend confirmed (trend_score={regime.trend_score:+.0f}, ADX={regime.adx:.0f})"
-        elif regime.state == "BEAR":
-            posture = "short" if self.cfg.allow_short else "flat"
-            thesis = f"{symbol}: downtrend — {'shorting' if posture == 'short' else 'no new longs'}"
+            strength = "strong" if state == "STRONG_BULL" else "developing"
+            thesis = (
+                f"{symbol}: {strength} uptrend "
+                f"(trend_score={regime.trend_score:+.0f}, ADX={regime.adx:.0f})"
+            )
+        elif is_bearish(state):
+            posture = "short" if (self.cfg.allow_short and state == "BEAR") else "flat"
+            if state == "CRISIS":
+                thesis = f"{symbol}: CRISIS regime — high volatility, capital preserved"
+            else:
+                thesis = (
+                    f"{symbol}: downtrend — {'shorting' if posture == 'short' else 'no new longs'}"
+                )
         else:
             posture = "long"  # ranging: trade longs on strong signals, tighter size
             thesis = f"{symbol}: ranging market — trade only high-confidence longs"
 
-        return {"symbol": symbol, "posture": posture, "thesis": thesis,
-                "regime": regime.state, "confidence": round(regime.confidence, 1)}
+        return {
+            "symbol": symbol,
+            "posture": posture,
+            "thesis": thesis,
+            "regime": regime.state,
+            "confidence": round(regime.confidence, 1),
+        }
 
 
 class QuantAgent:
@@ -80,8 +96,9 @@ class RiskAgent:
         self.cfg = cfg
         self.risk = RiskManager(cfg)
 
-    def run(self, posture: str, signal: Optional[Dict], equity: float,
-            open_positions: int, price: float) -> Dict:
+    def run(
+        self, posture: str, signal: Optional[Dict], equity: float, open_positions: int, price: float
+    ) -> Dict:
         if signal is None:
             return {"approved": False, "reason": "no_signal"}
 
@@ -103,8 +120,14 @@ class RiskAgent:
             # Tighter size in ranging markets
             if posture == "long" and signal.get("regime") == "RANGING":
                 qty *= 0.5
-            return {"approved": qty > 0, "reason": "ok", "qty": qty,
-                    "action": "BUY", "stop": signal["stop"], "target": signal["target"]}
+            return {
+                "approved": qty > 0,
+                "reason": "ok",
+                "qty": qty,
+                "action": "BUY",
+                "stop": signal["stop"],
+                "target": signal["target"],
+            }
         elif signal["action"] == "SELL":
             return {"approved": True, "reason": "ok", "action": "SELL", "qty": 0.0}
         return {"approved": False, "reason": "hold"}
@@ -144,8 +167,9 @@ class LokiAgentPipeline:
         self.risk = RiskAgent(cfg)
         self.executor = ExecutionAgent(cfg, broker)
 
-    def run_symbol(self, symbol: str, equity: float,
-                   open_positions: int, price: float) -> List[Dict]:
+    def run_symbol(
+        self, symbol: str, equity: float, open_positions: int, price: float
+    ) -> List[Dict]:
         """Run the pipeline and return the ordered decision trail."""
         trail: List[Dict] = []
         try:
@@ -170,8 +194,9 @@ class LokiAgentPipeline:
 
         return trail
 
-    def run_universe(self, symbols: Optional[List[str]] = None,
-                     equity: Optional[float] = None) -> Dict:
+    def run_universe(
+        self, symbols: Optional[List[str]] = None, equity: Optional[float] = None
+    ) -> Dict:
         """Run the pipeline across a symbol list and return a full report."""
         syms = symbols or self.cfg.symbols
         quotes = self.provider.get_quotes(syms)

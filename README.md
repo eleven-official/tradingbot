@@ -4,11 +4,75 @@
 
 **System Status:** ✅ FULLY OPERATIONAL  
 **Architecture:** Autonomous 4-Agent Council (Director ➔ Quant ➔ Risk Sentinel ➔ Hermes Execution Router)  
-**Signal Engine:** Vectorized Trend + TTM Squeeze Volatility Breakouts + Chaikin Money Flow + Dynamic ATR Channels  
+**Signal Engine:** 5-Factor Weighted Ensemble (trend · momentum · money-flow · TTM squeeze · volatility) + ATR risk sizing  
+**Regime Engine:** 5-State Trend/Volatility Classification (STRONG_BULL · BULL · RANGING · BEAR · CRISIS) with causal volatility-percentile detection — longs blocked in bear/crisis regimes across backtests, council, and live trading  
+**Trainer:** Multi-Factor Walk-Forward Grid Search with auto-refinement ("train until good trades"), 90%-profitability aggressive mode, cross-symbol consensus, 5–10 year history support  
+**Risk Lab:** Monte Carlo bootstrap engine — thousands of alternate equity lifetimes, percentile fans, V@R/CV@R, risk-of-ruin  
+**Data Vault:** Optional Supabase cloud persistence (trades, signals, equity snapshots, regime changes, training reports) — configure any time, zero-prompt until then  
 **Execution:** Zero-Lookahead Event-Driven Paper & Live Multi-Market Engine (US Stocks, Crypto, Global Indices)  
-**Web Terminal:** Real-Time Cyber-Institutional Command Center with Interactive Charts & Instant Order Desk  
+**Web Terminal:** Real-Time Cyber-Institutional Command Center with Regime Monitor, Monte Carlo Lab, and Instant Order Desk  
 
 ---
+
+## 🏦 Supabase Data Vault (optional — add credentials when ready)
+
+The engine ships persistence-ready. Until configured it quietly does nothing;
+once you add two environment variables every trade, signal, equity snapshot,
+regime change, and training report is mirrored to your own Supabase tables:
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the Supabase **SQL Editor**, paste and run [`supabase_schema.sql`](supabase_schema.sql) (repo root). It creates
+   `loki_trades`, `loki_signals`, `loki_equity_snapshots`, `loki_regime_events`,
+   `loki_training_reports`, and `loki_events`.
+3. Get the **Project URL** and **service_role key** (Project Settings → API).
+4. Set the environment variables (local `.env` or Vercel Project → Settings → Environment Variables):
+
+```
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_KEY=<service_role key>
+```
+
+5. Restart / redeploy. The terminal header shows **DB SYNCED** (green) once writes
+   flow; click the pill any time for status and a one-click write test.
+
+> The service_role key bypasses row-level security — keep it server-side only.
+
+## 🧠 AI Strategy Trainer — multi-factor + 90% profitability mode
+
+`templates → AI Strategy Trainer` (or `GET /api/training/run`):
+
+* **Honest mode** — rank by out-of-sample Sharpe, verify on the untouched last 30%.
+* **🎯 90% Profitability Chase (aggressive)** — `objective=win_rate&target_win_rate=90`:
+  sweeps small-take-profit / wide-stop geometries and re-ordered factor weights,
+  auto-refining the search neighborhood for up to 3 rounds until the good-trade
+  hurdles (≥90% OOS win rate, positive OOS return, PF ≥ 1.25, DD > −30%, ≥50%
+  profitable months) pass — the report always states what was actually verified.
+  The sweep now includes **smart exits** (v8.7): a *breakeven lock* ratchets the
+  stop to entry (+cost cushion) once the trade moves in favor, converting
+  would-be full losses into scratches, plus a *polish stage* that tries
+  scale-outs, conviction/regime/vol-target sizing, armed trailing, and an
+  adaptive threshold on top of the winning geometry.
+* **Multi-factor optimization** — 14 named weight presets over the five factor
+  stacks, re-scored cheaply from precomputed factor columns.
+* **Consensus** — one click applies the median winner of every symbol to the engine.
+
+## 🧠 Smart Trade Management (v8.7 engine)
+
+Lived in the engine — enabled by the trainer when it wins out-of-sample, all
+defaults off so the classic behavior is unchanged:
+
+| Knob | What it does |
+| --- | --- |
+| `breakeven_atr` | Move stop to entry (+ small cushion) once up N×ATR — never re-take a full loss |
+| `arm_trailing_atr` | Only ratchet the trailing stop after the trade is up N×ATR |
+| `partial_tp_atr` / `partial_fraction` | Bank a fraction at an intermediate level, ride the rest |
+| `conviction_sizing` | Bigger positions on stronger scores (capped ×1.25) |
+| `regime_sizing` | Half size in RANGING regimes |
+| `vol_target_sizing` | Shrink size when ATR% runs above its rolling median |
+| `adaptive_threshold` | Demand stronger signals when volatility expands |
+
+The same logic runs in the live paper loop (`bot.step`), so backtests and
+paper trading manage trades identically.
 
 ## 🌟 Quick Launch Options
 
