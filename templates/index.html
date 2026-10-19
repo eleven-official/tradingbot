@@ -97,6 +97,19 @@
         </div>
         <div class="kpi-value" id="kpi-equity">$100,000.00</div>
         <div class="kpi-sub text-positive" id="kpi-pnl">+$0.00 (+0.00%)</div>
+        <div class="kpi-spark" id="kpi-spark" hidden>
+          <svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="spark-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="currentColor" stop-opacity="0.32"></stop>
+                <stop offset="100%" stop-color="currentColor" stop-opacity="0.02"></stop>
+              </linearGradient>
+            </defs>
+            <path class="spark-area" d="" fill="url(#spark-grad)"></path>
+            <path class="spark-line" d="" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></path>
+          </svg>
+          <span class="spark-meta" id="kpi-spark-meta"></span>
+        </div>
       </div>
 
       <div class="kpi-card kpi-cash">
@@ -195,6 +208,7 @@
         </div>
         <div class="control-bar-actions">
           <span class="scan-meta" id="scan-meta">Last scan: —</span>
+          <span class="countdown-chip" id="auto-scan-countdown" hidden title="Time until the next automatic watchlist scan"></span>
           <label class="toggle-inline" title="Rescan your watchlist every 60 seconds">
             <input type="checkbox" id="auto-scan-toggle"> AUTO 60s
           </label>
@@ -347,13 +361,17 @@
         </button>
       </div>
 
+      <!-- Closed-trade performance summary -->
+      <div class="perf-strip" id="perf-strip" hidden aria-label="Closed-trade performance summary"></div>
+
       <!-- Manual order ticket -->
       <div class="kpi-card order-ticket">
         <h3><span aria-hidden="true">⚡</span> MANUAL INSTANT ORDER TICKET</h3>
         <div class="order-ticket-grid">
           <div class="form-group">
             <label for="order-symbol">Symbol</label>
-            <input id="order-symbol" class="form-control" type="text" placeholder="e.g. AAPL, BTC-USD" value="AAPL" autocomplete="off">
+            <input id="order-symbol" class="form-control" type="text" placeholder="e.g. AAPL, BTC-USD" value="AAPL" autocomplete="off" list="order-symbol-list">
+            <datalist id="order-symbol-list"></datalist>
           </div>
           <div class="form-group">
             <label for="order-action">Action</label>
@@ -370,6 +388,16 @@
           <button id="btn-submit-order" type="button" class="action-btn btn-primary" onclick="submitManualOrder()">
             TRANSMIT ORDER
           </button>
+        </div>
+        <div class="order-ticket-extras">
+          <div class="size-presets" role="group" aria-label="Quick position sizing by share of available cash">
+            <span class="size-presets-label">QUICK SIZE</span>
+            <button type="button" class="size-preset" onclick="applySizePreset(0.25)" title="Spend 25% of available cash">25%</button>
+            <button type="button" class="size-preset" onclick="applySizePreset(0.5)" title="Spend 50% of available cash">50%</button>
+            <button type="button" class="size-preset" onclick="applySizePreset(0.75)" title="Spend 75% of available cash">75%</button>
+            <button type="button" class="size-preset" onclick="applySizePreset(0.95)" title="Spend 95% of available cash, leaving fee headroom">MAX</button>
+          </div>
+          <div class="order-est" id="order-est" role="status">Auto-size: the engine sizes the order by ATR risk at transmission.</div>
         </div>
       </div>
 
@@ -394,6 +422,7 @@
                 <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="current_price"><button type="button" class="sort-btn" onclick="sortTable('positions','current_price')">Current Price<span class="sort-arrow" aria-hidden="true"></span></button></th>
                 <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="market_value"><button type="button" class="sort-btn" onclick="sortTable('positions','market_value')">Market Value<span class="sort-arrow" aria-hidden="true"></span></button></th>
                 <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="unrealized_pnl"><button type="button" class="sort-btn" onclick="sortTable('positions','unrealized_pnl')">Unrealized P&amp;L<span class="sort-arrow" aria-hidden="true"></span></button></th>
+                <th scope="col">Risk Lane<span class="cell-sub" style="display:block; letter-spacing:0;">stop ↔ mark ↔ target</span></th>
                 <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="stop_loss"><button type="button" class="sort-btn" onclick="sortTable('positions','stop_loss')">Stop Loss<span class="sort-arrow" aria-hidden="true"></span></button></th>
                 <th scope="col" aria-sort="none" data-sort-table="positions" data-sort-key="take_profit"><button type="button" class="sort-btn" onclick="sortTable('positions','take_profit')">Take Profit<span class="sort-arrow" aria-hidden="true"></span></button></th>
                 <th scope="col" style="text-align:right;">Action</th>
@@ -401,7 +430,7 @@
             </thead>
             <tbody id="positions-table-body">
               <tr>
-                <td colspan="10">
+                <td colspan="11">
                   <div class="empty-state">
                     <div class="empty-icon" aria-hidden="true">🎯</div>
                     <div class="empty-title">No open positions</div>
@@ -672,6 +701,13 @@
     let paletteReturnFocus = null;
     let paletteActiveIndex = 0;
     let paletteFiltered = [];
+    let lastStatus = null;
+    let autoScanNextAt = 0;
+    let equityHistory = [];
+    const lastKnownPrices = {};
+    const EQUITY_HISTORY_KEY = 'loki_equity_history';
+    const EQUITY_HISTORY_MAX = 180;
+    const EQUITY_POINT_MIN_GAP_MS = 15000;
     const tableSort = {
       radar: { key: null, dir: 1 },
       positions: { key: null, dir: 1 },
@@ -997,10 +1033,14 @@
 
     function exportPositionsCsv() {
       const list = applySort('positions', (portfolioData && portfolioData.positions) || []);
+      const dist = (v) => Number.isFinite(v) ? v.toFixed(2) : '';
       downloadCsv(
         `loki-positions-${new Date().toISOString().slice(0, 10)}.csv`,
-        ['Symbol', 'Side', 'Quantity', 'Avg Entry', 'Current Price', 'Market Value', 'Unrealized P&L', 'P&L %', 'Stop Loss', 'Take Profit'],
-        list.map(p => [p.symbol, p.side, p.qty, p.avg_entry, p.current_price, p.market_value, p.unrealized_pnl, p.unrealized_pnl_pct, p.stop_loss, p.take_profit])
+        ['Symbol', 'Side', 'Quantity', 'Avg Entry', 'Current Price', 'Market Value', 'Unrealized P&L', 'P&L %', 'Stop Loss', 'Take Profit', 'Distance to Stop %', 'Distance to Target %'],
+        list.map(p => {
+          const m = laneMetrics(p);
+          return [p.symbol, p.side, p.qty, p.avg_entry, p.current_price, p.market_value, p.unrealized_pnl, p.unrealized_pnl_pct, p.stop_loss, p.take_profit, m ? dist(m.toStop) : '', m ? dist(m.toTarget) : ''];
+        })
       );
     }
 
@@ -1011,6 +1051,187 @@
         ['Symbol', 'Side', 'Quantity', 'Entry Price', 'Exit Price', 'Realized P&L', 'Return %'],
         list.map(t => [t.symbol, t.side, t.qty, t.entry_price, t.exit_price, t.pnl, t.pnl_pct])
       );
+    }
+
+    // ------------------------------------------------------------------
+    // Session equity sparkline (kept in localStorage, pruned to 12h)
+    // ------------------------------------------------------------------
+    function loadEquityHistory() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(EQUITY_HISTORY_KEY) || '[]');
+        const cutoff = Date.now() - 12 * 60 * 60 * 1000;
+        equityHistory = (Array.isArray(raw) ? raw : [])
+          .filter(pt => Array.isArray(pt) && pt.length === 2 && Number.isFinite(pt[0]) && Number.isFinite(pt[1]) && pt[0] > cutoff)
+          .slice(-EQUITY_HISTORY_MAX);
+      } catch (e) {
+        equityHistory = [];
+      }
+    }
+
+    function saveEquityHistory() {
+      try { localStorage.setItem(EQUITY_HISTORY_KEY, JSON.stringify(equityHistory)); } catch (e) { /* ignore */ }
+    }
+
+    function recordEquity(value) {
+      const v = Number(value);
+      if (!Number.isFinite(v)) return;
+      const now = Date.now();
+      const last = equityHistory[equityHistory.length - 1];
+      if (last && now - last[0] < EQUITY_POINT_MIN_GAP_MS) {
+        last[1] = v; // coalesce rapid frames into the current point
+      } else {
+        equityHistory.push([now, v]);
+        while (equityHistory.length > EQUITY_HISTORY_MAX) equityHistory.shift();
+        saveEquityHistory();
+      }
+      renderEquitySpark();
+    }
+
+    function renderEquitySpark() {
+      const holder = $('kpi-spark');
+      if (!holder) return;
+      const line = holder.querySelector('.spark-line');
+      const area = holder.querySelector('.spark-area');
+      const meta = $('kpi-spark-meta');
+      if (!line || !area || equityHistory.length < 2) {
+        holder.hidden = true;
+        return;
+      }
+      const pts = equityHistory.slice(-EQUITY_HISTORY_MAX);
+      const t0 = pts[0][0];
+      const t1 = pts[pts.length - 1][0];
+      const tSpan = (t1 - t0) || 1;
+      const vals = pts.map(p => p[1]);
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      const vSpan = (max - min) || 1;
+
+      const coords = pts.map(([t, v]) => {
+        const x = ((t - t0) / tSpan) * 100;
+        const y = 26 - ((v - min) / vSpan) * 22;
+        return [x, y];
+      });
+      const d = coords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+      line.setAttribute('d', d);
+      area.setAttribute('d', `${d} L${coords[coords.length - 1][0].toFixed(2)},28 L0,28 Z`);
+
+      const first = vals[0];
+      const lastV = vals[vals.length - 1];
+      const delta = lastV - first;
+      const pct = first ? (delta / first) * 100 : 0;
+      const sign = delta >= 0 ? '+' : '';
+      holder.hidden = false;
+      holder.classList.toggle('spark-up', delta >= 0);
+      holder.classList.toggle('spark-down', delta < 0);
+      holder.title = `Session equity range ${fmtMoney(min)} – ${fmtMoney(max)} · tracking since ${new Date(t0).toLocaleTimeString()}`;
+      if (meta) {
+        meta.textContent = `SESSION ${sign}${fmtMoney(delta)} (${sign}${pct.toFixed(2)}%) · ${pts.length} PTS`;
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Last-known prices + order ticket sizing assistant
+    // ------------------------------------------------------------------
+    function rememberPrice(symbol, price) {
+      const sym = String(symbol || '').toUpperCase();
+      const n = Number(price);
+      if (!sym || !Number.isFinite(n) || n <= 0) return;
+      lastKnownPrices[sym] = n;
+    }
+
+    function lastKnownPrice(symbol) {
+      const sym = String(symbol || '').toUpperCase();
+      if (lastKnownPrices[sym]) return lastKnownPrices[sym];
+      const pos = ((portfolioData && portfolioData.positions) || []).find(p => String(p.symbol).toUpperCase() === sym);
+      if (pos && Number.isFinite(Number(pos.current_price)) && Number(pos.current_price) > 0) return Number(pos.current_price);
+      const sig = radarSignals.find(s => String(s.symbol).toUpperCase() === sym);
+      if (sig && Number.isFinite(Number(sig.entry_price)) && Number(sig.entry_price) > 0) return Number(sig.entry_price);
+      return null;
+    }
+
+    function refreshOrderSymbolList() {
+      const list = $('order-symbol-list');
+      if (!list) return;
+      const syms = new Set();
+      getWatchlist().forEach(s => syms.add(String(s).toUpperCase()));
+      ((portfolioData && portfolioData.positions) || []).forEach(p => syms.add(String(p.symbol).toUpperCase()));
+      radarSignals.forEach(s => syms.add(String(s.symbol).toUpperCase()));
+      list.innerHTML = '';
+      [...syms].slice(0, 60).forEach(sym => {
+        const opt = document.createElement('option');
+        opt.value = sym;
+        list.appendChild(opt);
+      });
+    }
+
+    function updateOrderEstimate() {
+      const holder = $('order-est');
+      if (!holder) return;
+      const action = ($('order-action') || {}).value || 'BUY';
+      const sym = (($('order-symbol') || {}).value || '').trim().toUpperCase();
+      const qtyInput = $('order-qty');
+      const rawQty = qtyInput ? Number(qtyInput.value.trim()) : NaN;
+      const closing = action === 'CLOSE';
+
+      document.querySelectorAll('.size-preset').forEach(b => { b.disabled = closing; });
+      if (qtyInput) qtyInput.disabled = closing;
+
+      if (closing) {
+        holder.className = 'order-est';
+        holder.textContent = `CLOSE flattens the ${sym || 'selected'} position at market — quantity is ignored.`;
+        return;
+      }
+
+      const price = sym ? lastKnownPrice(sym) : null;
+      if (Number.isFinite(rawQty) && rawQty > 0 && price) {
+        holder.className = 'order-est order-est-live';
+        holder.textContent = `EST. NOTIONAL ${fmtMoney(rawQty * price)} · ${fmtNum(rawQty, 4)} UNITS @ ${fmtMoney(price)} LAST KNOWN`;
+      } else if (Number.isFinite(rawQty) && rawQty > 0) {
+        holder.className = 'order-est';
+        holder.textContent = `Manual size ${fmtNum(rawQty, 4)} units — last price unknown; scan the radar or refresh the desk for an estimate.`;
+      } else if (price) {
+        holder.className = 'order-est';
+        holder.textContent = `Auto-size: the engine sizes the order by ATR risk at transmission (last known ${sym} ${fmtMoney(price)}).`;
+      } else {
+        holder.className = 'order-est';
+        holder.textContent = 'Auto-size: the engine sizes the order by ATR risk at transmission.';
+      }
+    }
+
+    function applySizePreset(pct) {
+      const action = ($('order-action') || {}).value || 'BUY';
+      const input = $('order-symbol');
+      const sym = ((input || {}).value || '').trim().toUpperCase();
+      if (action === 'CLOSE') {
+        toast('CLOSE orders flatten the position — no size is needed.', 'info');
+        return;
+      }
+      if (!sym) {
+        toast('Pick a symbol before sizing the order.', 'error');
+        if (input) input.focus();
+        return;
+      }
+      const price = lastKnownPrice(sym);
+      if (!price) {
+        toast(`No recent price for ${sym} — run a scan or refresh the desk first.`, 'error');
+        return;
+      }
+      const cash = lastStatus && Number.isFinite(Number(lastStatus.cash)) ? Number(lastStatus.cash) : NaN;
+      if (!Number.isFinite(cash) || cash <= 0) {
+        toast('Available cash is unknown — wait for the next status sync.', 'error');
+        return;
+      }
+      const raw = (cash * pct) / price;
+      if (!Number.isFinite(raw) || raw <= 0) {
+        toast('Available cash is too small for one unit at this price.', 'error');
+        return;
+      }
+      const qty = raw >= 100 ? Math.floor(raw) : Math.round(raw * 10000) / 10000;
+      const qtyInput = $('order-qty');
+      if (qtyInput) qtyInput.value = String(qty);
+      updateOrderEstimate();
+      const label = pct >= 0.95 ? 'MAX' : Math.round(pct * 100) + '%';
+      toast(`${label} size: ${qty} ${sym} ≈ ${fmtMoney(qty * price)}.`, 'info');
     }
 
     function scrollToTop() {
@@ -1134,8 +1355,51 @@
         autoScanTimer = null;
       }
       if (enabled) {
-        autoScanTimer = setInterval(() => triggerScan({ silent: true }), 60000);
+        autoScanNextAt = Date.now() + 60000;
+        autoScanTimer = setInterval(() => {
+          autoScanNextAt = Date.now() + 60000;
+          triggerScan({ silent: true });
+        }, 60000);
+      } else {
+        autoScanNextAt = 0;
       }
+      updateAutoScanCountdown();
+    }
+
+    function updateAutoScanCountdown() {
+      const chip = $('auto-scan-countdown');
+      if (!chip) return;
+      if (!autoScanNextAt) {
+        chip.hidden = true;
+        return;
+      }
+      const remain = Math.max(0, Math.ceil((autoScanNextAt - Date.now()) / 1000));
+      chip.hidden = false;
+      chip.textContent = `next ${remain}s`;
+    }
+
+    function refreshActiveTab() {
+      const id = currentTabId();
+      if (id === 'radar') { triggerScan(); }
+      else if (id === 'regime') { loadRegime(true); }
+      else if (id === 'council') { loadCouncil(); }
+      else if (id === 'portfolio') { loadPortfolio(); }
+      else if (id === 'backtest') { runBacktest(); }
+      else if (id === 'trainer') { toast('Training runs are started manually — press RUN TRAINING when ready.', 'info'); return; }
+      else { return; }
+      toast('Refreshing the active panel…', 'info');
+    }
+
+    function applyDensity(mode) {
+      const compact = mode === 'compact';
+      document.body.classList.toggle('density-compact', compact);
+      try { localStorage.setItem('loki_density', compact ? 'compact' : 'comfortable'); } catch (e) { /* ignore */ }
+    }
+
+    function toggleDensity() {
+      const next = document.body.classList.contains('density-compact') ? 'comfortable' : 'compact';
+      applyDensity(next);
+      toast(next === 'compact' ? 'Compact density enabled.' : 'Comfortable density restored.', 'info');
     }
 
     // ------------------------------------------------------------------
@@ -1172,6 +1436,10 @@
         const maxPositions = data.max_open_positions ?? 4;
         $('kpi-positions').textContent = `${data.open_positions} / ${maxPositions}`;
         $('kpi-trades').textContent = data.total_trades;
+
+        lastStatus = data;
+        recordEquity(nextEquity);
+        updateOrderEstimate();
 
         updateDbPill(data.supabase || null);
         currentMode = data.mode;
@@ -1244,7 +1512,10 @@
 
         radarSignals = Array.isArray(data.signals) ? data.signals : [];
         radarRegimes = data.regimes || {};
+        radarSignals.forEach(s => rememberPrice(s.symbol, s.entry_price));
         renderRadar();
+        refreshOrderSymbolList();
+        updateOrderEstimate();
 
         const scanMeta = $('scan-meta');
         if (scanMeta) scanMeta.textContent = 'Last scan: ' + new Date().toLocaleTimeString();
@@ -1418,6 +1689,7 @@
       holder.innerHTML = list.length
         ? list.map(s => `<span class="watchlist-chip"><button type="button" class="chip-label" onclick="openSymbolInspector('${safeSymbol(s)}')" title="Inspect ${escapeHtml(s)}">${escapeHtml(s)}</button><button type="button" class="chip-x" title="Remove ${escapeHtml(s)}" aria-label="Remove ${escapeHtml(s)} from watchlist" onclick="removeWatchlistSymbol('${safeSymbol(s)}')">×</button></span>`).join('')
         : '<span class="watchlist-empty">No custom symbols yet</span>';
+      refreshOrderSymbolList();
     }
 
     // ------------------------------------------------------------------
@@ -1446,7 +1718,7 @@
       } catch (e) {
         console.error('Portfolio load error:', e);
         if (!portfolioLoaded && posTbody) {
-          posTbody.innerHTML = `<tr><td colspan="10">${emptyState('⚠️', 'Desk unavailable', e.message, { label: 'RETRY', onclick: 'loadPortfolio()' })}</td></tr>`;
+          posTbody.innerHTML = `<tr><td colspan="11">${emptyState('⚠️', 'Desk unavailable', e.message, { label: 'RETRY', onclick: 'loadPortfolio()' })}</td></tr>`;
         }
         if (!portfolioLoaded && tradesTbody) {
           tradesTbody.innerHTML = `<tr><td colspan="7">${emptyState('⚠️', 'Trade history unavailable', e.message, { label: 'RETRY', onclick: 'loadPortfolio()' })}</td></tr>`;
@@ -1466,9 +1738,10 @@
       const stamp = portfolioLoadedAt ? portfolioLoadedAt.toLocaleTimeString() : '';
 
       $('pos-count-badge').textContent = `${positions.length} Open${stamp ? ' · ' + stamp : ''}`;
+      renderPerfStrip();
 
       if (positions.length === 0) {
-        posTbody.innerHTML = `<tr><td colspan="10">${emptyState('🎯', 'No open positions', 'Use the Radar to launch high-conviction trades, or transmit a manual order above.', { label: 'OPEN RADAR', onclick: "showTab('radar', document.getElementById('btn-tab-radar'))" })}</td></tr>`;
+        posTbody.innerHTML = `<tr><td colspan="11">${emptyState('🎯', 'No open positions', 'Use the Radar to launch high-conviction trades, or transmit a manual order above.', { label: 'OPEN RADAR', onclick: "showTab('radar', document.getElementById('btn-tab-radar'))" })}</td></tr>`;
       } else {
         posTbody.innerHTML = '';
         positions.forEach(p => {
@@ -1476,6 +1749,7 @@
           const pnlColor = p.unrealized_pnl >= 0 ? 'text-positive' : 'text-negative';
           const sign = p.unrealized_pnl >= 0 ? '+' : '';
           const sym = safeSymbol(p.symbol);
+          rememberPrice(p.symbol, p.current_price);
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
@@ -1488,6 +1762,7 @@
             <td class="num ${pnlColor}" style="font-weight:700;">
               ${sign}${fmtMoney(p.unrealized_pnl)} (${sign}${fmtNum(p.unrealized_pnl_pct)}%)
             </td>
+            <td>${riskLaneMarkup(p)}</td>
             <td class="num">${fmtMoney(p.stop_loss)}</td>
             <td class="num">${fmtMoney(p.take_profit)}</td>
             <td style="text-align:right;">
@@ -1521,6 +1796,94 @@
           tradesTbody.appendChild(tr);
         });
       }
+
+      refreshOrderSymbolList();
+      updateOrderEstimate();
+    }
+
+    // ------------------------------------------------------------------
+    // Risk lanes + closed-trade performance strip
+    // ------------------------------------------------------------------
+    function laneMetrics(p) {
+      const stop = Number(p.stop_loss);
+      const tp = Number(p.take_profit);
+      const cur = Number(p.current_price);
+      const entry = Number(p.avg_entry);
+      if (![stop, tp, cur].every(Number.isFinite) || stop === tp || cur <= 0) return null;
+      const lo = Math.min(stop, tp);
+      const hi = Math.max(stop, tp);
+      const pos = (v) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+      const mark = pos(cur);
+      const st = pos(stop);
+      const tg = pos(tp);
+      const ent = Number.isFinite(entry) ? pos(entry) : null;
+      const toStop = Math.abs((stop - cur) / cur) * 100;
+      const toTarget = Math.abs((tp - cur) / cur) * 100;
+      return {
+        mark, st, tg, ent,
+        riskLeft: Math.min(mark, st),
+        riskWidth: Math.abs(mark - st),
+        rewardLeft: Math.min(mark, tg),
+        rewardWidth: Math.abs(mark - tg),
+        toStop,
+        toTarget,
+      };
+    }
+
+    function riskLaneMarkup(p) {
+      const m = laneMetrics(p);
+      if (!m) return '<span class="cell-sub">—</span>';
+      const up = Number(p.unrealized_pnl) >= 0;
+      const title = `Risk lane — stop ${fmtMoney(p.stop_loss)} (${fmtNum(m.toStop, 1)}% away) · mark ${fmtMoney(p.current_price)} · target ${fmtMoney(p.take_profit)} (${fmtNum(m.toTarget, 1)}% away)`;
+      return `<div class="risk-lane" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+        <div class="lane-track">
+          <span class="lane-zone lane-risk" style="left:${m.riskLeft.toFixed(1)}%; width:${Math.max(m.riskWidth, 1).toFixed(1)}%"></span>
+          <span class="lane-zone lane-reward" style="left:${m.rewardLeft.toFixed(1)}%; width:${Math.max(m.rewardWidth, 1).toFixed(1)}%"></span>
+          ${m.ent !== null ? `<span class="lane-entry" style="left:${m.ent.toFixed(1)}%"></span>` : ''}
+          <span class="lane-mark ${up ? 'lane-mark-up' : 'lane-mark-down'}" style="left:${m.mark.toFixed(1)}%"></span>
+        </div>
+        <div class="lane-caption">
+          <span class="text-negative">−${fmtNum(m.toStop, 1)}%</span>
+          <span class="text-positive">+${fmtNum(m.toTarget, 1)}%</span>
+        </div>
+      </div>`;
+    }
+
+    function renderPerfStrip() {
+      const holder = $('perf-strip');
+      if (!holder) return;
+      const trades = (portfolioData && portfolioData.recent_trades) || [];
+      const nums = trades.map(t => Number(t.pnl)).filter(Number.isFinite);
+      if (!nums.length) {
+        holder.hidden = true;
+        holder.innerHTML = '';
+        return;
+      }
+      const wins = nums.filter(v => v > 0);
+      const losses = nums.filter(v => v < 0);
+      const grossWin = wins.reduce((a, b) => a + b, 0);
+      const grossLoss = Math.abs(losses.reduce((a, b) => a + b, 0));
+      const winRate = (wins.length / nums.length) * 100;
+      const pf = grossLoss > 0 ? grossWin / grossLoss : (grossWin > 0 ? Infinity : 0);
+      const avgWin = wins.length ? grossWin / wins.length : 0;
+      const avgLoss = losses.length ? grossLoss / losses.length : 0;
+      const net = nums.reduce((a, b) => a + b, 0);
+      const expectancy = net / nums.length;
+      const best = Math.max(...nums);
+      const worst = Math.min(...nums);
+      const signed = (v) => `${v >= 0 ? '+' : ''}${fmtMoney(v)}`;
+      const item = (label, value, cls = '') => `<div class="perf-item"><span class="perf-label">${label}</span><span class="perf-value ${cls}">${value}</span></div>`;
+      holder.hidden = false;
+      holder.innerHTML = `
+        ${item('Closed trades', String(nums.length))}
+        ${item('Win rate', `${fmtNum(winRate, 1)}%`, winRate >= 50 ? 'text-positive' : 'text-negative')}
+        ${item('Profit factor', Number.isFinite(pf) ? fmtNum(pf, 2) : '∞', pf >= 1 ? 'text-positive' : 'text-negative')}
+        ${item('Avg win', wins.length ? signed(avgWin) : '—', 'text-positive')}
+        ${item('Avg loss', losses.length ? fmtMoney(-avgLoss) : '—', 'text-negative')}
+        ${item('Expectancy', signed(expectancy), expectancy >= 0 ? 'text-positive' : 'text-negative')}
+        ${item('Best trade', signed(best), 'text-positive')}
+        ${item('Worst trade', fmtMoney(worst), 'text-negative')}
+        <div class="perf-note">Computed from the last ${nums.length} closed fill${nums.length === 1 ? '' : 's'} — small samples overstate edge.</div>`;
     }
 
     // ------------------------------------------------------------------
@@ -1904,7 +2267,15 @@
           try {
             const data = JSON.parse(event.data);
             if (data.portfolio_value !== undefined) {
-              $('kpi-equity').textContent = fmtMoney(data.portfolio_value);
+              const equityEl = $('kpi-equity');
+              const next = Number(data.portfolio_value);
+              const prev = Number(equityEl.dataset.value);
+              if (Number.isFinite(next)) {
+                if (Number.isFinite(prev) && prev !== next) flashValue(equityEl, next >= prev);
+                equityEl.textContent = fmtMoney(next);
+                equityEl.dataset.value = String(next);
+                recordEquity(next);
+              }
               const sync = $('last-sync');
               if (sync) sync.textContent = 'synced ' + new Date().toLocaleTimeString();
               setConnection(true);
@@ -2520,7 +2891,7 @@
         {
           group: 'Actions',
           label: 'Scan the live universe now',
-          hint: 'Radar',
+          hint: 'Alt+S',
           keywords: 'scan radar refresh signals',
           run: () => { showTab('radar', $('btn-tab-radar')); triggerScan(); },
         },
@@ -2593,6 +2964,20 @@
           hint: '?',
           keywords: 'keyboard help shortcuts hotkeys',
           run: () => openShortcuts(),
+        },
+        {
+          group: 'Actions',
+          label: 'Refresh the active panel',
+          hint: 'Alt+R',
+          keywords: 'refresh reload active panel update data',
+          run: () => refreshActiveTab(),
+        },
+        {
+          group: 'Actions',
+          label: 'Toggle compact layout density',
+          hint: 'Alt+C',
+          keywords: 'compact density comfortable spacing rows layout',
+          run: () => toggleDensity(),
         },
       ];
 
@@ -2792,6 +3177,9 @@
         ['Ctrl / ⌘ + K', 'Open the command palette'],
         ['?', 'Show this shortcut sheet'],
         ['Alt + 1 … 6', 'Jump between terminal sections'],
+        ['Alt + R', 'Refresh the active panel'],
+        ['Alt + S', 'Scan the live universe'],
+        ['Alt + C', 'Toggle compact layout density'],
         ['← / → / Home / End', 'Navigate tabs when the tab bar is focused'],
         ['Esc', 'Close the palette or an open dialog'],
         ['Enter', 'Confirm the focused action'],
@@ -3081,6 +3469,7 @@
       if (typing) return;
 
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        const key = String(e.key).toLowerCase();
         const idx = parseInt(e.key, 10);
         if (idx >= 1 && idx <= 6) {
           const btn = document.querySelectorAll('.tab-btn')[idx - 1];
@@ -3088,6 +3477,16 @@
             e.preventDefault();
             showTab(btn.dataset.tab, btn);
           }
+        } else if (key === 'r') {
+          e.preventDefault();
+          refreshActiveTab();
+        } else if (key === 's') {
+          e.preventDefault();
+          showTab('radar', $('btn-tab-radar'));
+          triggerScan();
+        } else if (key === 'c') {
+          e.preventDefault();
+          toggleDensity();
         }
         return;
       }
@@ -3134,6 +3533,20 @@
     renderWatchlist();
     refreshRegimePill();
     refreshDbStatus();
+
+    loadEquityHistory();
+    renderEquitySpark();
+    applyDensity(localStorage.getItem('loki_density') === 'compact' ? 'compact' : 'comfortable');
+    refreshOrderSymbolList();
+    updateOrderEstimate();
+    setInterval(updateAutoScanCountdown, 1000);
+
+    ['order-qty', 'order-symbol'].forEach(id => {
+      const el = $(id);
+      if (el) el.addEventListener('input', updateOrderEstimate);
+    });
+    const orderActionSel = $('order-action');
+    if (orderActionSel) orderActionSel.addEventListener('change', updateOrderEstimate);
 
     const autoScanToggle = $('auto-scan-toggle');
     if (autoScanToggle) {

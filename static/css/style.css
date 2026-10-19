@@ -2488,3 +2488,261 @@ th.sort-active .sort-btn { color: #a5f3fc; }
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   Session equity sparkline
+   ========================================================================== */
+
+.kpi-spark {
+  display: block;
+  margin-top: 9px;
+  color: var(--text-sub);
+}
+
+.kpi-spark[hidden] {
+  display: none;
+}
+
+.kpi-spark svg {
+  display: block;
+  width: 100%;
+  height: 30px;
+}
+
+.kpi-spark.spark-up { color: #34d399; }
+.kpi-spark.spark-down { color: #f87171; }
+
+.spark-meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 9.5px;
+  letter-spacing: 0.4px;
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+}
+
+/* ==========================================================================
+   Position risk lanes (stop ↔ mark ↔ target)
+   ========================================================================== */
+
+.risk-lane {
+  width: 132px;
+}
+
+.lane-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  overflow: hidden;
+}
+
+.lane-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.lane-zone.lane-risk {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.55), rgba(245, 158, 11, 0.5));
+}
+
+.lane-zone.lane-reward {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.5), rgba(52, 211, 153, 0.65));
+}
+
+.lane-entry {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(226, 232, 240, 0.85);
+  border-radius: 1px;
+}
+
+.lane-mark {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid #0b1220;
+}
+
+.lane-mark-up {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.7);
+}
+
+.lane-mark-down {
+  background: #f87171;
+  box-shadow: 0 0 8px rgba(248, 113, 113, 0.7);
+}
+
+.lane-caption {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+/* ==========================================================================
+   Order ticket extras (quick sizing + estimate)
+   ========================================================================== */
+
+.order-ticket-extras {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.size-presets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.size-presets-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.55px;
+  color: var(--text-sub);
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.size-preset {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: rgba(30, 41, 59, 0.72);
+  color: var(--text-main);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.size-preset:hover:not(:disabled) {
+  background: rgba(51, 65, 85, 0.85);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.size-preset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.order-est {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.2px;
+}
+
+.order-est-live {
+  color: var(--accent-cyan);
+}
+
+/* ==========================================================================
+   Auto-scan countdown chip
+   ========================================================================== */
+
+.countdown-chip {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: rgba(34, 211, 238, 0.09);
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  border-radius: 999px;
+  padding: 4px 10px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.countdown-chip[hidden] {
+  display: none;
+}
+
+/* ==========================================================================
+   Closed-trade performance strip
+   ========================================================================== */
+
+.perf-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.perf-strip[hidden] {
+  display: none;
+}
+
+.perf-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.perf-label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+  color: var(--text-sub);
+  font-weight: 700;
+}
+
+.perf-value {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-note {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  color: var(--text-sub);
+  border-top: 1px dashed var(--border-soft);
+  padding-top: 9px;
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   Compact density mode (Alt+C / command palette)
+   ========================================================================== */
+
+body.density-compact td { padding: 7px 16px; }
+body.density-compact th { padding: 8px 16px; }
+body.density-compact .kpi-card { padding: 12px 16px; }
+body.density-compact .kpi-value { font-size: 21px; }
+body.density-compact .kpi-sub { margin-top: 3px; }
+body.density-compact .table-header-title { padding: 12px 20px; }
+body.density-compact .control-bar { margin-bottom: 12px; }
+body.density-compact .order-ticket { margin-bottom: 14px; }
+body.density-compact .perf-strip { padding: 11px 14px; margin-bottom: 14px; }
+body.density-compact .watchlist-bar { padding-top: 10px; padding-bottom: 10px; }
+
+@media (max-width: 760px) {
+  .risk-lane { width: 108px; }
+  .perf-strip { gap: 8px; padding: 12px; }
+  .perf-value { font-size: 13.5px; }
+  .order-ticket-extras { gap: 10px; }
+}
