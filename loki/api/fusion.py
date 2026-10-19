@@ -553,3 +553,56 @@ def fincept_analyze(payload: FinceptRequest, request: Request, response: Respons
         weights=payload.weights,
         portfolio_value=payload.portfolio_value,
     )
+
+
+# ---------------------------------------------------------------------------
+# Public trained-strategy book: the verified out-of-sample evidence shipped
+# with the repo. Stateless and read-only — it touches no engine state and
+# requires no launcher session; it only reads the bundled snapshot.
+# ---------------------------------------------------------------------------
+@router.get("/research-book")
+def research_book(response: Response):
+    from loki_v8.train import load_report as _load_trained_report
+
+    report = _load_trained_report()
+    _private_response(response)
+    if not report:
+        return {
+            "generated_at": None,
+            "period": None,
+            "evaluation_protocol": None,
+            "consensus_support_pct": None,
+            "symbols": [],
+        }
+    summary = []
+    for entry in report.get("symbols", []):
+        if not entry.get("ok"):
+            continue
+        dev = entry.get("validation_metrics") or {}
+        holdout = entry.get("final_holdout") or {}
+        metrics = holdout.get("metrics") or {}
+        summary.append(
+            {
+                "symbol": entry.get("symbol"),
+                "win_rate_pct": dev.get("win_rate_pct"),
+                "profitable_months_pct": dev.get("month_profit_rate_pct"),
+                "profit_factor": dev.get("profit_factor"),
+                "trades": dev.get("trades"),
+                "final_holdout": {
+                    "start": holdout.get("start"),
+                    "end": holdout.get("end"),
+                    "win_rate_pct": metrics.get("win_rate_pct"),
+                    "profitable_months_pct": metrics.get("month_profit_rate_pct"),
+                    "profit_factor": metrics.get("profit_factor"),
+                    "trades": metrics.get("trades"),
+                },
+            }
+        )
+    consensus = report.get("consensus") or {}
+    return {
+        "generated_at": report.get("generated_at"),
+        "period": report.get("period"),
+        "evaluation_protocol": report.get("evaluation_protocol"),
+        "consensus_support_pct": consensus.get("support_pct"),
+        "symbols": summary,
+    }

@@ -1,0 +1,238 @@
+"""Site access control: fun-but-real gate code, sessions, and accounts.
+
+The public deployment asks visitors for an access code before the workspace
+opens, and then for an email/password account so the experience can greet the
+user by their chosen nickname. Supabase stores the accounts; the browser never
+talks to Supabase directly — everything is proxied through this server, so no
+key ever reaches the client and only a signed first-party cookie is set.
+
+Activation rules:
+- The gate engages only for remote deployments (``VERCEL`` set) or when the
+  launcher explicitly turns it on (``LOKI_SITE_GATE=1``). The local desktop
+  launcher experience stays open, as designed by the fusion workspace.
+- The access code defaults to a surprise value and stays configurable via
+  ``LOKI_SITE_CODE`` so it can be changed without a deploy.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import logging
+import os
+import time
+import unicodedata
+from typing import Any, Dict, Optional
+
+import requests
+from fastapi import HTTPException
+from fastapi.concurrency import run_in_threadpool
+
+logger = logging.getLogger(__name__)
+
+GATE_COOKIE = "loki_gate"
+SESSION_COOKIE = "loki_session"
+GATE_MAX_AGE = 30 * 24 * 3600
+SESSION_MAX_AGE = 14 * 24 * 3600
+_DEFAULT_CODE = "beef jerky"
+
+_COOKIE_SALT = b"loki-site-access-v1"
+
+
+def gate_enabled() -> bool:
+    """True when the access gate should guard the website."""
+    return bool(os.environ.get("VERCEL")) or os.environ.get("LOKI_SITE_GATE") == "1"
+
+
+def expected_code() -> str:
+    raw = os.environ.get("LOKI_SITE_CODE") or _DEFAULT_CODE
+    return _normalize_code(raw)
+
+
+def _normalize_code(value: str) -> str:
+    """Lowercase, strip accents/padding, and collapse every inner space run."""
+    value = unicodedata.normalize("NFKC", value or "").strip().lower()
+    return " ".join(value.split())
+
+
+def code_matches(candidate: str) -> bool:
+    guess = _normalize_code(candidate or "")
+    if not guess:
+        return False
+    target = expected_code()
+    squash = lambda s: s.replace(" ", "")  # noqa: E731 - tiny local normalizer
+    return hmac.compare_digest(guess, target) or hmac.compare_digest(squash(guess), squash(target))
+
+
+_NICKNAME_ALLOWED = set("abcdefghijklmnopqrstuvwxyz0123456789 -_")
+
+
+def clean_nickname(value: str) -> str:
+    """Validate a display name: 2-24 characters of letters/digits/space/-/_."""
+    value = unicodedata.normalize("NFKC", value or "").strip()
+    value = " ".join(value.split())
+    if not 2 <= len(value) <= 24 or any(ch not in _NICKNAME_ALLOWED for ch in value.lower()):
+        return ""
+    return value
+
+
+def _secret() -> bytes:
+    explicit = (os.environ.get("LOKI_GATE_SECRET") or "").strip()
+    if explicit:
+        return hashlib.sha256(_COOKIE_SALT + explicit.encode()).digest()
+    material = f"{os.environ.get('SUPABASE_URL') or ''}\0{os.environ.get('SUPABASE_SERVICE_KEY') or os.environ.get('SUPABASE_KEY') or ''}"
+    if material.strip("\0"):
+        return hashlib.sha256(_COOKIE_SALT + material.encode()).digest()
+    # Local/dev deployments: stable-but-throwaway secret keeps cookies verifiable.
+    return hashlib.sha256(_COOKIE_SALT + b"loki-local-dev-gate").digest()
+
+
+def _sign(payload: str) -> str:
+    return hmac.new(_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def issue_gate_cookie_value() -> str:
+    payload = str(int(time.time()) + GATE_MAX_AGE)
+    return f"{payload}.{_sign(payload)}"
+
+
+def verify_gate_cookie_value(value: Optional[str]) -> bool:
+    if not value or "." not in value:
+        return False
+    payload, signature = value.rsplit(".", 1)
+    if not _sign(payload) == signature:
+        return False
+    try:
+        return float(payload) >= time.time()
+    except ValueError:
+        return False
+
+
+def issue_session_cookie_value(uid: str, email: str, nickname: str) -> str:
+    payload = base64.urlsafe_b64encode(
+        json.dumps(
+            {"uid": uid, "email": email, "nickname": nickname, "iat": int(time.time())},
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).decode("ascii")
+    return f"{payload}.{_sign(payload)}"
+
+
+def read_session_cookie_value(value: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not value or "." not in value:
+        return None
+    payload, signature = value.rsplit(".", 1)
+    if not _sign(payload) == signature:
+        return None
+    try:
+        data = json.loads(base64.urlsafe_b64decode(payload.encode("ascii")))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    issued = float(data.get("iat") or 0)
+    if time.time() - issued > SESSION_MAX_AGE:
+        return None
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Supabase account proxy — the browser never sees any key or Supabase cookie.
+# ---------------------------------------------------------------------------
+def accounts_available() -> bool:
+    try:
+        _supabase_config()
+        return True
+    except HTTPException:
+        return False
+
+
+def _supabase_config() -> tuple[str, str]:
+    url = (os.environ.get("SUPABASE_URL") or "").strip().rstrip("/")
+    key = (os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or "").strip()
+    if not url or not key or not url.endswith(".supabase.co"):
+        raise HTTPException(
+            503,
+            "Accounts are not configured on this deployment; the workspace still works as a guest.",
+        )
+    return url, key
+
+
+def _supa_headers(key: str) -> Dict[str, str]:
+    headers = {"apikey": key, "Content-Type": "application/json"}
+    # Opaque server secrets use just the apikey header; legacy JWTs need Bearer.
+    if not key.startswith("sb_secret_"):
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
+
+
+def _supa_request(method: str, path: str, *, json_body: Optional[dict] = None) -> Dict[str, Any]:
+    url, key = _supabase_config()
+    try:
+        response = requests.request(
+            method,
+            f"{url}{path}",
+            json=json_body,
+            headers=_supa_headers(key),
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        logger.warning("Supabase auth network failure: %s", exc.__class__.__name__)
+        raise HTTPException(503, "The account service is unreachable; try again shortly.") from exc
+    if 200 <= response.status_code < 300:
+        try:
+            return response.json() or {}
+        except ValueError:
+            return {}
+    if response.status_code == 422 or response.status_code == 400:
+        detail = "That email or password was not accepted (passwords need 8+ characters)."
+        try:
+            body = response.json()
+            ident = body.get("msg") or body.get("error_description") or body.get("error") or ""
+            if "already" in str(ident).lower():
+                detail = "That email already has an account — try signing in instead."
+            elif "capacity" in str(ident).lower() or "signed up" in str(ident).lower():
+                detail = "Sign-ups are temporarily limited; try again shortly."
+        except ValueError:
+            pass
+        raise HTTPException(400, detail)
+    if response.status_code == 401:
+        raise HTTPException(401, "Wrong email or password.")
+    logger.warning("Supabase auth %s %s -> %s", method, response.status_code, response.text[:120])
+    raise HTTPException(503, "The account service had a hiccup; try again shortly.")
+
+
+async def create_account(email: str, password: str, nickname: str) -> Dict[str, Any]:
+    """Create a confirmed account with the nickname in user_metadata."""
+    user = await run_in_threadpool(
+        _supa_request,
+        "POST",
+        "/auth/v1/admin/users",
+        json_body={
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+            "user_metadata": {"nickname": nickname},
+        },
+    )
+    return user
+
+
+async def sign_in_with_password(email: str, password: str) -> Dict[str, Any]:
+    """Password grant; returns the Supabase user object (session stays server-side)."""
+    grant = await run_in_threadpool(
+        _supa_request,
+        "POST",
+        "/auth/v1/token?grant_type=password",
+        json_body={"email": email, "password": password},
+    )
+    return grant.get("user") or {}
+
+
+async def update_nickname(uid: str, nickname: str) -> Dict[str, Any]:
+    return await run_in_threadpool(
+        _supa_request,
+        "PATCH",
+        f"/auth/v1/admin/users/{uid}",
+        json_body={"user_metadata": {"nickname": nickname}},
+    )

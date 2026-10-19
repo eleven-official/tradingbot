@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loki · Sign in</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { min-height: 100vh; display: grid; place-items: center; background: #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 24px; }
+    .card { width: min(520px, 100%); background: rgba(14, 22, 36, .82); border: 1px solid rgba(139, 218, 212, .18); border-radius: 18px; padding: 42px 40px 34px; box-shadow: 0 30px 80px rgba(0, 0, 0, .45); }
+    .brand-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 26px; }
+    .mark { display: inline-grid; place-items: center; width: 44px; height: 44px; border: 1px solid rgba(139, 218, 212, .45); border-radius: 12px; font-weight: 800; color: #8bdad4; }
+    .brand-row b { font-size: 22px; letter-spacing: .04em; } .brand-row span { color: #7f93a8; font-size: 12px; }
+    .eyebrow { color: #8bdad4; letter-spacing: .16em; font-size: 11px; font-weight: 600; margin-bottom: 10px; }
+    h1 { font-size: 30px; line-height: 1.15; margin-bottom: 10px; } h1 em { color: #b8f0d8; font-style: normal; }
+    p.muted { color: #9fb0c2; font-size: 14px; line-height: 1.5; margin-bottom: 26px; }
+    label { display: block; font-size: 12px; color: #8ea2b5; margin-bottom: 8px; }
+    .field { margin-bottom: 16px; }
+    input { width: 100%; padding: 13px 15px; border-radius: 12px; border: 1px solid rgba(139, 218, 212, .25); background: #0a1220; color: #e7f0ff; font-size: 15px; outline: none; }
+    input:focus { border-color: #8bdad4; }
+    .nick-callout { color: #b8f0d8; font-size: 13px; margin-bottom: 14px; }
+    button { width: 100%; padding: 14px; border: 0; border-radius: 12px; background: #baf0d8; color: #06251c; font-weight: 700; font-size: 15px; cursor: pointer; }
+    button:hover { background: #d6f8e7; } button[disabled] { opacity: .6; cursor: wait; }
+    .row { display: flex; gap: 10px; margin-top: 6px; }
+    .ghost { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(139, 218, 212, .3); background: transparent; color: #8bdad4; font-weight: 600; font-size: 14px; cursor: pointer; }
+    .ghost:hover { background: rgba(139, 218, 212, .08); }
+    #msg { min-height: 20px; margin-top: 12px; font-size: 13px; color: #ff9d9d; }
+    #msg.ok { color: #8bdad4; }
+    .foot { margin-top: 20px; color: #7f93a8; font-size: 12.5px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand-row"><span class="mark">L</span><b>LOKI</b><span>v{{ version }}</span></div>
+    <p class="eyebrow">YOUR ACCOUNT</p>
+    <h1>Make it <em>yours.</em></h1>
+    <p class="muted">Sign in with email and password. New here? Pick a nickname — Loki will greet you with it every time.</p>
+
+    <form id="auth-form" autocomplete="on">
+      <div class="nick-callout" id="nick-callout" hidden>New here — choose your trader name below.</div>
+      <div class="field" id="nick-field" hidden>
+        <label for="nickname">Nickname</label>
+        <input id="nickname" type="text" maxlength="24" placeholder="e.g. MoonRunner" autocomplete="nickname">
+      </div>
+      <div class="field"><label for="email">Email</label><input id="email" type="email" required placeholder="you@example.com" autocomplete="email"></div>
+      <div class="field"><label for="password">Password</label><input id="password" type="password" required minlength="8" placeholder="8+ characters" autocomplete="current-password"></div>
+      <button id="primary" type="submit">Sign in ↗</button>
+      <div class="row"><button type="button" class="ghost" id="toggle">New here? Create an account →</button></div>
+    </form>
+    <div id="msg" role="status" aria-live="polite"></div>
+    <p class="foot">Accounts keep Loki personal — nothing here is shared. <a href="/gate" style="color:#7f93a8">Back</a></p>
+  </div>
+  <script>
+    let mode = 'login';
+    const $ = (id) => document.getElementById(id);
+    const msg = $('msg');
+    const toggle = $('toggle');
+    toggle.addEventListener('click', () => {
+      mode = mode === 'login' ? 'signup' : 'login';
+      $('nick-field').hidden = mode !== 'signup';
+      $('nick-callout').hidden = mode !== 'signup';
+      $('primary').textContent = mode === 'login' ? 'Sign in ↗' : 'Create my account ↗';
+      toggle.textContent = mode === 'login' ? 'New here? Create an account →' : '← I already have an account';
+      msg.textContent = '';
+    });
+    $('auth-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const btn = $('primary');
+      btn.disabled = true;
+      msg.className = ''; msg.textContent = mode === 'login' ? 'Signing in…' : 'Creating your account…';
+      try {
+        const res = await fetch(mode === 'login' ? '/api/auth/login' : '/api/auth/sign-up', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: $('email').value.trim(),
+            password: $('password').value,
+            nickname: $('nickname').value.trim() || null
+          })
+        });
+        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) || {}).detail || 'Something went wrong.');
+        msg.className = 'ok'; msg.textContent = 'Welcome in…';
+        window.location.href = '/#overview';
+      } catch (err) {
+        msg.textContent = err.message || 'Try again.';
+        btn.disabled = false;
+      }
+    });
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/session', { cache: 'no-store' });
+        if (res.ok) {
+          const me = await res.json();
+          if (me.nickname) {
+            msg.className = 'ok';
+            msg.textContent = `Already signed in as ${me.nickname} — opening the workspace…`;
+            setTimeout(() => { window.location.href = '/#overview'; }, 900);
+          }
+        }
+      } catch { /* not signed in; show the form */ }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loki · Access</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { min-height: 100vh; display: grid; place-items: center; background: #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 24px; }
+    .card { width: min(520px, 100%); background: rgba(14, 22, 36, .82); border: 1px solid rgba(139, 218, 212, .18); border-radius: 18px; padding: 42px 40px 34px; box-shadow: 0 30px 80px rgba(0, 0, 0, .45); }
+    .brand-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 26px; }
+    .mark { display: inline-grid; place-items: center; width: 44px; height: 44px; border: 1px solid rgba(139, 218, 212, .45); border-radius: 12px; font-weight: 800; color: #8bdad4; }
+    .brand-row b { font-size: 22px; letter-spacing: .04em; } .brand-row span { color: #7f93a8; font-size: 12px; }
+    .eyebrow { color: #8bdad4; letter-spacing: .16em; font-size: 11px; font-weight: 600; margin-bottom: 10px; }
+    h1 { font-size: 30px; line-height: 1.15; margin-bottom: 10px; } h1 em { color: #b8f0d8; font-style: normal; }
+    p.muted { color: #9fb0c2; font-size: 14px; line-height: 1.5; margin-bottom: 26px; }
+    label { display: block; font-size: 12px; color: #8ea2b5; margin-bottom: 8px; }
+    input { width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(139, 218, 212, .25); background: #0a1220; color: #e7f0ff; font-family: "JetBrains Mono", monospace; font-size: 15px; letter-spacing: .06em; outline: none; }
+    input:focus { border-color: #8bdad4; }
+    button { width: 100%; margin-top: 16px; padding: 14px; border: 0; border-radius: 12px; background: #baf0d8; color: #06251c; font-weight: 700; font-size: 15px; cursor: pointer; }
+    button:hover { background: #d6f8e7; } button[disabled] { opacity: .6; cursor: wait; }
+    .hint { margin-top: 18px; color: #7f93a8; font-size: 12.5px; }
+    #msg { min-height: 20px; margin-top: 12px; font-size: 13px; color: #ff9d9d; }
+    #msg.ok { color: #8bdad4; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand-row"><span class="mark">L</span><b>LOKI</b><span>v{{ version }}</span></div>
+    <p class="eyebrow">PRIVATE WORKSPACE</p>
+    <h1>Enter the access code.</h1>
+    <p class="muted">This workspace opens with a passphrase. It stays between Loki and you.</p>
+    <form id="gate-form" autocomplete="off">
+      <label for="code">Access code</label>
+      <input id="code" name="code" type="text" inputmode="text" autofocus required placeholder="type the code" />
+      <button id="go" type="submit">Open Loki ↗</button>
+    </form>
+    <div id="msg" role="status" aria-live="polite"></div>
+    <p class="hint">Already through? You'll be redirected automatically.</p>
+  </div>
+  <script>
+    const formEl = document.getElementById('gate-form');
+    const msgEl = document.getElementById('msg');
+    formEl.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const btn = document.getElementById('go');
+      btn.disabled = true;
+      msgEl.className = ''; msgEl.textContent = 'Checking…';
+      try {
+        const res = await fetch('/api/gate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: document.getElementById('code').value })
+        });
+        if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) || {}).detail || 'Not the code.');
+        msgEl.className = 'ok'; msgEl.textContent = 'Welcome in — opening the workspace…';
+        window.location.href = '/';
+      } catch (err) {
+        msgEl.textContent = err.message || 'Try again.';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -77,8 +77,13 @@ class DeploymentConfigTests(unittest.TestCase):
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == "TemplateResponse"
         ]
-        self.assertEqual(len(calls), 1)
-        self.assertEqual({item.arg for item in calls[0].keywords}, {"request", "name", "context"})
+        self.assertGreaterEqual(len(calls), 1)
+        for call in calls:
+            self.assertEqual(
+                {item.arg for item in call.keywords},
+                {"request", "name", "context"},
+                f"TemplateResponse at line {call.lineno} must keep the keyword form.",
+            )
 
     def test_landing_assets_are_included_in_the_deployment_bundle(self):
         config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
