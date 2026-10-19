@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 from datetime import datetime
 from pathlib import Path
@@ -61,6 +62,15 @@ def get_bot() -> LokiBot:
     if _bot is None:
         _bot = LokiBot(default_config())
     return _bot
+
+
+def _safe_number(value, digits: int = 2):
+    """Round a numeric value to JSON-safe form (NaN/inf become ``None``)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(number, digits) if math.isfinite(number) else None
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +241,8 @@ async def get_status():
         "open_positions": open_pos,
         "total_trades": len(bot.broker.trades),
         "symbols": bot.cfg.symbols,
+        "max_open_positions": bot.cfg.max_open_positions,
+        "server_time": datetime.now().isoformat(),
         "autonomous_running": auto_engine.is_running,
         "factor_weights": bot.cfg.factor_weights,
         "supabase": get_db_logger().status(),
@@ -519,18 +531,41 @@ async def run_backtest_endpoint(symbol: str = "AAPL", period: str = "2y"):
     bot = get_bot()
     try:
         res = bot.backtest(symbol.strip().upper(), period=period)
+
+        # Downsample the full equity curve so the UI can draw the real
+        # account trajectory instead of reconstructing it from the last 15 trades.
+        curve_points = []
+        try:
+            equity = res.equity_curve
+            if equity is not None and len(equity) > 0:
+                step = max(1, len(equity) // 220)
+                sampled = list(zip(equity.index, equity.values))[::step]
+                last_index = equity.index[-1]
+                if sampled and sampled[-1][0] != last_index:
+                    sampled.append((last_index, equity.iloc[-1]))
+                curve_points = [
+                    {
+                        "t": idx.isoformat() if hasattr(idx, "isoformat") else str(idx),
+                        "v": _safe_number(value),
+                    }
+                    for idx, value in sampled
+                ]
+        except Exception:  # noqa: BLE001 — chart data must never break the endpoint
+            curve_points = []
+
         return {
             "symbol": res.symbol,
-            "initial_capital": res.initial_capital,
-            "final_equity": round(res.final_equity, 2),
-            "total_return_pct": round(res.total_return_pct, 2),
-            "cagr_pct": round(res.cagr_pct, 2),
-            "win_rate_pct": round(res.win_rate_pct, 2),
-            "profit_factor": round(res.profit_factor, 2),
-            "max_drawdown_pct": round(res.max_drawdown_pct, 2),
-            "sharpe": round(res.sharpe, 2),
-            "sortino": round(res.sortino, 2),
+            "initial_capital": _safe_number(res.initial_capital),
+            "final_equity": _safe_number(res.final_equity),
+            "total_return_pct": _safe_number(res.total_return_pct),
+            "cagr_pct": _safe_number(res.cagr_pct),
+            "win_rate_pct": _safe_number(res.win_rate_pct),
+            "profit_factor": _safe_number(res.profit_factor),
+            "max_drawdown_pct": _safe_number(res.max_drawdown_pct),
+            "sharpe": _safe_number(res.sharpe),
+            "sortino": _safe_number(res.sortino),
             "total_trades": res.total_trades,
+            "equity_curve": curve_points,
             "trades": [
                 {
                     "side": t.side,
@@ -659,10 +694,11 @@ async def run_montecarlo(
             seed=seed,
         )
         summary = {
-            "total_return_pct": round(res.total_return_pct, 2),
-            "win_rate_pct": round(res.win_rate_pct, 1),
-            "profit_factor": round(res.profit_factor, 2),
-            "max_drawdown_pct": round(res.max_drawdown_pct, 2),
+            "initial_capital": _safe_number(res.initial_capital),
+            "total_return_pct": _safe_number(res.total_return_pct),
+            "win_rate_pct": _safe_number(res.win_rate_pct, 1),
+            "profit_factor": _safe_number(res.profit_factor),
+            "max_drawdown_pct": _safe_number(res.max_drawdown_pct),
             "total_trades": res.total_trades,
         }
         return {"symbol": res.symbol, "period": period, "backtest": summary, "monte_carlo": mc}
