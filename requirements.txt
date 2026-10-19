@@ -14,3 +14,5 @@ yfinance>=0.2.40
 # (loki_v8/persistence.py yfinance already pulls requests transitively, but
 # list it explicitly so the persistence layer never relies on transitives).
 requests>=2.31.0
+# Supabase Python client for database operations
+supabase>=2.0.0
