@@ -44,6 +44,7 @@
         <p class="muted">Loki's live strategy book: per-asset parameters trained on years of history, verified on out-of-sample windows, then measured once more on the final 20% of history that no training step ever touched.</p>
         <div id="trained-book-grid" aria-live="polite"></div>
         <p class="caption" id="trained-book-note">Loaded from the shipped report snapshot.</p>
+        <div class="button-row"><a class="button primary" href="#ai-trading">Trade this with the AI →</a></div>
       </section>
       <section class="panel chart-panel">
         <div class="section-title"><div><p class="eyebrow">PERFORMANCE EXPLORER</p><h2>Let the results speak.</h2></div><div class="legend"><span class="legend-key"></span> Strategy <span class="legend-key baseline"></span> Buy &amp; hold</div></div>
@@ -131,8 +132,10 @@
         <div id="ai-trail"><p class="muted">Start AI trading to watch the Director → Quant → Risk reasoning stream in here, step by step.</p></div>
       </section>
       <section class="panel">
-        <div class="section-title"><div><p class="eyebrow">PAPER BOOK</p><h2>Equity &amp; results.</h2></div></div>
+        <div class="section-title"><div><p class="eyebrow">PAPER BOOK</p><h2>Equity &amp; results.</h2></div><button id="ai-scan" class="button secondary" type="button">Scan all symbols now</button></div>
         <div id="ai-stats" class="inline-metrics"></div>
+        <canvas id="ai-curve" height="120" style="width:100%;margin:6px 0 2px" aria-label="Paper equity curve" role="img"></canvas>
+        <p class="caption" id="ai-curve-note">The equity curve draws itself as the AI trades.</p>
         <div id="ai-position"></div>
         <div id="ai-trades" class="table-scroll"></div>
         <h3 style="margin-top:18px">Decision log</h3>

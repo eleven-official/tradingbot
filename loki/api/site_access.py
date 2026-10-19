@@ -22,6 +22,7 @@ import hmac
 import json
 import logging
 import os
+import threading
 import time
 import unicodedata
 from typing import Any, Dict, Optional
@@ -80,6 +81,40 @@ def clean_nickname(value: str) -> str:
     if not 2 <= len(value) <= 24 or any(ch not in _NICKNAME_ALLOWED for ch in value.lower()):
         return ""
     return value
+
+
+# ---------------------------------------------------------------------------
+# Gate brute-force throttle: best-effort, in-memory, per client IP.
+# ---------------------------------------------------------------------------
+_GATE_ATTEMPTS: Dict[str, list] = {}
+_GATE_ATTEMPT_LOCK = threading.Lock()
+_GATE_ATTEMPT_WINDOW = 300.0
+_GATE_ATTEMPT_LIMIT = 10
+
+
+def _prune(stamps: list, now: float) -> list:
+    return [t for t in stamps if now - t < _GATE_ATTEMPT_WINDOW]
+
+
+def gate_rate_limited(client_ip: str) -> bool:
+    now = time.time()
+    with _GATE_ATTEMPT_LOCK:
+        stamps = _prune(_GATE_ATTEMPTS.get(client_ip, []), now)
+        _GATE_ATTEMPTS[client_ip] = stamps
+        return len(stamps) >= _GATE_ATTEMPT_LIMIT
+
+
+def record_gate_failure(client_ip: str) -> None:
+    now = time.time()
+    with _GATE_ATTEMPT_LOCK:
+        stamps = _prune(_GATE_ATTEMPTS.get(client_ip, []), now)
+        stamps.append(now)
+        _GATE_ATTEMPTS[client_ip] = stamps
+
+
+def clear_gate_failures(client_ip: str) -> None:
+    with _GATE_ATTEMPT_LOCK:
+        _GATE_ATTEMPTS.pop(client_ip, None)
 
 
 def _secret() -> bytes:

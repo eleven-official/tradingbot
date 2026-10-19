@@ -8,7 +8,22 @@ from loki.api.server import app
 client = TestClient(app)
 
 
-class FakeRisk:
+class FakeRiskManager:
+    def __init__(self):
+        self.day_start_equity = 100000.0
+        self._consecutive_losses = 0
+        self.resets = []
+
+    def reset_day(self, equity):
+        self.resets.append(equity)
+        self.day_start_equity = equity
+        self._consecutive_losses = 0
+
+
+class FakeRiskAgent:
+    def __init__(self):
+        self.risk = FakeRiskManager()
+
     def run(self, posture, signal, equity, open_positions, price):
         if signal is None:
             return {"approved": False, "reason": "no_signal"}
@@ -18,7 +33,8 @@ class FakeRisk:
 
 
 class FakePipeline:
-    risk = FakeRisk()
+    def __init__(self):
+        self.risk = FakeRiskAgent()
 
 
 ANALYSIS = {
@@ -40,7 +56,7 @@ ANALYSIS = {
 
 def _stub(monkeypatch):
     monkeypatch.setattr(ai_paper, "_analyze", lambda symbol: dict(ANALYSIS))
-    monkeypatch.setattr(ai_paper, "_build_pipeline", lambda symbol: (FakePipeline(), None, True))
+    monkeypatch.setattr(ai_paper, "_get_pipeline", lambda symbol: (FakePipeline(), None, True))
 
 
 class TestAiStep:
@@ -75,3 +91,22 @@ class TestAiStep:
             client.post("/api/fusion/ai/step", json={"symbol": "SPY", "equity": -5}).status_code
             == 422
         )
+
+    def test_risk_baseline_aligned_with_browser_ledger(self, monkeypatch):
+        built = []
+
+        def fake_pipeline(symbol):
+            pipeline = FakePipeline()
+            built.append(pipeline)
+            return (pipeline, None, True)
+
+        monkeypatch.setattr(ai_paper, "_analyze", lambda symbol: dict(ANALYSIS))
+        monkeypatch.setattr(ai_paper, "_get_pipeline", fake_pipeline)
+        response = client.post(
+            "/api/fusion/ai/step",
+            json={"symbol": "SPY", "equity": 9500, "equity_start": 10000, "consecutive_losses": 2},
+        )
+        assert response.status_code == 200
+        manager = built[0].risk.risk
+        assert manager.day_start_equity == 10000
+        assert manager._consecutive_losses == 2

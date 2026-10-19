@@ -52,9 +52,14 @@
       <div class="row"><button type="button" class="ghost" id="toggle">New here? Create an account →</button></div>
     </form>
     <div id="msg" role="status" aria-live="polite"></div>
-    <p class="foot">Accounts keep Loki personal — nothing here is shared. <a href="/gate" style="color:#7f93a8">Back</a></p>
+    <p class="foot">Accounts keep Loki personal — nothing here is shared. <a href="#" id="guest-link" style="color:#8bdad4">Continue as guest →</a></p>
   </div>
   <script>
+    document.getElementById('guest-link').addEventListener('click', (event) => {
+      event.preventDefault();
+      try { localStorage.setItem('loki_guest', '1'); } catch { /* ignore */ }
+      window.location.href = '/#overview';
+    });
     let mode = 'login';
     const $ = (id) => document.getElementById(id);
     const msg = $('msg');
@@ -92,6 +97,7 @@
           btn.disabled = false;
           return;
         }
+        try { localStorage.removeItem('loki_guest'); } catch { /* ignore */ }
         msg.className = 'ok'; msg.textContent = 'Welcome in…';
         window.location.href = '/#overview';
       } catch (err) {

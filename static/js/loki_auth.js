@@ -51,10 +51,16 @@
   };
 
   const init = async () => {
+    let guestMode = false;
+    try { guestMode = localStorage.getItem('loki_guest') === '1'; } catch { /* ignore */ }
     let session = null;
     try {
       const res = await fetch('/api/auth/session', { cache: 'no-store' });
       if (res.status === 401) {
+        if (guestMode) {
+          document.body.appendChild(buildGuest());
+          return;
+        }
         window.location.href = '/login';
         return;
       }

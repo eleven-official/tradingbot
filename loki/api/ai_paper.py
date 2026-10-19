@@ -31,6 +31,8 @@ router = APIRouter(prefix="/api/fusion/ai", tags=["Loki Fusion"])
 _ANALYSIS_TTL_SECONDS = 45.0
 _ANALYSIS_LOCK = threading.Lock()
 _ANALYSIS_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_PIPELINE_CACHE: Dict[str, Tuple[Any, Any, bool]] = {}
+_PIPELINE_LOCK = threading.Lock()
 
 
 class AiStepBody(BaseModel):
@@ -39,10 +41,16 @@ class AiStepBody(BaseModel):
     equity: float = Field(default=10_000.0, gt=0.0, le=100_000_000.0)
     open_positions: int = Field(default=0, ge=0, le=1_000)
     has_position: bool = False
+    equity_start: float = Field(default=0.0, ge=0.0, le=100_000_000.0)
+    consecutive_losses: int = Field(default=0, ge=0, le=100)
 
 
-def _build_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
-    """Ephemeral pipeline with the symbol's trained profile applied."""
+def _get_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
+    """Ephemeral pipeline with the symbol's trained profile applied (cached)."""
+    with _PIPELINE_LOCK:
+        cached = _PIPELINE_CACHE.get(symbol)
+        if cached:
+            return cached
     from loki_v8.agents import LokiAgentPipeline
     from loki_v8.broker import PaperBroker
     from loki_v8.config import LokiConfig
@@ -57,7 +65,10 @@ def _build_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
     except Exception as exc:  # noqa: BLE001 - degrade to default config
         logger.warning("trained profile unavailable for %s: %s", symbol, exc.__class__.__name__)
     pipeline = LokiAgentPipeline(cfg, broker=PaperBroker(cfg))
-    return pipeline, cfg, bool(applied)
+    entry = (pipeline, cfg, bool(applied))
+    with _PIPELINE_LOCK:
+        _PIPELINE_CACHE[symbol] = entry
+    return entry
 
 
 def _analyze(symbol: str) -> Dict[str, Any]:
@@ -70,7 +81,7 @@ def _analyze(symbol: str) -> Dict[str, Any]:
         if cached and now - cached[0] < _ANALYSIS_TTL_SECONDS:
             return cached[1]
 
-    pipeline, cfg, trained_applied = _build_pipeline(symbol)
+    pipeline, cfg, trained_applied = _get_pipeline(symbol)
     try:
         frame = pipeline.provider.fetch_history(symbol, cfg.period, cfg.timeframe)
         if frame is None or frame.empty:
@@ -111,7 +122,17 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
     _private_response(response)
 
     analysis = _analyze(symbol)
-    pipeline, _cfg, _applied = _build_pipeline(symbol)
+    pipeline, _cfg, _applied = _get_pipeline(symbol)
+
+    # The paper ledger lives in the browser; align the risk manager's
+    # day baseline and streak with it so daily-loss guards mean the same
+    # thing for the paper account as they do for the engine.
+    try:
+        if payload.equity_start > 0:
+            pipeline.risk.risk.reset_day(payload.equity_start)
+        pipeline.risk.risk._consecutive_losses = payload.consecutive_losses
+    except AttributeError:
+        pass
 
     quant = analysis.get("quant")
     risk = pipeline.risk.run(

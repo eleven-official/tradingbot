@@ -79,6 +79,23 @@ class TestGateFlow:
         assert client_nofollow.get("/").status_code == 200
 
 
+class TestGateThrottle:
+    def test_repeated_failures_get_throttled_then_success_clears(self, monkeypatch):
+        monkeypatch.setenv("VERCEL", "1")
+        monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
+        for _ in range(10):
+            assert client.post("/api/gate", json={"code": "nope"}).status_code == 403
+        throttled = client.post("/api/gate", json={"code": "beef jerky"})
+        assert throttled.status_code == 429
+
+        monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
+        assert client.post("/api/gate", json={"code": "nope"}).status_code == 403
+        accepted = client.post("/api/gate", json={"code": "beef jerky"})
+        assert accepted.status_code == 200
+        # A correct code clears the failure record for that client.
+        assert site_access._GATE_ATTEMPTS.get("testclient") in (None, [])
+
+
 class TestAccounts:
     def _stub_admin(self, monkeypatch):
         monkeypatch.delenv("SUPABASE_URL", raising=False)

@@ -117,12 +117,20 @@ async def access_gate_page(request: Request):
 
 @app.post("/api/gate", include_in_schema=False)
 async def access_gate_submit(request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if site_access.gate_rate_limited(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many tries — wait a few minutes.",
+        )
     try:
         body = await request.json()
     except ValueError:
         body = {}
     if not site_access.code_matches(str((body or {}).get("code") or "")):
+        site_access.record_gate_failure(client_ip)
         raise HTTPException(status_code=403, detail="That is not the code.")
+    site_access.clear_gate_failures(client_ip)
     response = JSONResponse({"ok": True})
     response.set_cookie(
         site_access.GATE_COOKIE,
