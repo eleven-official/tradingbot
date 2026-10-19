@@ -171,6 +171,7 @@ class SymbolReport:
     hurdles: List[Dict[str, Any]] = field(default_factory=list)
     good: bool = False  # passed every "good trade" hurdle (OOS)
     factor_preset: str = ""  # winning factor-weight preset name (if any)
+    data_quality: str = ""  # e.g. "short history (412 bars)", "" when clean
     refine_round: int = 1
     regime_distribution: Dict[str, float] = field(default_factory=dict)
 
@@ -191,6 +192,27 @@ def _cfg_with(base_cfg: LokiConfig, params: Dict[str, Any]) -> LokiConfig:
     return dataclasses.replace(base_cfg, **clean)
 
 
+def _month_profit_rate(trades: List[Any]) -> float:
+    """Share of calendar months (by exit date) whose summed PnL is positive.
+
+    Returns 0.0 when there are no trades or timestamps — never raises, so it
+    is safe to call inside the hot ranking path.
+    """
+    if not trades:
+        return 0.0
+    try:
+        pnls = [t.pnl for t in trades]
+        exits = pd.Series(pd.to_datetime([t.exit_time for t in trades]))
+        if exits.dt.tz is not None:
+            exits = exits.dt.tz_localize(None)
+        monthly = pd.Series(pnls).groupby(exits.dt.to_period("M")).sum()
+        if len(monthly) == 0:
+            return 0.0
+        return float((monthly > 0.0).mean() * 100.0)
+    except Exception:  # noqa: BLE001 — timestamps quirks must not kill metrics
+        return 0.0
+
+
 def _result_metrics(res) -> Dict[str, float]:
     """Headline metrics from a BacktestResult."""
     pf = res.profit_factor
@@ -201,6 +223,7 @@ def _result_metrics(res) -> Dict[str, float]:
         "profit_factor": round(float(pf), 2) if math.isfinite(pf) else 999.0,
         "max_drawdown_pct": round(float(res.max_drawdown_pct), 2),
         "sharpe": round(float(res.sharpe), 2),
+        "month_profit_rate_pct": round(_month_profit_rate(res.trades), 1),
     }
 
 
@@ -227,14 +250,7 @@ def _oos_metrics(trades: List[Any], initial_cash: float) -> Dict[str, float]:
 
     # Share of calendar months (by exit date) that ended profitable — the
     # "profitability rate" metric the aggressive trainer targets.
-    month_profit_rate = 0.0
-    try:
-        exits = pd.to_datetime([t.exit_time for t in trades], utc=True).tz_localize(None)
-        monthly = pd.Series(pnls).groupby(exits.to_period("M")).sum()
-        if len(monthly):
-            month_profit_rate = float((monthly > 0.0).mean() * 100.0)
-    except Exception:  # noqa: BLE001 — timestamp fallback; never fail metrics
-        month_profit_rate = 0.0
+    month_profit_rate = _month_profit_rate(trades)
 
     return {
         "trades": len(pnls),
@@ -258,14 +274,18 @@ def _rank_key(entry: Dict[str, Any], objective: str = "sharpe"):
     m = entry["train"]
     enough_trades = m["trades"] >= 3
     pf = min(m["profit_factor"], 5.0)
+    months = m.get("month_profit_rate_pct", 0.0)
     if objective == "win_rate":
         # Prefer high hit rates, but never prefer a money-losing profile.
+        # Among candidates with near-identical hit rates, the steadier
+        # monthly profile wins — it is what the profitable-months hurdle
+        # measures out-of-sample, so ranking on it closes that gap.
         breakeven = pf >= 1.0
-        return (enough_trades, breakeven, m["win_rate_pct"], pf, m["return_pct"])
+        return (enough_trades, breakeven, m["win_rate_pct"], months, pf, m["return_pct"])
     if objective == "return":
         return (enough_trades, m["return_pct"], pf)
     sharpe = m["sharpe"] if math.isfinite(m["sharpe"]) else -99.0
-    return (enough_trades, sharpe, pf, m["return_pct"])
+    return (enough_trades, sharpe, months, pf, m["return_pct"])
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +386,26 @@ def _refined_grid(grid: Dict[str, List[Any]], best_params: Dict[str, Any]) -> Di
             break
         refined[widest] = [v for v in vals if v == best_params.get(widest)] or vals[:2]
     return refined
+
+
+def _data_quality_note(df: Optional[pd.DataFrame]) -> str:
+    """Cheap sanity notes about a fetched history frame ("" = clean)."""
+    try:
+        if df is None or df.empty:
+            return "empty history"
+        notes: List[str] = []
+        if len(df) < 1500:
+            notes.append(f"short history ({len(df)} bars)")
+        dup = int(df.index.duplicated().sum())
+        if dup:
+            notes.append(f"{dup} duplicate timestamps")
+        if "volume" in df.columns:
+            zero_vol = int((df["volume"] <= 0).mean() * 100.0)
+            if zero_vol > 20:
+                notes.append(f"{zero_vol}% zero-volume bars")
+        return "; ".join(notes)
+    except Exception:  # noqa: BLE001 — notes must never break training
+        return ""
 
 
 def train_symbol(
@@ -506,6 +546,10 @@ def train_symbol(
                 {"vol_target_sizing": True},
                 {"adaptive_threshold": True},
                 {"trailing_stop_atr": 0.6, "arm_trailing_atr": 1.0},  # ride winners
+                {"max_hold_bars": 60},  # let late bloomers reach their target
+                {"max_hold_bars": 12},  # recycle dead trades quickly (months profile)
+                {"max_atr_pct": 4.0},  # tighter vol gate — enter less when it hurts
+                {"max_atr_pct": 3.0},
             ]
             for extra in polish_upgrades:
                 evaluate(weights0, preset_name0, {**base_params, **extra}, polish=True)
@@ -663,6 +707,7 @@ def train(
                 )
                 rep_dict = rep.to_dict()
                 rep_dict["refine_round"] = round_no
+                rep_dict["data_quality"] = _data_quality_note(df)
                 if round_no < max_rounds and rep.ok and not rep.good:
                     current_grid[sym] = _refined_grid(base_grid, rep.best_params)
             symbol_dicts.append(rep_dict)

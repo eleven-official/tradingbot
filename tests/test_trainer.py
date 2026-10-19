@@ -69,6 +69,7 @@ class TestTrainSymbol:
                 "profit_factor",
                 "max_drawdown_pct",
                 "sharpe",
+                "month_profit_rate_pct",
             }
         # Top candidates were validated out-of-sample.
         assert "validation" in rep.leaderboard[0]

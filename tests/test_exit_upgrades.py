@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 
 import loki_v8.backtest as bt
+import loki_v8.train as T
 from loki_v8.bot import LokiBot
 from loki_v8.backtest import run_backtest
 from loki_v8.config import LokiConfig
@@ -375,3 +376,129 @@ class TestLiveEngineParity:
         pos = bot.broker.positions["BTC-USD"]
         be_stop = avg_entry - 0.05 * 2.0
         assert pos.stop_loss == pytest.approx(be_stop, rel=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Backtester: short-side exits (scale-out, BE lock, trailing)
+# ---------------------------------------------------------------------------
+class TestShortSideExits:
+    def _run(self, **overrides):
+        prices = (
+            _flat(61) + [99.0, 98.0, 97.0, 96.0, 95.2, 94.6, 96.5, 97.8, 99.0, 100.5] + [100.5] * 10
+        )
+        df = _candles(prices)
+        cfg = _base_cfg(
+            allow_short=True,
+            regime_filter=False,  # candles read STRONG_BULL; shorts need the gate off
+            **overrides,
+        )
+        frame = _frame(df, score=-100.0)  # always SELL
+        return run_backtest(df, cfg, symbol="SHORT", frame=frame)
+
+    def test_short_scaleout_banks_half(self):
+        res = self._run(stop_loss_atr=5.0, take_profit_atr=2.5, partial_tp_atr=0.6)
+        legs = [t for t in res.trades if t.exit_reason == "scale_out"]
+        assert legs, "expected a short scale-out leg"
+        idx = res.trades.index(legs[0])
+        leg2 = res.trades[idx + 1]
+        assert legs[0].qty == pytest.approx(leg2.qty, rel=1e-6)
+        assert legs[0].pnl > 0.0  # fell through the partial level
+
+    def test_short_breakeven_lock(self):
+        with_be = self._run(stop_loss_atr=5.0, take_profit_atr=50.0, breakeven_atr=1.0)
+        without_be = self._run(stop_loss_atr=5.0, take_profit_atr=50.0)
+        assert without_be.trades[0].pnl < 0.0  # recovery blows through the short
+        assert with_be.trades[0].pnl > 0.0  # stop ratcheted below entry
+
+    def test_short_armed_trailing(self):
+        res = self._run(stop_loss_atr=5.0, take_profit_atr=50.0, trailing_stop_atr=0.3)
+        first = res.trades[0]
+        assert first.pnl > 0.0  # trailing stop trails the downside
+
+
+# ---------------------------------------------------------------------------
+# Trainer: months-consistency ranking
+# ---------------------------------------------------------------------------
+class TestMonthsRanking:
+    def test_win_rate_objective_prefers_steady_months(self):
+        lumpy = {
+            "trades": 40,
+            "win_rate_pct": 88.0,
+            "profit_factor": 1.9,
+            "return_pct": 6.0,
+            "sharpe": 1.0,
+            "month_profit_rate_pct": 40.0,
+        }
+        steady = dict(lumpy, month_profit_rate_pct=75.0)
+        entry_lumpy = {"params": {}, "train": lumpy}
+        entry_steady = {"params": {}, "train": steady}
+        key_l = T._rank_key(entry_lumpy, "win_rate")
+        key_s = T._rank_key(entry_steady, "win_rate")
+        assert key_s > key_l
+        # Best LAST convention: steady sorts above lumpy on reversal too
+        board = sorted([entry_lumpy, entry_steady], key=lambda e: T._rank_key(e, "win_rate"))
+        assert board[-1] is entry_steady
+
+    def test_train_metrics_include_months(self):
+        df = pd.DataFrame(
+            {
+                "open": 100.0,
+                "high": 101.0,
+                "low": 99.0,
+                "close": 100.0,
+                "volume": 1.0,
+            },
+            index=pd.date_range("2023-01-01", periods=300, freq="D"),
+        )
+        cfg = LokiConfig(lookback_bars=20)
+        rep = T.train_symbol(
+            df,
+            cfg,
+            "TEST",
+            grid={"signal_threshold": [45.0], "stop_loss_atr": [2.0], "take_profit_atr": [3.0]},
+        )
+        assert rep.ok
+        entry = rep.leaderboard[0]
+        assert "month_profit_rate_pct" in entry["train"]
+
+
+# ---------------------------------------------------------------------------
+# Whole-engine journeys with the knobs on
+# ---------------------------------------------------------------------------
+class TestKnobJourneys:
+    def test_portfolio_backtest_with_smart_exits(self):
+        # Frames must exceed 200 bars so sma_200 exists for the real scoring
+        ramp = [100.0 + 0.8 * i for i in range(1, 14)] + _flat(60, 110.4)
+        dip = [100.0 - 0.6 * i for i in range(1, 13)] + _flat(61, 92.8)
+        df_a = _candles(_flat(215) + ramp)
+        df_b = _candles(_flat(217) + dip)
+        cfg = _base_cfg(
+            stop_loss_atr=3.0,
+            take_profit_atr=2.0,
+            breakeven_atr=0.8,
+            partial_tp_atr=0.6,
+            partial_fraction=0.5,
+            conviction_sizing=True,
+            regime_sizing=True,
+            vol_target_sizing=True,
+        )
+        cfg.max_hold_bars = 20
+        res = bt.portfolio_backtest({"A": df_a, "B": df_b}, cfg)
+        assert res.final_equity > 0.0
+        assert res.total_trades >= 1
+
+    def test_walk_forward_with_smart_exits(self):
+        closes = _flat(61) + [100.6, 101.2, 101.8, 102.4, 103.0]
+        closes = closes + [103.4, 104.2, 103.8, 104.6, 105.2, 104.8] + _flat(120, 104.8)
+        df = _candles(closes)
+        cfg = _base_cfg(
+            stop_loss_atr=3.0,
+            take_profit_atr=1.5,
+            breakeven_atr=0.6,
+            trailing_stop_atr=0.5,
+            arm_trailing_atr=1.0,
+        )
+        results = bt.walk_forward(df, cfg, symbol="TEST", n_splits=2)
+        assert results, "expected walk-forward folds"
+        for r in results:
+            assert r.final_equity > 0.0
