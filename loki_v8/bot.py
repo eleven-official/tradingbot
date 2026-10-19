@@ -16,6 +16,9 @@ import logging
 import time
 from typing import Dict, List, Optional
 
+import numpy as np
+import pandas as pd
+
 from .agents import LokiAgentPipeline
 from .backtest import (
     BacktestResult,
@@ -45,6 +48,10 @@ class LokiBot:
         self.broker = make_broker(self.cfg)
         self.mode = self.cfg.mode
         self.last_quotes: Dict[str, float] = {}
+        # Per-symbol latest-bar context (ATR) for smart exit management
+        self._last_context: Dict[str, Dict[str, float]] = {}
+        # Symbols that already had a partial scale-out this position life
+        self._scaled_out: set = set()
         # Optional Supabase vault logging state (no-op unless configured)
         self._db = get_db_logger()
         self._db_trades_logged = 0
@@ -73,6 +80,12 @@ class LokiBot:
         for sym in symbols or self.cfg.symbols:
             try:
                 df = self.provider.fetch_history(sym, self.cfg.period, self.cfg.timeframe)
+                frame = self.strategy.score_frame(df)
+                if len(frame):
+                    last = frame.iloc[-1]
+                    raw_atr = last.get("atr", float("nan"))
+                    atr_val = float(raw_atr) if np.isfinite(raw_atr) else 0.0
+                    self._last_context[sym] = {"atr": max(atr_val, 0.0)}
                 sig = self.strategy.generate_signal(df, sym)
                 if sig is not None:
                     signals.append(sig)
@@ -123,9 +136,7 @@ class LokiBot:
         self, symbols: Optional[List[str]] = None, period: str = "5y"
     ) -> BacktestResult:
         """Backtest an equal-weight portfolio of symbols with shared capital."""
-        dfs: Dict[str, "pd.DataFrame"] = (
-            {}
-        )  # noqa: F821 — quoted annotation, pandas unused at runtime
+        dfs: Dict[str, pd.DataFrame] = {}
         for sym in symbols or self.cfg.symbols:
             df = self.provider.fetch_history(sym, period, self.cfg.timeframe)
             if not df.empty:
@@ -141,26 +152,103 @@ class LokiBot:
         return quotes
 
     def _manage_exits(self, quotes: Dict[str, float]):
-        """Close paper positions whose stop/target is hit (long or short)."""
+        """Manage open paper positions.
+
+        Order of operations mirrors the backtester:
+        1. legacy stop/target check on the remaining quantity,
+        2. smart management — breakeven lock once up ``cfg.breakeven_atr``
+           ATR (stop moved to entry + a small cost cushion), optional
+           (``cfg.arm_trailing_atr``-armed) ATR trailing ratchet,
+        3. one-time partial scale-out at ``cfg.partial_tp_atr`` ATR banking
+           ``cfg.partial_fraction`` of the position.
+        """
         for sym in list(self.broker.positions.keys()):
             price = quotes.get(sym)
             if price is None:
                 continue
             pos = self.broker.positions[sym]
-            if pos.qty >= 0:  # long: stop below, target above
+            long = pos.qty >= 0
+
+            # 1) Legacy stop / target on the remaining quantity
+            if long:
                 if pos.stop_loss > 0 and price <= pos.stop_loss:
                     self.broker.close(sym, price)
+                    self._scaled_out.discard(sym)
                     logger.info("STOP hit: %s @ %.2f", sym, price)
+                    continue
                 elif pos.take_profit > 0 and price >= pos.take_profit:
                     self.broker.close(sym, price)
+                    self._scaled_out.discard(sym)
                     logger.info("TARGET hit: %s @ %.2f", sym, price)
-            else:  # short: stop above, target below
+                    continue
+            else:
                 if pos.stop_loss > 0 and price >= pos.stop_loss:
                     self.broker.close(sym, price)
+                    self._scaled_out.discard(sym)
                     logger.info("SHORT STOP hit: %s @ %.2f", sym, price)
+                    continue
                 elif pos.take_profit > 0 and price <= pos.take_profit:
                     self.broker.close(sym, price)
+                    self._scaled_out.discard(sym)
                     logger.info("SHORT TARGET hit: %s @ %.2f", sym, price)
+                    continue
+
+            atr = float(self._last_context.get(sym, {}).get("atr", 0.0))
+            if atr <= 0 or price <= 0:
+                continue
+            entry = pos.avg_entry
+            gain = (price - entry) / atr if long else (entry - price) / atr
+
+            # 2) Breakeven lock + (optionally armed) trailing ratchet
+            if self.cfg.breakeven_atr > 0 and gain >= self.cfg.breakeven_atr:
+                be_stop = entry + 0.05 * atr if long else entry - 0.05 * atr
+                applied = False
+                if long and pos.stop_loss < be_stop:
+                    pos.stop_loss = be_stop
+                    applied = True
+                elif not long and (pos.stop_loss <= 0 or pos.stop_loss > be_stop):
+                    pos.stop_loss = be_stop
+                    applied = True
+                if applied:
+                    logger.info("BREAKEVEN locked: %s stop -> %.2f", sym, be_stop)
+            if self.cfg.trailing_stop_atr > 0 and (
+                self.cfg.arm_trailing_atr <= 0 or gain >= self.cfg.arm_trailing_atr
+            ):
+                ns = (
+                    price - self.cfg.trailing_stop_atr * atr
+                    if long
+                    else price + self.cfg.trailing_stop_atr * atr
+                )
+                if long and ns > pos.stop_loss:
+                    pos.stop_loss = ns
+                    logger.info("TRAIL raised: %s stop -> %.2f", sym, ns)
+                elif not long and (pos.stop_loss <= 0 or ns < pos.stop_loss):
+                    pos.stop_loss = ns
+                    logger.info("TRAIL lowered: %s stop -> %.2f", sym, ns)
+
+            # 3) One-time partial scale-out
+            if self.cfg.partial_tp_atr > 0 and sym not in self._scaled_out and abs(pos.qty) > 1e-12:
+                plevel = entry + self.cfg.partial_tp_atr * atr * (1.0 if long else -1.0)
+                hit_partial = price >= plevel if long else price <= plevel
+                if hit_partial:
+                    frac = min(0.9, max(0.1, self.cfg.partial_fraction))
+                    leg_qty = abs(pos.qty) * frac
+                    if long:
+                        self.broker.sell(sym, leg_qty, price)
+                    else:
+                        self.broker.buy_to_cover(sym, leg_qty, price)
+                    self._scaled_out.add(sym)
+                    if long and price > pos.stop_loss:
+                        pos.stop_loss = price
+                    elif not long and (pos.stop_loss <= 0 or price < pos.stop_loss):
+                        pos.stop_loss = price
+                    logger.info(
+                        "SCALE-OUT %s %.4f @ %.2f (stop -> %.2f)",
+                        sym,
+                        leg_qty,
+                        price,
+                        pos.stop_loss,
+                    )
 
     def step(self):
         """One iteration: fetch live data, act on signals, manage risk."""
@@ -188,6 +276,7 @@ class LokiBot:
                         p = self.broker.positions[sig.symbol]
                         p.stop_loss = sig.stop_loss
                         p.take_profit = sig.take_profit
+                        self._scaled_out.discard(sig.symbol)
                         logger.info(
                             "BUY  %s x%.4f @ %.2f (score %.1f)", sig.symbol, qty, price, sig.score
                         )
@@ -202,6 +291,7 @@ class LokiBot:
                             p = self.broker.positions[sig.symbol]
                             p.stop_loss = sig.stop_loss
                             p.take_profit = sig.take_profit
+                            self._scaled_out.discard(sig.symbol)
                             logger.info(
                                 "SHORT %s x%.4f @ %.2f (score %.1f)",
                                 sig.symbol,

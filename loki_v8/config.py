@@ -63,6 +63,18 @@ class LokiConfig:
     max_hold_bars: int = 30  # time-stop: exit after N bars held
     max_atr_pct: float = 5.0  # skip entries when daily ATR% exceeds this
 
+    # --- Smart trade management (v8.7) ------------------------------------
+    # All default OFF so the classic exit engine is unchanged. These knobs are
+    # trainer-tunable and verified out-of-sample like the rest of the grid.
+    breakeven_atr: float = 0.0  # move stop to entry (+costs) once up N ATR; 0 = off
+    arm_trailing_atr: float = 0.0  # only ratchet trailing stop after N ATR gain; 0 = always
+    partial_tp_atr: float = 0.0  # scale out at this ATR multiple before full TP; 0 = off
+    partial_fraction: float = 0.5  # fraction of the position banked at the partial target
+    adaptive_threshold: bool = False  # require stronger signals when volatility expands
+    conviction_sizing: bool = False  # size up stronger signals, size down marginal ones
+    regime_sizing: bool = False  # half position size in RANGING regimes
+    vol_target_sizing: bool = False  # shrink size when ATR% is above its rolling median
+
     # --- Multi-factor ensemble weights -----------------------------------
     # Relative weight of each factor stack in the composite score. Weights
     # are normalized internally, so only the ratios matter. The trainer can

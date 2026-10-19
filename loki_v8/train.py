@@ -66,7 +66,18 @@ DEFAULT_GRID: Dict[str, List[Any]] = {
     "take_profit_atr": [2.5, 4.0],
     "require_trend_filter": [True, False],
 }
-TRAINABLE_PARAMS = tuple(DEFAULT_GRID)
+TRAINABLE_PARAMS: Tuple[str, ...] = tuple(DEFAULT_GRID) + (
+    # Smart trade management (v8.7) — trainer-tunable exit & sizing knobs.
+    "trailing_stop_atr",
+    "breakeven_atr",
+    "arm_trailing_atr",
+    "partial_tp_atr",
+    "partial_fraction",
+    "adaptive_threshold",
+    "conviction_sizing",
+    "regime_sizing",
+    "vol_target_sizing",
+)
 
 # Parameter ladders used when auto-refining a neighborhood around the best
 # parameters found so far ("train until it makes good trades"). The extremes
@@ -79,15 +90,23 @@ LADDERS: Dict[str, List[float]] = {
     "take_profit_atr": [0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0],
     "max_hold_bars": [10, 15, 20, 30, 45, 60, 90],
     "max_atr_pct": [3.0, 4.0, 5.0, 6.5, 8.0],
+    "breakeven_atr": [0.3, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
+    "trailing_stop_atr": [0.3, 0.4, 0.6, 0.8, 1.2],
+    "arm_trailing_atr": [0.5, 1.0, 1.5, 2.0, 2.5],
+    "partial_tp_atr": [0.75, 1.0, 1.25, 1.5, 2.0],
+    "partial_fraction": [0.3, 0.5, 0.7],
 }
 _REFINE_MAX_COMBOS = 16
 
 # Grid used by the aggressive objective (objective="win_rate"): small
-# take-profit multiples and varied stops dominate hit-rate outcomes.
+# take-profit multiples and wide stops dominate hit-rate outcomes, while a
+# breakeven trigger converts most would-be full losses into scratches —
+# the single biggest win-rate / profit-factor upgrade of v8.7.
 AGGRESSIVE_GRID: Dict[str, List[Any]] = {
     "signal_threshold": [10.0, 18.0, 25.0],
-    "stop_loss_atr": [1.25, 2.0, 3.0, 5.0],
-    "take_profit_atr": [0.5, 0.75, 1.0, 1.5, 2.0],
+    "stop_loss_atr": [3.5, 5.0, 7.0],
+    "take_profit_atr": [0.5, 1.0],
+    "breakeven_atr": [0.5, 1.0],
     "require_trend_filter": [True, False],
 }
 
@@ -413,6 +432,7 @@ def train_symbol(
         weights: Optional[Dict[str, float]],
         preset_name: str,
         params: Dict[str, Any],
+        polish: bool = False,
     ) -> None:
         cfg_i = _cfg_with(base_cfg, params)
         if weights is not None:
@@ -438,6 +458,7 @@ def train_symbol(
                 "weight_preset": preset_name,
                 "factor_weights": None if weights is None else normalize_weights(weights),
                 "train": _result_metrics(res),
+                "polish": polish,
             }
         )
 
@@ -464,6 +485,32 @@ def train_symbol(
         weights_tested = 0
         for params in iter_grid(grid):
             evaluate(base_cfg.factor_weights, "config", params)
+
+    # ------------------------------------------------------------------
+    # Polish stage (aggressive mode): try the smart exit / sizing upgrades
+    # on top of the current best geometry. Each candidate carries the full
+    # winning parameter set plus one upgrade, so it must outrank the plain
+    # best to become the winner.
+    # ------------------------------------------------------------------
+    if leaderboard and objective == "win_rate":
+        try:
+            top0 = sorted(leaderboard, key=lambda e: _rank_key(e, objective), reverse=True)[0]
+            base_params = dict(top0["params"])
+            preset_name0 = top0["weight_preset"]
+            weights0 = top0["factor_weights"]
+            tp0 = float(base_params.get("take_profit_atr", base_cfg.take_profit_atr))
+            polish_upgrades: List[Dict[str, Any]] = [
+                {"partial_tp_atr": round(max(0.4, tp0 * 2.0), 2)},  # scale-out leg
+                {"conviction_sizing": True},
+                {"regime_sizing": True},
+                {"vol_target_sizing": True},
+                {"adaptive_threshold": True},
+                {"trailing_stop_atr": 0.6, "arm_trailing_atr": 1.0},  # ride winners
+            ]
+            for extra in polish_upgrades:
+                evaluate(weights0, preset_name0, {**base_params, **extra}, polish=True)
+        except Exception as exc:  # noqa: BLE001 - polish is best-effort
+            logger.warning("polish stage failed for %s: %s", symbol, exc)
 
     report.n_combos = len(leaderboard)
     if not leaderboard:
@@ -662,10 +709,21 @@ def consensus_params(symbol_entries: Sequence[Dict[str, Any]]) -> Optional[Dict[
     if not entries:
         return None
 
+    # Dynamic key discovery: mediate whatever the winners actually carry —
+    # the classic execution keys plus any smart-exit / sizing knobs.
+    numeric_keys: List[str] = []
+    bool_keys: List[str] = []
+    for entry_i in entries:
+        for key_i, sample in entry_i.get("best_params", {}).items():
+            if isinstance(sample, bool):
+                if key_i not in bool_keys:
+                    bool_keys.append(key_i)
+            elif isinstance(sample, (int, float)):
+                if key_i not in numeric_keys:
+                    numeric_keys.append(key_i)
+
     consensus: Dict[str, Any] = {}
     supports: List[float] = []
-    numeric_keys = [k for k in DEFAULT_GRID if not isinstance(DEFAULT_GRID[k][0], bool)]
-    bool_keys = [k for k in DEFAULT_GRID if isinstance(DEFAULT_GRID[k][0], bool)]
 
     for key in numeric_keys:
         values = [e["best_params"][key] for e in entries if key in e["best_params"]]

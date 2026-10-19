@@ -47,9 +47,32 @@ SUPABASE_SERVICE_KEY=<service_role key>
   auto-refining the search neighborhood for up to 3 rounds until the good-trade
   hurdles (≥90% OOS win rate, positive OOS return, PF ≥ 1.25, DD > −30%, ≥50%
   profitable months) pass — the report always states what was actually verified.
+  The sweep now includes **smart exits** (v8.7): a *breakeven lock* ratchets the
+  stop to entry (+cost cushion) once the trade moves in favor, converting
+  would-be full losses into scratches, plus a *polish stage* that tries
+  scale-outs, conviction/regime/vol-target sizing, armed trailing, and an
+  adaptive threshold on top of the winning geometry.
 * **Multi-factor optimization** — 14 named weight presets over the five factor
   stacks, re-scored cheaply from precomputed factor columns.
 * **Consensus** — one click applies the median winner of every symbol to the engine.
+
+## 🧠 Smart Trade Management (v8.7 engine)
+
+Lived in the engine — enabled by the trainer when it wins out-of-sample, all
+defaults off so the classic behavior is unchanged:
+
+| Knob | What it does |
+| --- | --- |
+| `breakeven_atr` | Move stop to entry (+ small cushion) once up N×ATR — never re-take a full loss |
+| `arm_trailing_atr` | Only ratchet the trailing stop after the trade is up N×ATR |
+| `partial_tp_atr` / `partial_fraction` | Bank a fraction at an intermediate level, ride the rest |
+| `conviction_sizing` | Bigger positions on stronger scores (capped ×1.25) |
+| `regime_sizing` | Half size in RANGING regimes |
+| `vol_target_sizing` | Shrink size when ATR% runs above its rolling median |
+| `adaptive_threshold` | Demand stronger signals when volatility expands |
+
+The same logic runs in the live paper loop (`bot.step`), so backtests and
+paper trading manage trades identically.
 
 ## 🌟 Quick Launch Options
 

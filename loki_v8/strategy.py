@@ -32,6 +32,7 @@ class Signal:
     target_2: float = 0.0
     risk_reward: float = 1.5
     squeeze_status: str = "OFF"
+    partial_tp: float = 0.0  # scale-out level (0 = disabled)
     reasons: List[str] = field(default_factory=list)
 
 
@@ -145,8 +146,18 @@ class EnsembleStrategy:
     # ------------------------------------------------------------------
     # Action / signal
     # ------------------------------------------------------------------
-    def action_for(self, score: float) -> str:
+    def action_for(self, score: float, atr_pct: float = 0.0, atr_pct_median: float = 0.0) -> str:
+        """Map a composite score to BUY/SELL/HOLD.
+
+        With ``adaptive_threshold`` on, the entry bar rises when current
+        volatility is above its rolling median (stressed tape demands a
+        stronger vote) and eases a little in quiet regimes. Inputs come from
+        the *previous* bar via the caller, so this stays causal.
+        """
         thr = self.cfg.signal_threshold
+        if self.cfg.adaptive_threshold and atr_pct > 0 and atr_pct_median > 0:
+            stress = min(1.6, max(0.8, atr_pct / atr_pct_median))
+            thr = thr * stress
         if score >= thr:
             return "BUY"
         if score <= -thr:
@@ -162,7 +173,12 @@ class EnsembleStrategy:
         frame = self.score_frame(df)
         last = frame.iloc[-1]
         score = float(last["score"])
-        action = self.action_for(score)
+        atr_pct_now = float(last["atr_pct"]) if np.isfinite(last["atr_pct"]) else 0.0
+        atr_med_now = 0.0
+        if "atr_pct" in frame.columns:
+            med = frame["atr_pct"].rolling(60, min_periods=20).median().iloc[-1]
+            atr_med_now = float(med) if np.isfinite(med) else 0.0
+        action = self.action_for(score, atr_pct_now, atr_med_now)
         if action == "HOLD":
             return None
 
@@ -215,6 +231,10 @@ class EnsembleStrategy:
         reward_dist = abs(target - entry)
         rr = round(reward_dist / risk_dist, 2) if risk_dist > 0 else 1.5
 
+        partial = 0.0
+        if self.cfg.partial_tp_atr > 0 and self.cfg.partial_tp_atr < self.cfg.take_profit_atr:
+            partial = entry + (self.cfg.partial_tp_atr * atr) * (1 if action == "BUY" else -1)
+
         return Signal(
             symbol=symbol,
             action=action,
@@ -226,5 +246,6 @@ class EnsembleStrategy:
             risk_reward=rr,
             squeeze_status=squeeze_status,
             score=score,
+            partial_tp=partial,
             reasons=reasons,
         )

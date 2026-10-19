@@ -121,12 +121,18 @@ def run_backtest(
     scores = frame["score"]
     atrs = frame["atr"]
     regimes = regime_series(frame)
+    atr_med = (
+        frame["atr_pct"].rolling(60, min_periods=20).median()
+        if "atr_pct" in frame.columns
+        else None
+    )
 
     warmup = max(cfg.lookback_bars, 60)
     cash = cfg.initial_cash
     risk = RiskManager(cfg)
+    advanced_sizing = cfg.conviction_sizing or cfg.regime_sizing or cfg.vol_target_sizing
 
-    pos = None  # dict(side, qty, entry, stop, target, entry_time, entry_bar)
+    pos = None  # dict(side, qty, entry, stop, target, entry_time, entry_bar, atr, leg1_done)
     trades: List[Trade] = []
     equity_curve: List[float] = []
     times: List[pd.Timestamp] = []
@@ -136,10 +142,67 @@ def run_backtest(
             return cash
         return cash + pos["qty"] * price if pos["side"] == "long" else cash - pos["qty"] * price
 
+    def close_leg(p: dict, exit_price: float, reason: str, when) -> None:
+        """Close a (partial or full) leg, book the Trade, update the ledger."""
+        nonlocal cash
+        long_leg = p["side"] == "long"
+        if long_leg:
+            fill = _fill(exit_price, "sell", cfg)
+            pnl = (fill - p["entry"]) * p["qty"] - cfg.commission_per_trade
+            cash += fill * p["qty"] - cfg.commission_per_trade
+        else:
+            fill = _fill(exit_price, "buy", cfg)
+            pnl = (p["entry"] - fill) * p["qty"] - cfg.commission_per_trade
+            cash -= fill * p["qty"] + cfg.commission_per_trade
+        pnl_pct = (
+            (fill / p["entry"] - 1.0) * 100.0
+            if p["entry"] and long_leg
+            else ((p["entry"] / fill - 1.0) * 100.0 if fill else 0.0)
+        )
+        trades.append(
+            Trade(
+                symbol=symbol,
+                side=p["side"],
+                entry_time=p["entry_time"],
+                exit_time=when,
+                entry_price=p["entry"],
+                exit_price=fill,
+                qty=p["qty"],
+                pnl=pnl,
+                pnl_pct=pnl_pct,
+                exit_reason=reason,
+            )
+        )
+        risk.record_trade(pnl)
+
+    def scaled_qty(qty: float, regime: str) -> float:
+        """Instrument sizing multipliers — conviction, regime, vol targeting.
+
+        All default OFF; when any is on the position size is scaled and the
+        clamped to what the account can actually afford (longs).
+        """
+        if not advanced_sizing or qty <= 0:
+            return qty
+        mult = 1.0
+        if cfg.conviction_sizing and cfg.signal_threshold > 0:
+            strength = abs(sig_score) / cfg.signal_threshold
+            mult *= min(1.25, max(0.6, strength))
+        if cfg.regime_sizing and regime == "RANGING":
+            mult *= 0.5
+        if cfg.vol_target_sizing and atr_pct_prev > 0 and atr_med_prev > 0:
+            mult *= min(1.2, atr_med_prev / atr_pct_prev)
+        return max(0.0, qty * mult)
+
     n = len(df)
     for i in range(warmup + 1, n):
         sig_score = float(scores.iloc[i - 1])
-        action = strategy.action_for(sig_score)
+        atr_pct_prev = (
+            float(frame["atr_pct"].iloc[i - 1])
+            if np.isfinite(frame["atr_pct"].iloc[i - 1])
+            else 0.0
+        )
+        atr_med_prev = float(atr_med.iloc[i - 1]) if atr_med is not None else 0.0
+        action = strategy.action_for(sig_score, atr_pct_prev, atr_med_prev)
         o = float(df["open"].iloc[i])
         h = float(df["high"].iloc[i])
         l = float(df["low"].iloc[i])
@@ -173,6 +236,39 @@ def run_backtest(
                 elif action == "BUY":
                     exit_price, reason = c, "signal"
 
+            # Partial scale-out: bank `partial_fraction` of the position at
+            # the partial level (once), then ride the rest with the stop
+            # tightened to the partial fill. The remainder can still hit the
+            # full target this same bar.
+            if (
+                exit_price is None
+                and not pos.get("leg1_done")
+                and cfg.partial_tp_atr > 0
+                and pos.get("atr", 0.0) > 0
+            ):
+                partial_level = pos["entry"] + pos["atr"] * cfg.partial_tp_atr * (
+                    1.0 if long else -1.0
+                )
+                hit_partial = (h >= partial_level) if long else (l <= partial_level)
+                if hit_partial:
+                    pfill = max(o, partial_level) if long else min(o, partial_level)
+                    frac = min(0.9, max(0.1, cfg.partial_fraction))
+                    leg = dict(pos)
+                    leg["qty"] = pos["qty"] * frac
+                    close_leg(leg, pfill, "scale_out", t)
+                    pos["qty"] -= leg["qty"]
+                    pos["leg1_done"] = True
+                    if long:
+                        if pfill > pos["stop"]:
+                            pos["stop"] = pfill
+                        if pos["target"] > 0 and h >= pos["target"]:
+                            exit_price, reason = max(o, pos["target"]), "target"
+                    else:
+                        if pfill < pos["stop"]:
+                            pos["stop"] = pfill
+                        if pos["target"] > 0 and l <= pos["target"]:
+                            exit_price, reason = min(o, pos["target"]), "target"
+
             if (
                 exit_price is None
                 and cfg.max_hold_bars > 0
@@ -181,54 +277,39 @@ def run_backtest(
                 exit_price, reason = c, "time"
 
             if exit_price is not None:
-                if long:
-                    fill = _fill(exit_price, "sell", cfg)
-                    pnl = (fill - pos["entry"]) * pos["qty"] - cfg.commission_per_trade
-                    pnl_pct = (fill / pos["entry"] - 1.0) * 100.0 if pos["entry"] else 0.0
-                    cash += fill * pos["qty"] - cfg.commission_per_trade
-                else:
-                    fill = _fill(exit_price, "buy", cfg)
-                    pnl = (pos["entry"] - fill) * pos["qty"] - cfg.commission_per_trade
-                    pnl_pct = (pos["entry"] / fill - 1.0) * 100.0 if fill else 0.0
-                    cash -= fill * pos["qty"] + cfg.commission_per_trade
-
-                trades.append(
-                    Trade(
-                        symbol=symbol,
-                        side=pos["side"],
-                        entry_time=pos["entry_time"],
-                        exit_time=t,
-                        entry_price=pos["entry"],
-                        exit_price=fill,
-                        qty=pos["qty"],
-                        pnl=pnl,
-                        pnl_pct=pnl_pct,
-                        exit_reason=reason or "end",
-                    )
-                )
-                risk.record_trade(pnl)
+                close_leg(pos, exit_price, reason or "end", t)
                 pos = None
             else:
-                # ATR trailing-stop ratchet
-                if cfg.trailing_stop_atr > 0:
-                    if long:
-                        ns = c - cfg.trailing_stop_atr * atr_now
-                        if ns > pos["stop"]:
-                            pos["stop"] = ns
-                    else:
-                        ns = c + cfg.trailing_stop_atr * atr_now
-                        if ns < pos["stop"]:
-                            pos["stop"] = ns
+                # Close-based ratchet: breakeven lock + (optionally armed)
+                # ATR trailing stop. Applies to the NEXT bar — never the bar
+                # that just closed.
+                atr_eff = atr_now if atr_now > 0 else 0.0
+                gain = 0.0
+                if atr_eff > 0:
+                    gain = (c - pos["entry"]) / atr_eff if long else (pos["entry"] - c) / atr_eff
+                if cfg.breakeven_atr > 0 and atr_eff > 0 and gain >= cfg.breakeven_atr:
+                    cushion = 0.05 * atr_eff  # small cushion so BE exits cover costs
+                    be_stop = pos["entry"] + cushion if long else pos["entry"] - cushion
+                    if long and be_stop > pos["stop"]:
+                        pos["stop"] = be_stop
+                    elif not long and be_stop < pos["stop"]:
+                        pos["stop"] = be_stop
+                if cfg.trailing_stop_atr > 0 and atr_eff > 0:
+                    armed = cfg.arm_trailing_atr <= 0 or gain >= cfg.arm_trailing_atr
+                    if armed:
+                        if long:
+                            ns = c - cfg.trailing_stop_atr * atr_eff
+                            if ns > pos["stop"]:
+                                pos["stop"] = ns
+                        else:
+                            ns = c + cfg.trailing_stop_atr * atr_eff
+                            if ns < pos["stop"]:
+                                pos["stop"] = ns
 
         # ------------------------------------------------------------------
         # New entry (regime-gated long / short)
         # ------------------------------------------------------------------
         if pos is None:
-            atr_pct_prev = (
-                float(frame["atr_pct"].iloc[i - 1])
-                if np.isfinite(frame["atr_pct"].iloc[i - 1])
-                else 0.0
-            )
             above_ma = float(frame["close"].iloc[i - 1]) > float(frame["sma_200"].iloc[i - 1])
             allow_vol = not (cfg.max_atr_pct > 0 and atr_pct_prev > cfg.max_atr_pct)
 
@@ -241,6 +322,10 @@ def run_backtest(
                     stop = entry - cfg.stop_loss_atr * atr_val
                     target = entry + cfg.take_profit_atr * atr_val
                     qty = risk.position_size(equity_at(entry), entry, stop)
+                    qty = scaled_qty(qty, regime)
+                    if advanced_sizing and entry > 0:
+                        affordable = (cash - cfg.commission_per_trade) / entry
+                        qty = min(qty, max(affordable, 0.0))
                     cost = qty * entry + cfg.commission_per_trade
                     if qty > 0 and cost <= cash:
                         cash -= cost
@@ -252,6 +337,8 @@ def run_backtest(
                             "target": target,
                             "entry_time": t,
                             "entry_bar": i,
+                            "atr": atr_val,
+                            "leg1_done": False,
                         }
 
             elif action == "SELL" and cfg.allow_short:
@@ -262,6 +349,7 @@ def run_backtest(
                     stop = entry + cfg.stop_loss_atr * atr_val
                     target = entry - cfg.take_profit_atr * atr_val
                     qty = risk.position_size(equity_at(entry), entry, stop)
+                    qty = scaled_qty(qty, regime)
                     if qty > 0:
                         cash += entry * qty - cfg.commission_per_trade
                         pos = {
@@ -272,6 +360,8 @@ def run_backtest(
                             "target": target,
                             "entry_time": t,
                             "entry_bar": i,
+                            "atr": atr_val,
+                            "leg1_done": False,
                         }
 
         equity_curve.append(equity_at(c))
