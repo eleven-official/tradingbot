@@ -273,6 +273,10 @@ def _rank_key(entry: Dict[str, Any], objective: str = "sharpe"):
     """
     m = entry["train"]
     enough_trades = m["trades"] >= 3
+    # A statistically meaningful sample can never lose to a tiny lucky one —
+    # this guards the aggressive search against "100% win on 3 trades"
+    # artifacts from heavily filtered variants (e.g. a hard ATR gate).
+    rich_trades = m["trades"] >= 20
     pf = min(m["profit_factor"], 5.0)
     months = m.get("month_profit_rate_pct", 0.0)
     if objective == "win_rate":
@@ -281,11 +285,19 @@ def _rank_key(entry: Dict[str, Any], objective: str = "sharpe"):
         # monthly profile wins — it is what the profitable-months hurdle
         # measures out-of-sample, so ranking on it closes that gap.
         breakeven = pf >= 1.0
-        return (enough_trades, breakeven, m["win_rate_pct"], months, pf, m["return_pct"])
+        return (
+            enough_trades,
+            rich_trades,
+            breakeven,
+            m["win_rate_pct"],
+            months,
+            pf,
+            m["return_pct"],
+        )
     if objective == "return":
-        return (enough_trades, m["return_pct"], pf)
+        return (enough_trades, rich_trades, m["return_pct"], pf)
     sharpe = m["sharpe"] if math.isfinite(m["sharpe"]) else -99.0
-    return (enough_trades, sharpe, months, pf, m["return_pct"])
+    return (enough_trades, rich_trades, sharpe, months, pf, m["return_pct"])
 
 
 # ---------------------------------------------------------------------------
@@ -539,6 +551,15 @@ def train_symbol(
             preset_name0 = top0["weight_preset"]
             weights0 = top0["factor_weights"]
             tp0 = float(base_params.get("take_profit_atr", base_cfg.take_profit_atr))
+            # Vol-gate polish candidates scale with the symbol's own ATR%
+            # distribution: crypto runs 3-4x the daily range of equities, so
+            # a one-size absolute gate starved high-vol symbols of entries.
+            try:
+                med_atr_pct = float(factors["atr_pct"].iloc[:split_idx].median())
+            except Exception:  # noqa: BLE001
+                med_atr_pct = 0.0
+            vol_gate_hi = round(max(4.0, 1.5 * med_atr_pct) if med_atr_pct > 0 else 4.0, 2)
+            vol_gate_lo = round(max(3.2, 1.3 * med_atr_pct) if med_atr_pct > 0 else 3.2, 2)
             polish_upgrades: List[Dict[str, Any]] = [
                 {"partial_tp_atr": round(max(0.4, tp0 * 2.0), 2)},  # scale-out leg
                 {"conviction_sizing": True},
@@ -548,8 +569,8 @@ def train_symbol(
                 {"trailing_stop_atr": 0.6, "arm_trailing_atr": 1.0},  # ride winners
                 {"max_hold_bars": 60},  # let late bloomers reach their target
                 {"max_hold_bars": 12},  # recycle dead trades quickly (months profile)
-                {"max_atr_pct": 4.0},  # tighter vol gate — enter less when it hurts
-                {"max_atr_pct": 3.0},
+                {"max_atr_pct": vol_gate_hi},  # tighter vol gate — enter less
+                {"max_atr_pct": vol_gate_lo},
             ]
             for extra in polish_upgrades:
                 evaluate(weights0, preset_name0, {**base_params, **extra}, polish=True)

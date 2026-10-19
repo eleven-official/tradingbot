@@ -439,6 +439,34 @@ class TestMonthsRanking:
         board = sorted([entry_lumpy, entry_steady], key=lambda e: T._rank_key(e, "win_rate"))
         assert board[-1] is entry_steady
 
+    def test_tiny_sample_cannot_outrank_rich_sample(self):
+        # The 10-trade "100% win" profile must lose to the 147-trade record:
+        # heavily filtered variants (hard ATR gates) otherwise tunnel into
+        # the polish stage and starve a symbol of entries.
+        tiny = {
+            "trades": 3,
+            "win_rate_pct": 100.0,
+            "profit_factor": 3.0,
+            "return_pct": 9.0,
+            "sharpe": 2.0,
+            "month_profit_rate_pct": 80.0,
+        }
+        rich = {
+            "trades": 147,
+            "win_rate_pct": 88.0,
+            "profit_factor": 2.9,
+            "return_pct": 10.0,
+            "sharpe": 1.4,
+            "month_profit_rate_pct": 70.0,
+        }
+        entry_t = {"params": {}, "train": tiny}
+        entry_r = {"params": {}, "train": rich}
+        board = sorted([entry_t, entry_r], key=lambda e: T._rank_key(e, "win_rate"), reverse=True)
+        assert board[0] is entry_r
+        # Sharpe objective is protected the same way.
+        board = sorted([entry_t, entry_r], key=lambda e: T._rank_key(e, "sharpe"), reverse=True)
+        assert board[0] is entry_r
+
     def test_train_metrics_include_months(self):
         df = pd.DataFrame(
             {
