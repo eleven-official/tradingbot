@@ -808,6 +808,30 @@ main{display:flex;flex-direction:column;gap:12px;padding-top:14px}
 .fcell .val{font-family:var(--mono);font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
 .farr{color:var(--ink3);font-size:12px;flex:none;padding-top:11px}
 
+/* ---- personalized welcome / strategy council ---- */
+.welcome{display:flex;align-items:center;gap:12px;padding:3px 2px 5px}
+.welcomeMark{width:34px;height:34px;border-radius:11px;background:var(--surface3);display:flex;align-items:center;justify-content:center;color:var(--gold);font-size:15px;flex:none}
+.welcomeText{flex:1;min-width:0}
+.welcomeTitle{font-size:15px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.welcomeSub{font-size:11px;color:var(--ink3);margin-top:2px}
+.councilDecision{display:flex;align-items:flex-start;gap:10px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:11px}
+.councilDecision strong{display:block;font-size:13px;letter-spacing:.07em}
+.councilDecision span{display:block;font-size:12px;color:var(--ink2);line-height:1.5;margin-top:3px}
+.councilGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.councilMember{min-width:0;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:11px}
+.councilMember h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px}
+.councilStance{font-size:12px;font-weight:750;margin-bottom:5px}
+.councilReason{font-size:11.5px;color:var(--ink2);line-height:1.5;overflow-wrap:anywhere}
+.councilEvidence{margin-top:7px;padding-top:7px;border-top:1px solid var(--line);font-size:10.5px;color:var(--ink3);line-height:1.45}
+.authorityNote{font-size:10.5px;color:var(--ink3);line-height:1.5;margin-top:10px}
+.planRows{display:flex;flex-direction:column;gap:11px}
+.planRow{border-top:1px solid var(--line);padding-top:10px}
+.planRow:first-child{border-top:0;padding-top:0}
+.planRow .lbl{margin-bottom:4px}
+.planValue{font-size:12.5px;line-height:1.55;color:var(--ink2);overflow-wrap:anywhere}
+.costList{border-top:1px solid var(--line);margin-top:6px;padding-top:6px}
+.costList .row{display:flex;justify-content:space-between;gap:12px;padding:2px 0;font-size:11.5px;color:var(--ink3)}
+
 /* ---- position ---- */
 .posSym{font-size:16px;font-weight:700;letter-spacing:.01em;margin:2px 0 14px}
 .scale{position:relative;height:26px;margin-top:22px}
@@ -884,6 +908,25 @@ main{display:flex;flex-direction:column;gap:12px;padding-top:14px}
 .sheetBtns{display:flex;gap:10px;margin-top:12px}
 .sheetBtns .btn-ghost{flex:1}
 #sheetGo{flex:1.7}
+.liveConfirmWrap{margin:0 0 10px}
+.liveConfirmWrap .hint{margin:0 0 7px}
+.liveConfirmInput{width:100%;height:44px;border-radius:10px;border:1px solid var(--neg-line);background:var(--surface3);color:var(--ink);padding:0 12px;font-family:var(--mono);font-size:15px}
+.liveConfirmInput:focus{outline:2px solid var(--neg);outline-offset:1px}
+
+/* ---- remembered profile ---- */
+#profileSheet{position:fixed;inset:0;z-index:90;display:none}
+#profileSheet.open{display:block}
+#profileSheet .sheetPanel{max-height:92dvh;overflow:auto;border-bottom:1px solid var(--line2);border-radius:18px 18px 0 0}
+.profileTitle{font-size:19px;font-weight:760}
+.profileIntro{font-size:12.5px;line-height:1.55;color:var(--ink2);margin:8px 0 16px}
+.profileField{display:block;margin-top:12px}
+.profileField span{display:block;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3);font-weight:650;margin-bottom:6px}
+.profileInput{width:100%;height:48px;border-radius:11px;border:1px solid var(--line2);background:var(--surface3);color:var(--ink);padding:0 12px;font:inherit;font-size:15px}
+.profileInput:focus{outline:2px solid var(--gold);outline-offset:1px}
+.profilePrivacy{font-size:10.5px;color:var(--ink3);line-height:1.5;margin-top:11px}
+.profileActions{display:flex;gap:9px;margin-top:15px}
+.profileActions .btn{flex:1}
+.profileError{color:var(--neg);font-size:12px;min-height:17px;margin-top:8px}
 
 /* ---- gate ---- */
 #gate{position:fixed;inset:0;z-index:80;background:var(--bg);display:none;align-items:center;justify-content:center;padding:24px}
@@ -965,6 +1008,31 @@ main{display:flex;flex-direction:column;gap:12px;padding-top:14px}
   </div>
 </div>
 
+<!-- profile onboarding appears only after the private dashboard token is accepted -->
+<div id="profileSheet" role="dialog" aria-modal="true" aria-labelledby="profileTitle" aria-hidden="true">
+  <div class="sheetBack" id="profileBack"></div>
+  <div class="sheetPanel">
+    <div class="sheetGrab" aria-hidden="true"></div>
+    <div class="profileTitle" id="profileTitle">Make zAck yours</div>
+    <p class="profileIntro" id="profileIntro">Save a nickname and email so this dashboard can welcome you personally.</p>
+    <form id="profileForm">
+      <label class="profileField"><span>Nickname</span>
+        <input class="profileInput" id="profileNick" name="nickname" type="text" maxlength="32" autocomplete="nickname" required placeholder="How should we address you?">
+      </label>
+      <label class="profileField"><span>Email</span>
+        <input class="profileInput" id="profileEmail" name="email" type="email" maxlength="254" autocomplete="email" required placeholder="you@example.com">
+      </label>
+      <p class="profilePrivacy">Saved in this browser only to personalize this dashboard. Your profile is not sent to the trading server. Clear it any time with “Forget profile”.</p>
+      <div class="profileError" id="profileError" role="alert"></div>
+      <div class="profileActions">
+        <button type="button" class="btn btn-ghost" id="profileClose" hidden>Cancel</button>
+        <button type="button" class="btn btn-ghost" id="profileForget" hidden>Forget profile</button>
+        <button type="submit" class="btn btn-ink" id="profileSave">Save profile</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <header class="top">
   <div class="hrow">
     <div class="brand">
@@ -995,6 +1063,11 @@ main{display:flex;flex-direction:column;gap:12px;padding-top:14px}
   </div>
 
   <main id="app" hidden>
+    <div class="welcome" aria-live="polite">
+      <div class="welcomeMark" aria-hidden="true">✦</div>
+      <div class="welcomeText"><div class="welcomeTitle" id="welcomeTitle">Welcome to zAck</div><div class="welcomeSub" id="welcomeSub">Your profile stays in this browser.</div></div>
+      <button type="button" class="btn btn-sm btn-ghost" id="profileEdit">Profile</button>
+    </div>
     <div id="banners"></div>
 
     <!-- P&L hero -->
@@ -1030,6 +1103,16 @@ main{display:flex;flex-direction:column;gap:12px;padding-top:14px}
 
     <!-- market -->
     <section class="card" id="marketCard" aria-label="Market panel"></section>
+
+    <!-- strategy playbook -->
+    <section class="card" id="strategyCard" aria-label="Strategy rules and validation">
+      <div class="lblrow"><span class="lbl">Strategy brief</span><span class="pill" id="strategyName">—</span></div>
+      <div class="planRows" id="strategyBrief"></div>
+      <p class="authorityNote">Research standard: replay rising, falling, and sideways periods; freeze the rules before evaluating a later untouched period; compare after fees, spread, and slippage. Historical results are evidence to inspect, not a forecast.</p>
+    </section>
+
+    <!-- transparent evidence council -->
+    <section class="card" id="councilCard" aria-label="Strategy council"></section>
 
     <!-- why no trade -->
     <section class="card" id="whyCard" hidden aria-label="Why no trade yet"></section>
@@ -1074,6 +1157,10 @@ main{display:flex;flex-direction:column;gap:12px;padding-top:14px}
     <div class="sheetGrab" aria-hidden="true"></div>
     <h2 id="sheetTitle">—</h2>
     <p id="sheetBody">—</p>
+    <div class="liveConfirmWrap" id="liveConfirmWrap" hidden>
+      <p class="hint">Type <b>LIVE</b> to acknowledge that the next bot start can place real-money orders.</p>
+      <input class="liveConfirmInput" id="sheetLivePhrase" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Type LIVE" aria-label="Type LIVE to confirm live mode">
+    </div>
     <input id="sheetPin" class="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="10" placeholder="PIN" aria-label="Control PIN">
     <div id="sheetErr" role="alert"></div>
     <div class="sheetBtns">
@@ -1128,6 +1215,17 @@ function cell(label, value, extra){
 }
 
 /* ================= state ================= */
+const PROFILE_KEY = 'zack-profile-v1';
+function readProfile(){
+  try{
+    const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');
+    if(p && typeof p.nickname === 'string' && typeof p.email === 'string' && p.nickname.trim() && p.email.trim()) return p;
+  }catch(e){}
+  return null;
+}
+let profile = readProfile();
+let profileOpen = false;
+let profileRequired = false;
 let token = localStorage.getItem('zt') || '';
 let st = null;            // last /api/status payload
 let reachable = true;     // did last fetch succeed
@@ -1213,9 +1311,68 @@ function renderAll(){
   renderFlow(online);
   renderMode(online);
   renderMarket();
+  renderStrategyBrief();
+  renderCouncil();
   renderWhy();
   renderTrades();
   renderRisk();
+  renderWelcome();
+  if(firstPaint && !profile && !profileOpen) openProfile(true);
+}
+
+function renderWelcome(){
+  const name = profile ? profile.nickname : '';
+  setText($('#welcomeTitle'), name ? 'Welcome back, ' + name : 'Welcome to zAck');
+  setText($('#welcomeSub'), profile
+    ? 'Your profile is saved in this browser.'
+    : 'Add a nickname and email to personalize this dashboard.');
+}
+
+function openProfile(required){
+  profileRequired = !!required;
+  $('#profileNick').value = profile ? profile.nickname : '';
+  $('#profileEmail').value = profile ? profile.email : '';
+  $('#profileTitle').textContent = profile ? 'Your profile' : 'Make zAck yours';
+  $('#profileIntro').textContent = profile
+    ? 'Update the details used to personalize this dashboard.'
+    : 'Save a nickname and email so this dashboard can welcome you personally.';
+  $('#profileClose').hidden = profileRequired;
+  $('#profileForget').hidden = !profile;
+  $('#profileError').textContent = '';
+  $('#profileSheet').classList.add('open');
+  $('#profileSheet').setAttribute('aria-hidden', 'false');
+  profileOpen = true;
+  setTimeout(() => { try{ $('#profileNick').focus(); }catch(e){} }, 60);
+}
+
+function closeProfile(){
+  if(profileRequired) return;
+  $('#profileSheet').classList.remove('open');
+  $('#profileSheet').setAttribute('aria-hidden', 'true');
+  profileOpen = false;
+}
+
+function saveProfile(e){
+  e.preventDefault();
+  const nickname = $('#profileNick').value.trim();
+  const email = $('#profileEmail').value.trim().toLowerCase();
+  if(!nickname || nickname.length > 32){ $('#profileError').textContent = 'Enter a nickname of 1–32 characters.'; return; }
+  if(!$('#profileEmail').checkValidity() || !email){ $('#profileError').textContent = 'Enter a valid email address.'; return; }
+  const next = {nickname, email, saved_at: new Date().toISOString()};
+  try{ localStorage.setItem(PROFILE_KEY, JSON.stringify(next)); }
+  catch(err){ $('#profileError').textContent = 'This browser could not save the profile. Check its storage settings and try again.'; return; }
+  profile = next;
+  profileRequired = false;
+  closeProfile();
+  renderWelcome();
+  toast('Profile saved in this browser.', 'ok');
+}
+
+function forgetProfile(){
+  try{ localStorage.removeItem(PROFILE_KEY); }
+  catch(err){ $('#profileError').textContent = 'This browser could not clear the saved profile.'; return; }
+  profile = null;
+  openProfile(true);
 }
 
 function renderBanners(){
@@ -1484,11 +1641,116 @@ function renderWhy(){
   });
 }
 
+function renderStrategyBrief(){
+  const s = st || {};
+  const active = s.active_trade || null;
+  const signal = String(s.last_signal || 'HOLD').toUpperCase();
+  const rules = s.strategy_rules || {};
+  setText($('#strategyName'), s.strategy ? String(s.strategy) : '—');
+
+  const market = [
+    s.regime ? 'Regime: ' + s.regime : '',
+    s.sentiment ? 'Sentiment: ' + s.sentiment : '',
+    s.regime_reason || '',
+    Array.isArray(s.conditions) && s.conditions.length ? 'Conditions: ' + s.conditions.join(', ') : '',
+  ].filter(Boolean).join(' · ') || 'Waiting for a market regime and sentiment snapshot.';
+  const scoreGate = rules.setup_score_enabled
+    ? ' · setup score ≥' + Number(rules.entry_threshold == null ? 65 : rules.entry_threshold) +
+      '/100; after ' + String(rules.late_window_start || '14:00') + ' ≥' +
+      Number(rules.late_window_threshold == null ? 80 : rules.late_window_threshold)
+    : '';
+  const entry = (signal === 'BUY' || signal === 'SELL')
+    ? signal + ' candidate' + (s.last_signal_at ? ' · ' + s.last_signal_at : '') +
+      (s.strategy_status ? ' · ' + s.strategy_status : '') + scoreGate
+    : (s.strategy_status || 'No current BUY or SELL candidate. The strategy is waiting for its entry conditions.') + scoreGate;
+  const trailPct = s.regime === 'RANGE'
+    ? rules.range_trailing_stop_percent
+    : rules.trailing_stop_percent;
+  const exitParts = [];
+  if(rules.hard_stop_percent != null) exitParts.push('premium hard stop ' + Number(rules.hard_stop_percent) + '%');
+  if(trailPct != null) exitParts.push('trailing stop ' + Number(trailPct) + '%');
+  if(rules.indicator_exit_enabled){
+    exitParts.push(String(rules.indicator_exit_type || 'indicator') + ' exit' +
+      (rules.indicator_exit_profit_only ? ' locks profit only' : '') +
+      (rules.indicator_exit_min_hold_minutes ? ' after ' + Number(rules.indicator_exit_min_hold_minutes) + 'm' : ''));
+  }
+  if(rules.structure_exit_enabled) exitParts.push('structure-target exit');
+  if(rules.reversal_exit_enabled) exitParts.push('confirmed-reversal exit');
+  if(rules.hard_exit_time) exitParts.push('time exit ' + String(rules.hard_exit_time));
+  if(rules.hold_to_close_enabled) exitParts.push('high-conviction trend may hold to ' + String(rules.hold_to_close_time || '15:15'));
+  const exit = active
+    ? 'Open trade · actual hard stop ' + rupee2(active.sl) +
+      ' · actual trailing stop ' + rupee2(active.trail) +
+      (active.target_spot != null ? ' · structure target ' + inr0.format(active.target_spot) : '') +
+      (exitParts.length ? ' · policy: ' + exitParts.join('; ') : '')
+    : 'No open position. Configured exits: ' + (exitParts.join('; ') || 'position-management rules unavailable') +
+      '. Closed trades show the recorded exit reason.';
+  const validation = 'The research backtester charges commission, estimated spread, and slippage separately. Live journal records transaction charges; live bid/ask spread and slippage are not yet measured per fill.';
+  const rows = [
+    ['Market condition', market],
+    ['Entry trigger', entry],
+    ['Exit rule', exit],
+    ['Validation & costs', validation],
+  ];
+  const key = JSON.stringify([s.strategy, s.regime, s.regime_reason, s.sentiment, s.conditions,
+    s.last_signal, s.last_signal_at, s.strategy_status, rules, active && [active.sl, active.trail, active.target_spot]]);
+  setSection($('#strategyBrief'), key, () => rows.map(([label, value]) =>
+    '<div class="planRow"><div class="lbl">' + esc(label) + '</div><div class="planValue">' + esc(value) + '</div></div>'
+  ).join(''));
+}
+
+function renderCouncil(){
+  const el = $('#councilCard');
+  const c = st && st.council ? st.council : null;
+  if(!c){
+    setSection(el, 'waiting', '<div class="lblrow"><span class="lbl">Strategy council</span></div>' +
+      '<div class="offmsg">Waiting for the bot’s next evidence snapshot. The council is advisory and cannot place orders.</div>');
+    return;
+  }
+  const key = JSON.stringify(c);
+  setSection(el, key, () => {
+    const decision = String(c.decision || 'WAIT').replace(/_/g, ' ');
+    const style = c.decision === 'REVIEW' ? ' class="cneg"' : (c.decision === 'CANDIDATE' ? ' class="cpos"' : '');
+    let h = '<div class="lblrow"><span class="lbl">Strategy council</span>' +
+      '<span class="snap num">' + esc(c.generated_at || '') + '</span></div>';
+    h += '<div class="councilDecision"><div><strong' + style + '>CHAIR · ' + esc(decision) + '</strong>' +
+      '<span>' + esc(c.decision_reason || 'No recommendation is available.') + '</span></div></div>';
+    h += '<div class="councilGrid">';
+    const members = Array.isArray(c.members) ? c.members : [];
+    for(const m of members){
+      const evidence = Array.isArray(m.evidence) ? m.evidence.slice(0, 3) : [];
+      const evidenceHtml = evidence.length ? '<div class="councilEvidence">' + evidence.map(item => {
+        if(item && typeof item === 'object'){
+          const polarity = (item.polarity != null && isFinite(item.polarity)) ? ' · sentiment ' + Number(item.polarity).toFixed(2) : '';
+          return '<div>' + esc(item.title || '') + (item.source ? ' · ' + esc(item.source) : '') + polarity + '</div>';
+        }
+        return '<div>' + esc(String(item)) + '</div>';
+      }).join('') + '</div>' : '';
+      h += '<article class="councilMember"><h3>' + esc(m.name || 'Council member') + '</h3>' +
+        '<div class="councilStance">' + esc(m.stance || 'UNKNOWN') + '</div>' +
+        '<div class="councilReason">' + esc(m.reason || 'No explanation provided.') + '</div>' + evidenceHtml + '</article>';
+    }
+    h += '</div><p class="authorityNote">' + esc(c.authority_note || 'Advisory only. The bot’s strategy and risk gates remain authoritative.') + '</p>';
+    return h;
+  });
+}
+
 function tradeHTML(t, i, open){
   const dir = t.type === 'BUY' ? 'CE' : (t.type === 'SELL' ? 'PE' : esc(String(t.type || '—')));
   const bcls = t.type === 'SELL' ? 'pe' : (t.type === 'BUY' ? 'ce' : '');
   const net = (t.net != null && isFinite(t.net)) ? Number(t.net) : null;
   const nc = net == null ? '' : (net > 0 ? 'cpos' : (net < 0 ? 'cneg' : ''));
+  const stamp = t.timestamp ? String(t.timestamp) : '—';
+  const entryStamp = t.entry_time ? String(t.entry_time) : '—';
+  const feeItems = t.cost_breakdown && typeof t.cost_breakdown === 'object'
+    ? Object.entries(t.cost_breakdown).filter(([k,v]) => k !== 'total' && typeof v === 'number' && isFinite(v))
+    : [];
+  const feeHtml = feeItems.length
+    ? '<div class="costList">' + feeItems.map(([k,v]) => '<div class="row"><span>' + pretty(k) + '</span><span class="num">₹' + inr2.format(v) + '</span></div>').join('') + '</div>'
+    : '';
+  const executionCost = (t.spread_cost != null || t.slippage_cost != null)
+    ? 'Spread ' + rupee2(t.spread_cost || 0) + ' · slippage ' + rupee2(t.slippage_cost || 0)
+    : 'Spread and slippage are not separately measured in the live journal.';
   return '<div class="trade' + (open ? ' open' : '') + '" data-i="' + i + '" role="button" tabindex="0" aria-expanded="' + open + '">' +
     '<div class="trow"><div class="tleft">' +
     '<div class="tsymrow"><span class="tsym num">' + esc(t.symbol || '—') + '</span><span class="bdg ' + bcls + '">' + dir + '</span></div>' +
@@ -1497,8 +1759,16 @@ function tradeHTML(t, i, open){
     '<div class="tnet num ' + nc + '">' + money(net, 0, true) + '</div>' +
     '<span class="chev" aria-hidden="true">▾</span></div>' +
     '<div class="tx">' +
+    '<div class="row"><span>Entry</span><span class="num">' + rupee2(t.entry_price) + '</span></div>' +
+    '<div class="row"><span>Exit</span><span class="num">' + rupee2(t.exit_price) + '</span></div>' +
+    '<div class="row"><span>Quantity</span><span class="num">' + (t.quantity != null ? esc(String(t.quantity)) : '—') + '</span></div>' +
+    '<div class="row"><span>Opened</span><span class="num">' + esc(entryStamp) + '</span></div>' +
+    '<div class="row"><span>Closed</span><span class="num">' + esc(stamp) + '</span></div>' +
+    '<div class="row"><span>Exit reason</span><span>' + esc(t.exit_reason || '—') + '</span></div>' +
     '<div class="row"><span>Gross</span><span class="num">' + money(t.gross, 2, true) + '</span></div>' +
     '<div class="row"><span>Costs</span><span class="num">' + (t.costs != null && isFinite(t.costs) ? '−₹' + inr2.format(Math.abs(t.costs)) : '—') + '</span></div>' +
+    feeHtml +
+    '<div class="row"><span>Execution spread / slippage</span><span>' + esc(executionCost) + '</span></div>' +
     '<div class="row rownet"><span>Net</span><span class="num ' + nc + '">' + money(net, 2, true) + '</span></div>' +
     '</div></div>';
 }
@@ -1559,7 +1829,7 @@ function sheetCopy(kind, extra){
   };
   return {
     t: 'Switch to Live',
-    b: 'Live mode places real orders with real money at your broker. The change takes effect at the bot’s NEXT start — the currently running session keeps its mode.',
+    b: 'Live mode places real orders with real money at your broker. Type LIVE and enter your PIN to set it for the bot’s NEXT start — the running session keeps its current mode.',
     btn: 'Switch to Live', cls: 'btn-negsolid'
   };
 }
@@ -1569,6 +1839,9 @@ function openSheet(kind, extra){
   const c = sheetCopy(kind, extra);
   setText($('#sheetTitle'), c.t);
   setText($('#sheetBody'), c.b);
+  const liveConfirm = kind === 'mode' && !(extra && extra.paper);
+  $('#liveConfirmWrap').hidden = !liveConfirm;
+  $('#sheetLivePhrase').value = '';
   const go = $('#sheetGo');
   go.className = 'btn ' + c.cls;
   go.textContent = c.btn;
@@ -1577,18 +1850,24 @@ function openSheet(kind, extra){
   $('#sheetPin').value = '';
   $('#sheet').classList.add('open');
   $('#sheet').setAttribute('aria-hidden', 'false');
-  setTimeout(() => { try{ $('#sheetPin').focus(); }catch(e){} }, 60);
+  setTimeout(() => { try{ (liveConfirm ? $('#sheetLivePhrase') : $('#sheetPin')).focus(); }catch(e){} }, 60);
 }
 function closeSheet(){
   if(sheetBusy) return;
   sheetCtx = null;
   $('#sheet').classList.remove('open');
   $('#sheet').setAttribute('aria-hidden', 'true');
+  $('#sheetLivePhrase').value = '';
 }
 function sheetErr(msg){ $('#sheetErr').textContent = msg || ''; }
 
 async function confirmSheet(){
   if(!sheetCtx || sheetBusy) return;
+  if(sheetCtx.kind === 'mode' && !sheetCtx.extra.paper && $('#sheetLivePhrase').value.trim().toUpperCase() !== 'LIVE'){
+    sheetErr('Type LIVE to confirm real-money mode.');
+    $('#sheetLivePhrase').focus();
+    return;
+  }
   const pin = $('#sheetPin').value.trim();
   if(!pin){ sheetErr('Enter your PIN.'); return; }
   const go = $('#sheetGo');
@@ -1717,12 +1996,20 @@ function toggleTrade(row){
   if(open) expanded.add(i); else expanded.delete(i);
 }
 
+$('#profileEdit').addEventListener('click', () => openProfile(false));
+$('#profileForm').addEventListener('submit', saveProfile);
+$('#profileClose').addEventListener('click', closeProfile);
+$('#profileBack').addEventListener('click', closeProfile);
+$('#profileForget').addEventListener('click', forgetProfile);
+
 $('#sheetBack').addEventListener('click', closeSheet);
 $('#sheetCancel').addEventListener('click', closeSheet);
 $('#sheetGo').addEventListener('click', confirmSheet);
+$('#sheetLivePhrase').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); $('#sheetPin').focus(); } });
 $('#sheetPin').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); confirmSheet(); } });
 document.addEventListener('keydown', e => {
   if(e.key === 'Escape' && $('#sheet').classList.contains('open')) closeSheet();
+  else if(e.key === 'Escape' && profileOpen) closeProfile();
 });
 $('#gateBtn').addEventListener('click', saveGate);
 $('#gateInput').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); saveGate(); } });
@@ -1754,3 +2041,5 @@ setInterval(poll, 4000);
 </body>
 </html>
 """
+
+
