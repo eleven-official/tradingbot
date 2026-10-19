@@ -515,6 +515,38 @@ class TestMonthsRanking:
         assert "month_profit_rate_pct" in entry["train"]
 
 
+class TestPreserveMissingSymbols:
+    def test_partial_run_keeps_other_symbols(self, tmp_path):
+        cfg = LokiConfig(state_dir=str(tmp_path))
+        old = {
+            "symbols": [
+                {"symbol": "KEEP1", "ok": True, "best_params": {"signal_threshold": 25.0}},
+                {"symbol": "KEEP2", "ok": True, "best_params": {"signal_threshold": 5.0}},
+            ],
+            "consensus": {"params": {"signal_threshold": 15.0}},
+        }
+        T.save_report(old, cfg)
+
+        fresh = {
+            "symbols": [{"symbol": "KEEP2", "ok": True, "best_params": {"signal_threshold": 7.0}}]
+        }
+        carried = T._preserve_missing_symbols(fresh, cfg)
+        assert carried == 1
+        syms = [s["symbol"] for s in fresh["symbols"]]
+        assert syms == ["KEEP2", "KEEP1"]
+        assert fresh["consensus"]["params"]["signal_threshold"] == 16.0  # median(7, 25)
+
+        # Idempotent: carrying again must not duplicate anything.
+        assert T._preserve_missing_symbols(fresh, cfg) == 0
+        assert [s["symbol"] for s in fresh["symbols"]].count("KEEP1") == 1
+
+    def test_no_previous_report_is_a_noop(self, tmp_path):
+        cfg = LokiConfig(state_dir=str(tmp_path))
+        fresh = {"symbols": [{"symbol": "NEW", "ok": False}]}
+        assert T._preserve_missing_symbols(fresh, cfg) == 0
+        assert [s["symbol"] for s in fresh["symbols"]] == ["NEW"]
+
+
 # ---------------------------------------------------------------------------
 # Whole-engine journeys with the knobs on
 # ---------------------------------------------------------------------------

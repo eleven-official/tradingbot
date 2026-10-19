@@ -527,8 +527,13 @@ def train_symbol(
         preset_board = [e for e in leaderboard]
         preset_board.sort(key=lambda e: _rank_key(e, objective))
         preset_board.reverse()
+        # Wider preset coverage in aggressive mode: the base-execution scout
+        # board is only a proxy for post-grid performance, and dropping a
+        # preset that matters (e.g. momentum on large-cap equity tapes) costs
+        # more real winners than the extra sweep evaluations cost runtime.
+        preset_n = min(len(FACTOR_PRESETS), max(1, top_n + (2 if objective == "win_rate" else 0)))
         top_presets = []
-        for e in preset_board[: max(1, top_n)]:
+        for e in preset_board[:preset_n]:
             key = e["weight_preset"]
             weights = next(w for n, w in FACTOR_PRESETS if n == key)
             top_presets.append((key, weights))
@@ -649,6 +654,39 @@ def train_symbol(
     return report
 
 
+def _preserve_missing_symbols(report: Dict[str, Any], cfg: LokiConfig) -> int:
+    """Carry forward symbol entries not part of this run (in place).
+
+    Focused re-training runs (e.g. a single symbol) used to overwrite the
+    whole report, silently losing the other symbols' verified profiles. This
+    reads the previous on-disk report and re-attaches every symbol this run
+    did not itself evaluate. Returns the number of carried-forward entries.
+    """
+    try:
+        previous = load_report(cfg)
+    except Exception:  # noqa: BLE001 - load_report already logs
+        previous = None
+    if not previous:
+        return 0
+    current = {e.get("symbol") for e in report.get("symbols", [])}
+    carried = 0
+    seen: set = set()
+    for entry in previous.get("symbols", []):
+        sym = entry.get("symbol")
+        if not sym or sym in current or sym in seen:
+            continue
+        seen.add(sym)
+        report.setdefault("symbols", []).append(entry)
+        current.add(sym)
+        carried += 1
+    if carried:
+        trainable = [e for e in report.get("symbols", []) if e.get("ok") and e.get("best_params")]
+        if trainable:
+            report["consensus"] = consensus_params(trainable)
+        report["merged_from_previous"] = True
+    return carried
+
+
 def train(
     symbols: Optional[List[str]] = None,
     base_cfg: Optional[LokiConfig] = None,
@@ -757,6 +795,7 @@ def train(
             "symbols": symbol_dicts,
             "consensus": consensus,
         }
+        _preserve_missing_symbols(interim, cfg)
         save_report(interim, cfg)  # incremental persistence survives timeouts
 
         if round_no >= max_rounds:
@@ -767,6 +806,7 @@ def train(
 
     report = interim
     report["refine_rounds_used"] = rounds_used
+    _preserve_missing_symbols(report, cfg)
     save_report(report, cfg)
     return report
 
