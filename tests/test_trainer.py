@@ -177,7 +177,14 @@ class TestReportPersistence:
 
     def test_load_missing_returns_none(self, tmp_path, monkeypatch):
         monkeypatch.setattr(train_module, "report_path", lambda cfg=None: tmp_path / "nope.json")
+        monkeypatch.setattr(train_module, "BUNDLED_REPORT_FILENAME", "absent_snapshot.json")
         assert train_module.load_report(default_config()) is None
+
+    def test_load_missing_falls_back_to_bundled_snapshot(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(train_module, "report_path", lambda cfg=None: tmp_path / "nope.json")
+        report = train_module.load_report(default_config())  # bundled snapshot ships with the repo
+        if report is not None:
+            assert report.get("symbols"), "bundled snapshot must carry the trained book"
 
 
 class TestTrainingAPI:
@@ -192,8 +199,9 @@ class TestTrainingAPI:
         yield TestClient(app), bot, path
         bot.cfg.signal_threshold, bot.cfg.stop_loss_atr = saved
 
-    def test_report_endpoint_empty_without_run(self, client):
+    def test_report_endpoint_empty_without_run(self, client, monkeypatch):
         c, _bot, _path = client
+        monkeypatch.setattr(train_module, "BUNDLED_REPORT_FILENAME", "absent_snapshot.json")
         res = c.get("/api/training/report")
         assert res.status_code == 200
         assert res.json() == {"generated_at": None, "symbols": []}

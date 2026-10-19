@@ -145,6 +145,10 @@ FACTOR_PRESETS: List[Tuple[str, Dict[str, float]]] = [
 ]
 
 REPORT_FILENAME = "training_report.json"
+# Bundled snapshot of the last verified live training book. Serverless
+# deployments have no persistent state dir, so fresh views fall back to
+# this and still serve the trained profiles.
+BUNDLED_REPORT_FILENAME = "training_report_snapshot.json"
 
 # Minimum bars required beyond the indicator warmup before a symbol is
 # considered trainable at all.
@@ -897,6 +901,15 @@ def load_report(cfg: Optional[LokiConfig] = None) -> Optional[Dict[str, Any]]:
     path = report_path(cfg)
     try:
         if not path.exists():
+            # Serverless deployments (Vercel) have no persistent state dir —
+            # fall back to the bundled snapshot of the last verified live
+            # training book so deployed views still serve trained profiles.
+            bundled = Path(__file__).parent / BUNDLED_REPORT_FILENAME
+            if bundled.exists():
+                try:
+                    return json.loads(bundled.read_text(encoding="utf-8"))
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("bundled training snapshot unreadable: %s", exc)
             return None
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:  # noqa: BLE001

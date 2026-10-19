@@ -540,8 +540,9 @@ class TestPreserveMissingSymbols:
         assert T._preserve_missing_symbols(fresh, cfg) == 0
         assert [s["symbol"] for s in fresh["symbols"]].count("KEEP1") == 1
 
-    def test_no_previous_report_is_a_noop(self, tmp_path):
+    def test_no_previous_report_is_a_noop(self, tmp_path, monkeypatch):
         cfg = LokiConfig(state_dir=str(tmp_path))
+        monkeypatch.setattr(T, "BUNDLED_REPORT_FILENAME", "absent_snapshot.json")
         fresh = {"symbols": [{"symbol": "NEW", "ok": False}]}
         assert T._preserve_missing_symbols(fresh, cfg) == 0
         assert [s["symbol"] for s in fresh["symbols"]] == ["NEW"]
@@ -590,14 +591,20 @@ class TestTrainedBacktest:
         assert bot.cfg.breakeven_atr == 0.0
         assert bot.cfg.trailing_stop_atr == 0.0
 
-    def test_falls_back_without_report(self, tmp_path):
+    def test_falls_back_to_bundled_snapshot(self, tmp_path):
+        # No on-disk report at all: the bundled snapshot of the verified
+        # training book must still serve trained profiles (this is what
+        # makes fresh deployments/serverless serve the real strategy).
         cfg = LokiConfig(state_dir=str(tmp_path))
         bot = LokiBot(cfg)
         df = self._long_trend_df()
         bot.provider.fetch_history = lambda sym, period, interval: df
         res, applied = bot.backtest_trained("AAPL", period="1y")
-        assert applied == {}
-        assert res.final_equity > 0.0
+        if T.load_report(cfg):  # bundled snapshot present in the checkout
+            assert applied.get("signal_threshold") == 25.0 or applied == {}
+            assert res.final_equity > 0.0
+        else:  # minimal dev checkout without the snapshot
+            assert applied == {}
 
 
 # ---------------------------------------------------------------------------
