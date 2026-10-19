@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
+import time
+import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -243,6 +247,42 @@ async def auth_session(request: Request):
             raise HTTPException(status_code=401, detail="Not signed in.")
         return {"enabled": False}  # guest mode: local launcher without Supabase creds
     return {"enabled": True, "email": session.get("email"), "nickname": session.get("nickname")}
+
+
+# ---------------------------------------------------------------------------
+# Display-currency reference rate (USD -> AUD), server-side with caching so
+# the browser never makes cross-origin FX requests (CORS noise / blocking).
+# ---------------------------------------------------------------------------
+_FX_CACHE: Dict[str, Tuple[float, float]] = {}
+_FX_TTL_SECONDS = 1800.0
+_FX_FALLBACK_RATE = 1.53  # AUD per 1 USD, used if the rate service is down
+
+
+def _fetch_usd_aud_sync() -> float:
+    url = "https://api.frankfurter.app/latest?from=USD&to=AUD"
+    with urllib.request.urlopen(url, timeout=10) as res:  # noqa: S310 - fixed https URL
+        data = json.loads(res.read().decode())
+    rate = float(data["rates"]["AUD"])
+    if not rate > 0:
+        raise ValueError("Rate feed returned a non-positive USD/AUD rate.")
+    return rate
+
+
+@app.get("/api/fx/rate", include_in_schema=False)
+async def fx_rate():
+    now = time.time()
+    cached = _FX_CACHE.get("usd_aud")
+    if cached and now - cached[0] < _FX_TTL_SECONDS:
+        return {"from": "USD", "to": "AUD", "rate": cached[1], "live": True}
+    try:
+        rate = await asyncio.to_thread(_fetch_usd_aud_sync)
+    except Exception:
+        if cached:
+            # Service blip: serve the last known rate, flagged not-live.
+            return {"from": "USD", "to": "AUD", "rate": cached[1], "live": False}
+        return {"from": "USD", "to": "AUD", "rate": _FX_FALLBACK_RATE, "live": False}
+    _FX_CACHE["usd_aud"] = (now, rate)
+    return {"from": "USD", "to": "AUD", "rate": rate, "live": True}
 
 
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)

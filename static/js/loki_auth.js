@@ -13,6 +13,14 @@
     'border:0;background:transparent;color:#8bdad4;font:600 12px Inter,system-ui,sans-serif;cursor:pointer;padding:2px 4px;border-radius:6px;';
 
   const buildSignedIn = (session) => {
+    //
+    // Personalize the home-page hero: greet the member by nickname.
+    const greeting = document.getElementById('hero-greeting');
+    if (greeting) {
+      const nick = session.nickname || (session.email || '').split('@')[0];
+      greeting.textContent = `WELCOME BACK, ${String(nick).toUpperCase().slice(0, 24)}.`;
+      greeting.hidden = false;
+    }
     const pill = document.createElement('div');
     pill.className = 'loki-user-pill';
     pill.style.cssText = pillStyle;

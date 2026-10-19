@@ -27,33 +27,20 @@
   };
 
   const loadRate = async () => {
-    const sources = [
-      async () => {
-        const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=AUD', { cache: 'no-store' });
-        if (!res.ok) throw new Error('frankfurter unavailable');
+    // Rates are fetched server-side (cached 30 min) so the browser never
+    // makes cross-origin FX requests and never logs CORS noise.
+    try {
+      const res = await fetch('/api/fx/rate', { cache: 'no-store' });
+      if (res.ok) {
         const data = await res.json();
-        return data.rates || {};
-      },
-      async () => {
-        const res = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' });
-        if (!res.ok) throw new Error('er-api unavailable');
-        const data = await res.json();
-        return data.rates || {};
-      }
-    ];
-    for (const source of sources) {
-      try {
-        const rates = await source();
-        const aud = Number(rates.AUD);
+        const aud = Number(data.rate);
         if (aud > 0) {
           rate = aud;
-          rateLive = true;
+          rateLive = data.live === true;
           emit();
-          return;
         }
-      } catch { /* try the next source */ }
-    }
-    // All sources unreachable: keep the fallback rate silently.
+      }
+    } catch { /* keep the fallback rate */ }
   };
 
   const get = () => ({ code: current, rate, rateLive });
