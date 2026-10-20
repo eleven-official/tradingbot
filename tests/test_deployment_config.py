@@ -225,6 +225,34 @@ class DeploymentConfigTests(unittest.TestCase):
         simulated = (Path(__file__).resolve().parents[1] / "core" / "fusion" / "simulated_market.py").read_text(encoding="utf-8")
         self.assertIn("generated close", simulated)  # synthetic marks never claim to be manual
 
+    def test_command_palette_shortcut_sheet_and_pinned_run_compare(self):
+        source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        # palette + cheat sheet overlays exist as real accessible dialogs
+        self.assertIn('id="command-palette"', source)
+        self.assertIn('id="palette-input"', source)
+        self.assertIn('id="palette-list"', source)
+        self.assertIn('id="shortcut-sheet"', source)
+        self.assertIn('aria-label="Command palette"', source)
+        self.assertIn('aria-label="Keyboard cheat sheet"', source)
+        self.assertIn('id="open-palette"', source)  # topbar chip opens it
+        self.assertIn("/static/js/palette.js", source)  # and the module is loaded
+        self.assertIn('id="pinned-strip"', source)  # pinned compare anchors exist
+        self.assertIn('id="pin-report"', source)
+        palette = (ROOT / "static" / "js" / "palette.js").read_text(encoding="utf-8")
+        self.assertIn("a[data-view]", palette)  # palette entries come from the real nav
+        self.assertIn("data-practice", palette)  # drills are one command away
+        self.assertIn("will not pretend", palette)  # actions refuse to fake success
+        self.assertIn("Escape", palette)
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("loki_pinned_report_v1", workspace)  # pinned runs survive reloads
+        self.assertIn("ppDeltaCell", workspace)  # honest change arithmetic
+        self.assertIn("it does not forecast anything", workspace)  # delta honesty line
+        backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
+        self.assertIn("loki_pinned_report_v1", backup)  # pins ride in backups too
+        styles = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".palette-overlay", styles)
+        self.assertIn(".pinned-strip", styles)
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance

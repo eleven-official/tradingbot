@@ -94,7 +94,7 @@ function renderReport(){const metrics=report.summary;$('#return-metric').textCon
   else if($('#regime-panel')){$('#regime-panel').hidden=true;}
   const folds=$('#fold-table');folds.replaceChildren();for(const fold of report.folds||[]){const row=element('tr');for(const value of [fold.test_start.slice(0,10),fold.test_end.slice(0,10),JSON.stringify(fold.parameters),pct(fold.metrics.total_return)])row.append(element('td',value));folds.append(row);}
   $('#report-statistics').textContent=`Expectancy: ${number(metrics.expectancy)} / trade · Profit factor: ${metrics.profit_factor==null?'not estimable':number(metrics.profit_factor)} · Fees: ${number(metrics.total_fees)} · Slippage: ${number(metrics.total_slippage)} · ${report.trial_count} training trials`;
-  $('#chart-empty').hidden=true;$('#equity-chart').hidden=false;$('#chart-caption').textContent=`Historical forward tests: ${report.test_start.slice(0,10)} → ${report.test_end.slice(0,10)} · ${report.bars} supplied bars · Fingerprint ${report.data_fingerprint.slice(0,16)}… · Input quote currency · Benchmarks use the same dates and the same cost assumptions: buy-and-hold (dashed line) and cash (flat at start). Every result carries its window, config, fees, slippage and fingerprint — export it any time.`;drawChart();
+  $('#chart-empty').hidden=true;$('#equity-chart').hidden=false;$('#chart-caption').textContent=`Historical forward tests: ${report.test_start.slice(0,10)} → ${report.test_end.slice(0,10)} · ${report.bars} supplied bars · Fingerprint ${report.data_fingerprint.slice(0,16)}… · Input quote currency · Benchmarks use the same dates and the same cost assumptions: buy-and-hold (dashed line) and cash (flat at start). Every result carries its window, config, fees, slippage and fingerprint — export it any time.`;drawChart();renderPinStrip();
 }
 function drawChart(){if(!report||$('#overview').hidden)return;const canvas=$('#equity-chart'),width=canvas.clientWidth;if(!width)return;const height=280,scale=window.devicePixelRatio||1;canvas.width=width*scale;canvas.height=height*scale;const ctx=canvas.getContext('2d');ctx.scale(scale,scale);const points=[{timestamp:report.test_start,equity:report.config.initial_capital,benchmark_equity:report.config.initial_capital},...report.equity_curve];const values=points.flatMap(point=>[point.equity,point.benchmark_equity]);const min=Math.min(...values),max=Math.max(...values),padding=Math.max((max-min)*.12,max*.005,1),low=min-padding,high=max+padding;const left=width<500?48:60,right=12,top=14,bottom=30;const x=i=>left+i/Math.max(1,points.length-1)*(width-left-right),y=v=>top+(high-v)/(high-low)*(height-top-bottom);ctx.font='10px Segoe UI';ctx.lineWidth=1;for(let i=0;i<5;i++){const value=low+(high-low)*i/4;ctx.strokeStyle='#26363d';ctx.beginPath();ctx.moveTo(left,y(value));ctx.lineTo(width-right,y(value));ctx.stroke();ctx.fillStyle='#9aafbb';ctx.fillText(number(value,0),0,y(value)+3);}for(const[key,color]of[['benchmark_equity','#8095a3'],['equity','#a4e6bc']]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=key==='equity'?2:1.5;ctx.setLineDash(key==='equity'?[]:[5,4]);points.forEach((point,i)=>i?ctx.lineTo(x(i),y(point[key])):ctx.moveTo(x(i),y(point[key])));ctx.stroke();}ctx.setLineDash([]);ctx.fillStyle='#9aafbb';ctx.fillText(points[0].timestamp.slice(0,10),left,height-7);ctx.textAlign='right';ctx.fillText(points.at(-1).timestamp.slice(0,10),width-right,height-7);}
 $('#data-file').addEventListener('change',event=>{$('#file-label').textContent=event.target.files[0]?.name||'Choose historical OHLCV data';});
@@ -244,3 +244,56 @@ $('#chat-prompts').addEventListener('click',event=>{const button=event.target.cl
 $$('[data-ask]').forEach(link=>link.addEventListener('click',()=>{sendChat(link.dataset.ask);}));
 new ResizeObserver(drawChart).observe($('#equity-chart'));
 updatePaperAction();miroFields();syncContext();navigate();Promise.allSettled([loadPortfolio(),loadCapabilities()]);
+
+// PINNED RESEARCH RUNS — evidence an honest terminal keeps between sessions.
+// A pin snapshots a finished report: its fingerprint, windows, costs and
+// verdict. Comparing a pin to the current run is arithmetic on saved
+// evidence only. The change column describes those two runs better/worse
+// per metric — it never predicts the market.
+const PIN_KEY='loki_pinned_report_v1';
+function readPin(){try{const raw=localStorage.getItem(PIN_KEY);if(!raw)return null;const parsed=JSON.parse(raw);return parsed&&parsed.report&&parsed.fingerprint?parsed:null;}catch(_e){return null;}}
+function writePin(){if(!report)return;try{localStorage.setItem(PIN_KEY,JSON.stringify({fingerprint:report.data_fingerprint,symbol:currentSymbol||'dataset',pinned_at:new Date().toISOString(),report}));toast('Run pinned. Compare it any time — even after closing this tab.');}catch(_e){toast('This browser blocked saving the pin. Export the report instead.');}renderPinStrip();}
+function clearPin(){try{localStorage.removeItem(PIN_KEY);}catch(_e){}toast('Pinned run removed.');renderPinStrip();}
+function barDeltaCell(pinValue,curValue,unit='bars'){if(!Number.isFinite(pinValue)||!Number.isFinite(curValue))return element('span','—','muted');const diff=curValue-pinValue;if(!diff)return element('span','same count','muted');return element('span',`${diff>0?'+':''}${number(diff,0)} ${unit}`,diff>0?'positive':'');}
+function ppDeltaCell(pinFrac,curFrac,lowerIsBetter){if(![pinFrac,curFrac].every(Number.isFinite))return element('span','—','muted');const diffPp=(curFrac-pinFrac)*100;if(Math.abs(diffPp)<1e-9)return element('span','same','muted');const better=lowerIsBetter?diffPp<0:diffPp>0;return element('span',`${diffPp>0?'+':''}${number(diffPp)}pp · ${better?'better':'worse'}`,better?'positive':'negative');}
+function renderPinStrip(){
+  const strip=$('#pinned-strip');const pinBtn=$('#pin-report');
+  const pinData=readPin();
+  if(pinBtn)pinBtn.disabled=!report;
+  if(!strip)return;
+  if(!pinData){strip.hidden=true;strip.replaceChildren();return;}
+  strip.hidden=false;
+  const parts=[];
+  if(pinData)parts.push(element('p',`${pinData.symbol} · fingerprint ${pinData.fingerprint.slice(0,10)}… · pinned ${new Date(pinData.pinned_at).toLocaleString()}`,'caption pin-summary'));
+  const row=element('div',null,'button-row pin-actions');
+  if(pinData){
+    const cmp=element('button','Compare pinned ↔ current','button primary small');cmp.type='button';
+    if(!report||pinData.fingerprint===report.data_fingerprint){cmp.disabled=true;if(report)cmp.title='The open run is the same fingerprint — nothing to compare.';}
+    cmp.addEventListener('click',()=>renderPinStrip());
+    row.append(cmp);
+    const unp=element('button','Unpin','button secondary small');unp.type='button';unp.addEventListener('click',clearPin);row.append(unp);
+    parts.push(row);
+    if(report&&pinData.fingerprint!==report.data_fingerprint){parts.push(buildPinCompare(pinData,report));}
+    else if(!report)parts.push(element('p','The pinned run is stored. Open or reload the live report to compare against it.','caption'));
+  }
+  strip.replaceChildren(...parts);
+}
+function buildPinCompare(pin,cur){
+  const wrap=element('div',null,'pin-compare');
+  wrap.append(element('h3','Pinned run ↔ current run'));
+  const same=pin.fingerprint===cur.data_fingerprint;
+  wrap.append(table(['Metric','Pinned run','Current run','Change'],[
+    ['Dataset',pin.symbol||'—',currentSymbol||'—',same?'same fingerprint':'different dataset / settings'],
+    ['Test window',`${pin.report.test_start?.slice(0,10)??'—'} → ${pin.report.test_end?.slice(0,10)??'—'}`,`${cur.test_start?.slice(0,10)??'—'} → ${cur.test_end?.slice(0,10)??'—'}`,'dates, not compared'],
+    ['Supplied bars',number(pin.report.bars,0),number(cur.bars,0),barDeltaCell(pin.report.bars,cur.bars)],
+    ['Net return after costs',pct(pin.report.summary.total_return),pct(cur.summary.total_return),ppDeltaCell(pin.report.summary.total_return,cur.summary.total_return,false)],
+    ['Closed-trade win rate',pct(pin.report.summary.win_rate),pct(cur.summary.win_rate),ppDeltaCell(pin.report.summary.win_rate,cur.summary.win_rate,false)],
+    ['Maximum drawdown',pct(pin.report.summary.max_drawdown),pct(cur.summary.max_drawdown),ppDeltaCell(pin.report.summary.max_drawdown,cur.summary.max_drawdown,true)],
+    ['Closed trades',number(pin.report.summary.total_trades,0),number(cur.summary.total_trades,0),barDeltaCell(pin.report.summary.total_trades,cur.summary.total_trades,'trades')],
+    ['Verdict',pin.report.status==='paper_candidate'?'Paper candidate':'More evidence needed',cur.status==='paper_candidate'?'Paper candidate':'More evidence needed',same?'same fingerprint':'per-run verdict']
+  ]));
+  wrap.append(element('p','Comparing two stored evidence snapshots. The change column describes these two runs only — it reads past results, it does not forecast anything. Each run keeps its own regime table and cost grid above.','caption pin-note'));
+  return wrap;
+}
+$('#pin-report').addEventListener('click',writePin);
+renderPinStrip();

@@ -122,3 +122,34 @@
 .exercise-brief ul{margin:6px 0 8px;padding-left:18px;display:grid;gap:4px;font-size:13px}
 #practice-recap{margin-top:10px;padding:12px 16px;border:1px solid rgba(164,230,188,.3);border-radius:10px;background:rgba(164,230,188,.05)}
 #practice-recap p{margin:7px 0;font-size:13px}
+
+/* ——— Command palette + keyboard cheat sheet ——— */
+.palette-chip{border:1px solid var(--line);background:#18232b;color:var(--muted);font-size:10px;padding:6px 10px;border-radius:6px;letter-spacing:1px;min-height:29px}
+.palette-chip:hover{color:var(--accent);border-color:#3c5d48}
+.palette-overlay{position:fixed;inset:0;z-index:120}
+.palette-backdrop{position:absolute;inset:0;background:rgba(4,9,14,.62)}
+.palette-shell{position:relative;margin:9vh auto 0;width:min(640px,92vw);background:var(--panel-raised);border:1px solid #2c4539;border-radius:12px;padding:16px;box-shadow:0 22px 60px rgba(0,0,0,.5)}
+.palette-shell input{width:100%;min-height:47px;background:#0d151c;border:1px solid var(--line);border-radius:8px;padding:0 14px;color:var(--text);font-size:14px}
+.palette-shell input:focus{outline:none;border-color:#3c5d48}
+#palette-list{max-height:52vh;overflow:auto;margin:10px 0 0;scrollbar-width:thin;scrollbar-color:#3a4f5b transparent}
+.palette-item{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px 12px;border-radius:7px;font-size:12px;color:#c4d0da;cursor:pointer}
+.palette-item:hover{background:#18232b}
+.palette-item.active{background:#1b2d26;color:var(--text)}
+.palette-detail{font-size:9px;letter-spacing:.9px;color:var(--muted);white-space:nowrap;text-transform:uppercase}
+.palette-hint{margin:10px 2px 0}
+.shortcut-shell{width:min(520px,92vw)}
+.shortcut-list{display:grid;gap:10px;margin:14px 0}
+.shortcut-list div{display:flex;gap:16px;align-items:baseline;border:1px solid var(--line);border-radius:8px;padding:10px 14px;background:#0d151c}
+.shortcut-list dt{min-width:120px;color:var(--accent);font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.shortcut-list dd{color:var(--muted);font-size:12px}
+.shortcut-shell h3{margin:0}
+/* ——— Pinned research runs ——— */
+.pinned-strip{margin:14px 0;border:1px solid #2c4539;border-radius:10px;padding:13px 15px;background:#101b21}
+.pin-summary{color:var(--muted);letter-spacing:.3px}
+.pin-actions .button{min-height:33px;padding:6px 13px;font-size:10px}
+.button.small{min-height:33px;padding:6px 13px;font-size:10px}
+.pin-compare{margin-top:12px;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--panel)}
+.pin-compare h3{margin:0 0 10px;font-size:14px}
+.pin-compare .positive{color:var(--green)}
+.pin-compare .negative{color:var(--red)}
+.pin-note{margin-top:10px;color:#8fa4b1}
