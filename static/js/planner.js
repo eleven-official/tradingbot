@@ -786,3 +786,23 @@ renderJournal();
 updateDailyRisk();
 scheduleDailyRiskMidnightRefresh();
 
+// Watchtower handoff: "Quant lab feed ↗" lands on /paper-tools?symbol=PAIR.
+// Only a valid public Binance pair is accepted; anything else is ignored
+// so this convenience can never turn into an unexpected query.
+try {
+  const handed = new URLSearchParams(location.search).get("symbol");
+  if (handed && liveForm) {
+    const pair = handed.trim().toUpperCase();
+    if (/^[A-Z0-9]{5,20}$/.test(pair)) {
+      const handedInput = liveForm.querySelector('[name="symbol"]');
+      if (handedInput && handedInput.value !== pair) handedInput.value = pair;
+      if (liveStatus) {
+        liveStatus.textContent = `Watchtower handoff: live ${pair} feed loaded from the watchtower.`;
+      }
+      liveForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    }
+  }
+} catch (handoffError) {
+  /* A convenience handoff must never break the planner page. */
+}
+

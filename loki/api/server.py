@@ -34,6 +34,9 @@ app.include_router(ai_paper_router)
 from loki.api.paper_tools import router as paper_tools_router
 
 app.include_router(paper_tools_router)
+from loki.api.watchtower import router as watchtower_router
+
+app.include_router(watchtower_router)
 
 
 # Load the larger optional strategy engine only for terminal requests.

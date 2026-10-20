@@ -13,6 +13,7 @@
     "loki_steps_data", "loki_steps_run", "loki_steps_council", "loki_steps_journal",
     "loki-synthetic-market-v1",   // saved simulated-market practice session
     "loki_practice_stats_v1",     // drills-per-day habit strip on the Bored? page
+    "loki_watchlist_v1",          // watchtower tracked instruments (this browser)
     "loki_pinned_report_v1",  // pinned research run for compare
     "loki_guest"
   ];

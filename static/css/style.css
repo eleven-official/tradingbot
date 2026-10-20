@@ -158,3 +158,39 @@
 .pin-flash{animation:pinPulse 1.7s ease}
 @keyframes pinPulse{0%{box-shadow:0 0 0 0 rgba(188,240,208,.45)}70%{box-shadow:0 0 0 10px rgba(188,240,208,0)}100%{box-shadow:0 0 0 0 rgba(188,240,208,0)}}
 @media(max-width:760px){.topbar-status{flex-wrap:wrap;row-gap:8px}.palette-chip{min-height:0;padding:5px 8px}}
+
+/* Watchtower + market floor: public quotes that degrade honestly. */
+.watch-add{margin-top:14px}.watch-add label{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}.watch-add-row{display:flex;gap:9px}.watch-add-row input{flex:1;min-width:0}
+.watch-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:12px;margin-top:15px}
+.watch-card{position:relative;border:1px solid var(--line);border-radius:9px;padding:15px 15px 12px;background:#10171d;min-width:0}
+.watch-card.degraded{border-color:#7d429d6;opacity:.92}
+.watch-card.loading .watch-sub{color:var(--muted)}
+.watch-head{margin-bottom:9px}.watch-name{font-size:13px;font-weight:500}.watch-sub{color:#8fa3b2;font-size:10px;margin-top:3px;letter-spacing:.2px}
+.watch-body{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.watch-price{font-size:17px;font-weight:500;letter-spacing:-.4px}
+.chip{display:inline-block;font-size:9px;padding:3px 7px;border-radius:20px;letter-spacing:.3px}
+.up-chip{background:rgba(74,158,115,.16);color:var(--accent)}
+.down-chip{background:rgba(196,74,74,.14);color:#e07a7a}
+.flat-chip{background:rgba(124,143,158,.12);color:#8fa3b2}
+.watch-error{color:#e07a7a;font-size:10px;line-height:1.55;margin-top:8px}
+.watch-card .row-actions{display:flex;gap:7px;margin-top:11px}
+.sparkline{display:block;width:100%;height:34px;margin-top:10px}
+.spark-path{fill:none;stroke:#4a9e73;stroke-width:1.6}.spark-path.up-stroke{stroke:#4a9e73}.spark-path.down-stroke{stroke:#c44a4a}
+.signal-feed{margin-top:22px;border-top:1px solid var(--line);padding-top:17px}
+.signal-feed ul{list-style:none;margin:11px 0 0;padding:0}
+.feed-item{padding:9px 0;border-bottom:1px dashed rgba(114,134,151,.25)}
+.feed-item:last-child{border-bottom:0}.feed-link{color:#cfe2d8;font-size:12px;line-height:1.5;text-decoration:none}.feed-link:hover{text-decoration:underline;color:var(--accent)}
+.feed-empty{color:#8fa3b2;font-size:11px}.feed-loading p{color:var(--muted)}
+#market-floor{margin-bottom:24px}
+.floor-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin-top:14px}
+.floor-cat{border:1px solid var(--line);border-radius:9px;padding:12px;background:#10171d;min-width:0}
+.floor-cat.loading .watch-sub{color:var(--muted)}
+.floor-title{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.floor-tiles{display:flex;flex-direction:column;gap:8px;margin-top:9px}
+.floor-tile{display:flex;align-items:center;justify-content:space-between;gap:7px;border-top:1px dashed rgba(114,134,151,.22);padding:7px 2px 3px}
+.floor-tile:first-child{border-top:0;padding-top:0}
+.floor-tile .watch-sub{font-size:10px}
+.floor-tile .watch-price{font-size:12px;font-weight:450}
+.floor-tile.degraded{opacity:.7}
+.floor-tile .chip{flex-shrink:0}
+@media(max-width:1060px){.floor-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
