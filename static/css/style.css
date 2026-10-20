@@ -110,3 +110,15 @@
 .loki-currency{display:flex;flex-direction:column;align-items:flex-end;gap:0}
 .loki-currency .cur-opt{margin-left:4px}
 @media(max-width:760px){.cur-rate-note{font-size:9.5px}}
+/* Regime breakdown, shock comparison, guided practice, council disagreement */
+#regime-panel h3{margin:14px 0 6px}
+#regime-note{margin:6px 0 10px;max-width:80ch}
+#scenario-compare-out table{margin-top:10px}
+#scenario-compare-out .caption{margin-top:8px;max-width:80ch}
+.council-disagree{border-left:3px solid rgba(240,197,158,.55);padding:7px 12px;margin-top:12px;color:#d9c4a6;font-size:12.5px}
+.practice-panel .button-row{margin:10px 0}
+.exercise-brief{margin-top:10px;padding:12px 16px;border:1px dashed rgba(139,218,212,.28);border-radius:10px;background:rgba(9,17,28,.55)}
+.exercise-brief h3{margin:0 0 6px;font-size:15px}
+.exercise-brief ul{margin:6px 0 8px;padding-left:18px;display:grid;gap:4px;font-size:13px}
+#practice-recap{margin-top:10px;padding:12px 16px;border:1px solid rgba(164,230,188,.3);border-radius:10px;background:rgba(164,230,188,.05)}
+#practice-recap p{margin:7px 0;font-size:13px}

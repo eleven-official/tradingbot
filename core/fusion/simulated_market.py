@@ -256,10 +256,18 @@ def _advance_one(state, history):
         except ValueError as exc:
             order.update(status="rejected", reason=str(exc))
             _event(state, f"Limit {order['id'][:8]} rejected: {exc}")
-    marks = {symbol: rows[index]["close"] for symbol, rows in history.items()}
+    marks = {
+        symbol: rows[index]["close"]
+        for symbol, rows in history.items()
+        if symbol in state["account"]["positions"]
+    }
     state["account"] = apply_portfolio_action(
         {"state": state["account"], "action": "mark", "marks": marks}
     )["state"]
+    # These are generated closes, not the user's judgement: label them so the
+    # practice journal never claims a synthetic price was typed in by hand.
+    for symbol, price in marks.items():
+        state["account"]["positions"][symbol]["mark_source"] = "generated close"
     state["equity_curve"].append(
         {"step": state["step"], "equity": portfolio_metrics(state["account"])["equity"]}
     )

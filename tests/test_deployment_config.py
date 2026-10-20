@@ -177,6 +177,37 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("/static/js/next_steps.js", source)
         self.assertIn("/static/js/backup.js", source)
 
+    def test_regime_breakdown_shocks_freshness_and_practice_wiring(self):
+        source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="regime-panel"', source)
+        self.assertIn('id="regime-note"', source)
+        self.assertIn('id="regime-table"', source)
+        self.assertIn('id="scenario-compare"', source)
+        self.assertIn('id="scenario-compare-out"', source)
+        self.assertIn('class="panel practice-panel"', source)
+        self.assertIn('data-practice="ride-trend"', source)
+        self.assertIn('data-practice="range-trap"', source)
+        self.assertIn('data-practice="crash-drill"', source)
+        self.assertIn("/static/js/practice.js", source)
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("report.regime_metrics", workspace)
+        self.assertIn("mark_updated_at", workspace)
+        self.assertIn("opened_at", workspace)
+        self.assertIn("council-disagree", workspace)
+        self.assertIn("#scenario-compare", workspace)
+        practice = (ROOT / "static" / "js" / "practice.js").read_text(encoding="utf-8")
+        for key in ("ride-trend", "range-trap", "crash-drill"):
+            self.assertIn(key, practice)
+        self.assertIn("lokiSimulatedMarket", practice)
+        lab = Path(__file__).resolve().parents[1] / "core" / "strategy_lab.py"
+        lab_source = lab.read_text(encoding="utf-8")
+        self.assertIn("_regime_analysis", lab_source)
+        self.assertIn("Trending up", lab_source)
+        portfolio = (Path(__file__).resolve().parents[1] / "core" / "fusion" / "portfolio.py").read_text(encoding="utf-8")
+        self.assertIn('"mark_source"', portfolio)
+        self.assertIn("manual mark", portfolio)
+        self.assertIn("entry fill", portfolio)
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance

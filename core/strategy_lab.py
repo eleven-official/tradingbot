@@ -315,6 +315,103 @@ def _select(bars: list[Bar], train_end: int, config: LabConfig) -> tuple[TrendPa
     return selected, best, trials
 
 
+def _regime_analysis(
+    bars: Sequence[Mapping[str, Any]],
+    curve: Sequence[Mapping[str, Any]],
+    benchmark_curve: Sequence[Mapping[str, Any]],
+    trades: Sequence[Mapping[str, Any]],
+    first_test: int,
+    initial_capital: float,
+) -> dict[str, Any]:
+    """Re-slice the untouched test windows by simple, explainable regimes.
+
+    Labels use only causal information: the 20-bar price change (±2% thresholds)
+    and the trailing 20-bar mean absolute return (high volatility above 1.5× the
+    test-window median, taking precedence over trend labels). Contributions are
+    additive equity deltas while a regime is in force — snapshots inside the
+    tested windows, never stand-alone strategy results.
+    """
+    lookback = 20
+    total = len(curve)
+    if total <= lookback or first_test <= lookback:
+        return {"rules": "The history before the test window is too short for regime bucketing.", "rows": []}
+
+    def equity_at(point: Any) -> float:
+        return float(point["equity"]) if isinstance(point, Mapping) else float(point)
+
+    closes: list[float] = [float(bar["close"]) if isinstance(bar, Mapping) else float(bar.close) for bar in bars]
+    momentum: list[float] = []
+    dispersion: list[float] = []
+    for i in range(total):
+        index = first_test + i
+        momentum.append(closes[index] / closes[index - lookback] - 1.0)
+        window = [abs(closes[j] / closes[j - 1] - 1.0) for j in range(index - lookback + 1, index + 1)]
+        dispersion.append(statistics.fmean(window))
+    high_vol_threshold = 1.5 * statistics.median(dispersion)
+    labels: list[str] = []
+    buckets: dict[str, dict[str, Any]] = {}
+
+    def bucket(label: str) -> dict[str, Any]:
+        return buckets.setdefault(
+            label,
+            {"regime": label, "bars": 0, "strategy": 0.0, "benchmark": 0.0, "exits": 0, "pnl_sum": 0.0},
+        )
+
+    strategy_prev, benchmark_prev = initial_capital, initial_capital
+    for i in range(total):
+        if dispersion[i] > high_vol_threshold:
+            label = "High volatility"
+        elif momentum[i] >= 0.02:
+            label = "Trending up"
+        elif momentum[i] <= -0.02:
+            label = "Trending down"
+        else:
+            label = "Ranging"
+        labels.append(label)
+        row = bucket(label)
+        row["bars"] += 1
+        row["strategy"] += equity_at(curve[i]) - strategy_prev
+        row["benchmark"] += equity_at(benchmark_curve[i]) - benchmark_prev
+        strategy_prev, benchmark_prev = equity_at(curve[i]), equity_at(benchmark_curve[i])
+
+    exit_index: dict[str, int] = {}
+    for i, point in enumerate(curve):
+        exit_index.setdefault(point["timestamp"], i)
+    for trade in trades:
+        position_of_exit = exit_index.get(str(trade.get("exit_timestamp")))
+        if position_of_exit is None:
+            continue
+        row = bucket(labels[position_of_exit])
+        row["exits"] += 1
+        row["pnl_sum"] += float(trade.get("pnl", 0.0))
+
+    ordered = ("Trending up", "Trending down", "Ranging", "High volatility")
+    rows: list[dict[str, Any]] = []
+    for label in ordered:
+        row = buckets.get(
+            label,
+            {"regime": label, "bars": 0, "strategy": 0.0, "benchmark": 0.0, "exits": 0, "pnl_sum": 0.0},
+        )
+        rows.append({
+            "regime": label,
+            "bars": row["bars"],
+            "share_pct": row["bars"] / total * 100,
+            "strategy_contribution_pct": row["strategy"] / initial_capital * 100,
+            "benchmark_contribution_pct": row["benchmark"] / initial_capital * 100,
+            "trades_closed_in_bucket": row["exits"],
+            "average_trade_pnl": row["pnl_sum"] / row["exits"] if row["exits"] else None,
+        })
+    return {
+        "rules": (
+            "Trending up/down: the 20-bar price change is at least ±2%. High volatility: the trailing "
+            "20-bar mean absolute return exceeds 1.5× its test-window median, and this label takes precedence "
+            "over trend labels; remaining bars are ranging. Contributions are the equity deltas while the "
+            "regime was in force inside the same untouched test windows — fragments of one run, not stand-alone strategies."
+        ),
+        "rows": rows,
+    }
+
+
 def evaluate_strategy(data: Sequence[Mapping[str, Any]], config: Mapping[str, Any] | LabConfig | None = None) -> dict[str, Any]:
     """Run train-only selection, untouched forward tests and fixed-parameter stress.
 
@@ -431,6 +528,7 @@ def evaluate_strategy(data: Sequence[Mapping[str, Any]], config: Mapping[str, An
         "config": asdict(config), "summary": summary, "benchmark": baseline_metrics,
         "excess_return": summary["total_return"] - baseline_metrics["total_return"],
         "folds": folds, "cost_stress": stress, "equity_curve": curve,
+        "regime_metrics": _regime_analysis(bars, curve, baseline_equity, trades, first_test, config.initial_capital),
         "trades": trades, "trial_count": len(all_trials), "trial_ledger": all_trials,
         "rejection_reasons": reasons,
         "assumptions": [
@@ -447,5 +545,6 @@ def evaluate_strategy(data: Sequence[Mapping[str, Any]], config: Mapping[str, An
             "Win-rate intervals are descriptive Wilson intervals; serial dependence can make uncertainty larger.",
             "A zero-volume completed bar blocks the next entry; exits assume liquidity. No spread, market impact, funding, taxes or dividends are modeled.",
             "Input provenance and point-in-time availability are not independently verified; naive timestamps are interpreted as UTC.",
+            "Regime rows re-slice these same test windows into trending, ranging and high-volatility fragments; they are one run's pieces, not separate strategies.",
         ],
     }

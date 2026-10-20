@@ -43,11 +43,53 @@ def test_partial_exits_do_not_inflate_closed_trade_count():
     partial = action(first["state"], action="sell", symbol="BTC/USD", price=110, quantity=4)
     assert partial["metrics"]["closed_trades"] == 0
     assert partial["metrics"]["win_rate"] is None
-    final = action(partial["state"], action="sell", symbol="BTC/USD", price=90, quantity=6)
-    assert final["metrics"]["closed_trades"] == 1
-    assert final["metrics"]["win_rate"] == 0
-    assert final["last_action"]["completed_pnl"] == pytest.approx(final["metrics"]["total_pnl"])
-    assert final["metrics"]["realized_pnl"] == pytest.approx(final["metrics"]["total_pnl"])
+    closed = action(partial["state"], action="sell", symbol="BTC/USD", price=90, quantity=6)
+    assert closed["metrics"]["closed_trades"] == 1
+    assert closed["metrics"]["win_rate"] == 0
+    assert closed["last_action"]["completed_pnl"] == pytest.approx(closed["metrics"]["total_pnl"])
+    assert closed["metrics"]["realized_pnl"] == pytest.approx(closed["metrics"]["total_pnl"])
+
+
+def test_opened_position_carries_its_entry_time_as_the_first_mark():
+    bought = action(action="buy", symbol="BTC/USD", price=100, quantity=10)
+    position = bought["state"]["positions"]["BTC/USD"]
+    assert position["opened_at"]
+    assert position["mark_updated_at"] == position["opened_at"]
+    assert position["mark_source"] == "entry fill"
+    # Time-of-fill annotations survive the ledger reconciliation round-trip.
+    again = action(bought["state"], action="snapshot")
+    assert again["state"]["positions"]["BTC/USD"]["mark_source"] == "entry fill"
+
+
+def test_manual_mark_records_when_it_happened_and_from_whom():
+    bought = action(action="buy", symbol="BTC/USD", price=100, quantity=10)
+    marked = action(bought["state"], action="mark", marks={"BTC/USD": 105})
+    position = marked["state"]["positions"]["BTC/USD"]
+    assert position["mark_price"] == 105
+    assert position["mark_source"] == "manual mark"
+    # The manual mark replaces the entry-fill annotation; both stay valid stamps.
+    self_stamp = position["mark_updated_at"]
+    assert self_stamp and self_stamp.endswith("+00:00")
+    roundtrip = portfolio_metrics(marked["state"])
+    assert roundtrip["equity"] == pytest.approx(10000 + marked["metrics"]["total_pnl"])
+
+
+def test_marking_unknown_symbol_fails_loudly():
+    bought = action(action="buy", symbol="BTC/USD", price=100, quantity=10)
+    with pytest.raises(ValueError, match="No open paper position"):
+        action(bought["state"], action="mark", marks={"ETH/USD": 105})
+
+
+def test_older_journals_without_mark_times_still_validate():
+    aged = action(action="buy", symbol="BTC/USD", price=100, quantity=10)
+    position = aged["state"]["positions"]["BTC/USD"]
+    # Simulate a journal exported before marks kept timestamps.
+    position.pop("mark_updated_at", None)
+    position.pop("mark_source", None)
+    refreshed = action(aged["state"], action="mark", marks={"BTC/USD": 98})
+    final = refreshed["state"]["positions"]["BTC/USD"]
+    assert final["mark_source"] == "manual mark"
+    assert final["mark_updated_at"]
 
 
 def test_realized_and_unrealized_reconcile_after_adding_and_partially_exiting():

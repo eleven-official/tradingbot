@@ -272,8 +272,11 @@ def apply_portfolio_action(payload: Mapping[str, Any]):
         for symbol, price in marks.items():
             symbol = _symbol(symbol)
             price = _number(price, "mark price", positive=True)
-            if symbol in state["positions"]:
-                state["positions"][symbol]["mark_price"] = price
+            if symbol not in state["positions"]:
+                raise ValueError(f"No open paper position for {symbol} to mark")
+            state["positions"][symbol]["mark_price"] = price
+            state["positions"][symbol]["mark_updated_at"] = datetime.now(timezone.utc).isoformat()
+            state["positions"][symbol]["mark_source"] = "manual mark"
         state["revision"] += 1
     elif action in {"buy", "sell"}:
         if len(state["trades"]) >= 2000:
@@ -332,6 +335,8 @@ def apply_portfolio_action(payload: Mapping[str, Any]):
                 position["quantity"] = total_quantity
                 position["entry_fees"] += fees
                 position["mark_price"] = reference
+                position["mark_updated_at"] = trade["timestamp"]
+                position["mark_source"] = "entry fill"
                 if stop is not None:
                     position["stop_loss"] = stop
             else:
@@ -343,6 +348,8 @@ def apply_portfolio_action(payload: Mapping[str, Any]):
                     "stop_loss": stop,
                     "realized_pnl": 0.0,
                     "opened_at": trade["timestamp"],
+                    "mark_updated_at": trade["timestamp"],
+                    "mark_source": "entry fill",
                 }
             state["cash"] = max(0.0, state["cash"] - outlay)
         else:

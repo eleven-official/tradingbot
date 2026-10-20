@@ -46,6 +46,44 @@ class StrategyLabTests(unittest.TestCase):
         self.assertEqual(first["summary"]["final_capital"], first["equity_curve"][-1]["equity"])
         self.assertEqual(first["cost_stress"][0]["total_return"], first["summary"]["total_return"])
 
+    def test_regime_rows_slice_the_tested_windows(self):
+        report = evaluate_strategy(sample_bars())
+        regime = report["regime_metrics"]
+        self.assertTrue(regime["rules"])
+        self.assertEqual([row["regime"] for row in regime["rows"]],
+                         ["Trending up", "Trending down", "Ranging", "High volatility"])
+        total_bars = sum(row["bars"] for row in regime["rows"])
+        self.assertEqual(total_bars, len(report["equity_curve"]))
+        shares = sum(row["share_pct"] for row in regime["rows"])
+        self.assertAlmostEqual(shares, 100.0, delta=0.5)
+        for row in regime["rows"]:
+            self.assertFalse(math.isinf(row["strategy_contribution_pct"]))
+            self.assertFalse(math.isnan(row["strategy_contribution_pct"]))
+        json.dumps(regime, allow_nan=False)
+        # Fragments of one run must add up to the whole strategy result.
+        pieces = sum(row["strategy_contribution_pct"] for row in regime["rows"]) / 100
+        self.assertAlmostEqual(
+            pieces * report["config"]["initial_capital"],
+            report["summary"]["final_capital"] - report["config"]["initial_capital"],
+            delta=1e-6,
+        )
+
+    def test_high_volatile_window_takes_regime_precedence(self):
+        # Flat trend with violent oscillation: labels must read high
+        # volatility rather than ranging because the vol test wins.
+        rows = sample_bars(220, pattern="flat")
+        base = datetime.fromisoformat(rows[0]["timestamp"])
+        for index, row in enumerate(rows[:]):
+            if index > 130 and index < 190:
+                swing = 8 * (1 if index % 2 == 0 else -1)
+                row["close"] = 100 + swing
+                row["open"] = 100 - swing
+                row["high"] = max(row["open"], row["close"]) + 0.5
+                row["low"] = min(row["open"], row["close"]) - 0.5
+        report = evaluate_strategy(rows)
+        labelled = {row["regime"]: row for row in report["regime_metrics"]["rows"]}
+        self.assertGreater(labelled["High volatility"]["bars"], 0)
+
     def test_cash_and_insufficient_evidence_are_explicit(self):
         report = evaluate_strategy(sample_bars(pattern="flat"))
         self.assertEqual(report["summary"]["total_trades"], 0)
