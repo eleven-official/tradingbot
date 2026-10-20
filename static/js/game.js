@@ -168,6 +168,12 @@
   }
   function submit(ev) {
     if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+    if (state.phase === "between" && state.accepted) {
+      // impatient divers can press Enter to surf to the next round immediately
+      window.clearTimeout(state.nextTimer);
+      nextRound();
+      return;
+    }
     if (state.phase !== "round" || state.accepted) return;
     const raw = els["dive-answer"] ? els["dive-answer"].value : "";
     const key = normalize(raw);
