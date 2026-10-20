@@ -94,7 +94,7 @@ function renderReport(){const metrics=report.summary;$('#return-metric').textCon
   else if($('#regime-panel')){$('#regime-panel').hidden=true;}
   const folds=$('#fold-table');folds.replaceChildren();for(const fold of report.folds||[]){const row=element('tr');for(const value of [fold.test_start.slice(0,10),fold.test_end.slice(0,10),JSON.stringify(fold.parameters),pct(fold.metrics.total_return)])row.append(element('td',value));folds.append(row);}
   $('#report-statistics').textContent=`Expectancy: ${number(metrics.expectancy)} / trade · Profit factor: ${metrics.profit_factor==null?'not estimable':number(metrics.profit_factor)} · Fees: ${number(metrics.total_fees)} · Slippage: ${number(metrics.total_slippage)} · ${report.trial_count} training trials`;
-  $('#chart-empty').hidden=true;$('#equity-chart').hidden=false;$('#chart-caption').textContent=`Historical forward tests: ${report.test_start.slice(0,10)} → ${report.test_end.slice(0,10)} · ${report.bars} supplied bars · Fingerprint ${report.data_fingerprint.slice(0,16)}… · Input quote currency · Benchmarks use the same dates and the same cost assumptions: buy-and-hold (dashed line) and cash (flat at start). Every result carries its window, config, fees, slippage and fingerprint — export it any time.`;drawChart();renderPinStrip();
+  $('#chart-empty').hidden=true;$('#equity-chart').hidden=false;$('#chart-caption').textContent=`Historical forward tests: ${report.test_start.slice(0,10)} → ${report.test_end.slice(0,10)} · ${report.bars} supplied bars · Fingerprint ${report.data_fingerprint.slice(0,16)}… · Input quote currency · Benchmarks use the same dates and the same cost assumptions: buy-and-hold (dashed line) and cash (flat at start). Every result carries its window, config, fees, slippage and fingerprint — export it any time.`;drawChart();renderRunSummary();renderPinStrip();
 }
 function drawChart(){if(!report||$('#overview').hidden)return;const canvas=$('#equity-chart'),width=canvas.clientWidth;if(!width)return;const height=280,scale=window.devicePixelRatio||1;canvas.width=width*scale;canvas.height=height*scale;const ctx=canvas.getContext('2d');ctx.scale(scale,scale);const points=[{timestamp:report.test_start,equity:report.config.initial_capital,benchmark_equity:report.config.initial_capital},...report.equity_curve];const values=points.flatMap(point=>[point.equity,point.benchmark_equity]);const min=Math.min(...values),max=Math.max(...values),padding=Math.max((max-min)*.12,max*.005,1),low=min-padding,high=max+padding;const left=width<500?48:60,right=12,top=14,bottom=30;const x=i=>left+i/Math.max(1,points.length-1)*(width-left-right),y=v=>top+(high-v)/(high-low)*(height-top-bottom);ctx.font='10px Segoe UI';ctx.lineWidth=1;for(let i=0;i<5;i++){const value=low+(high-low)*i/4;ctx.strokeStyle='#26363d';ctx.beginPath();ctx.moveTo(left,y(value));ctx.lineTo(width-right,y(value));ctx.stroke();ctx.fillStyle='#9aafbb';ctx.fillText(number(value,0),0,y(value)+3);}for(const[key,color]of[['benchmark_equity','#8095a3'],['equity','#a4e6bc']]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=key==='equity'?2:1.5;ctx.setLineDash(key==='equity'?[]:[5,4]);points.forEach((point,i)=>i?ctx.lineTo(x(i),y(point[key])):ctx.moveTo(x(i),y(point[key])));ctx.stroke();}ctx.setLineDash([]);ctx.fillStyle='#9aafbb';ctx.fillText(points[0].timestamp.slice(0,10),left,height-7);ctx.textAlign='right';ctx.fillText(points.at(-1).timestamp.slice(0,10),width-right,height-7);}
 $('#data-file').addEventListener('change',event=>{$('#file-label').textContent=event.target.files[0]?.name||'Choose historical OHLCV data';});
@@ -269,8 +269,8 @@ function renderPinStrip(){
   strip.hidden=false;
   const parts=[];
   if(pinData)parts.push(element('p',`${pinData.symbol} · fingerprint ${pinData.fingerprint.slice(0,10)}… · pinned ${new Date(pinData.pinned_at).toLocaleString()}`,'caption pin-summary'));
-  const row=element('div',null,'button-row pin-actions');
   if(pinData){
+    const row=element('div',null,'button-row pin-actions');
     const cmp=element('button','Compare pinned ↔ current','button primary small');cmp.type='button';
     if(!report||pinData.fingerprint===report.data_fingerprint){cmp.disabled=true;if(report)cmp.title='The open run is the same fingerprint — nothing to compare.';}
     cmp.addEventListener('click',()=>renderPinStrip());
@@ -301,3 +301,30 @@ function buildPinCompare(pin,cur){
 }
 $('#pin-report').addEventListener('click',writePin);
 renderPinStrip();
+
+// PLAIN-ENGLISH RUN SUMMARY — the note #6 upgrade. Written from the report's
+// own numbers so the user can paste an honest evidence card anywhere.
+let runShareText='';
+function renderRunSummary(){
+  const host=$('#run-summary'),copy=$('#copy-run-summary');
+  if(!host)return;
+  if(!report){host.hidden=true;host.replaceChildren();runShareText='';if(copy)copy.disabled=true;return;}
+  const s=report.summary||{},config=report.config||{};
+  const ci=Array.isArray(s.win_rate_ci95)&&s.win_rate_ci95.length===2?s.win_rate_ci95:null;
+  const folds=Number(report.trial_count)||0;
+  const verdict=report.status==='paper_candidate'?'Cleared as a paper candidate.':'Not yet a paper candidate — more evidence needed.';
+  const core=[verdict,
+    `On unseen test windows ${String(report.test_start).slice(0,10)} → ${String(report.test_end).slice(0,10)} (${report.bars} supplied bars of ${currentSymbol||'the dataset'}), the parameters returned ${pct(s.total_return)} after ${number(config.fee_bps,0)} bps fees and ${number(config.slippage_bps,0)} bps slippage per side — ${number(s.total_trades,0)} closed trade${Number(s.total_trades)===1?'':'s'}, win rate ${pct(s.win_rate)}${ci?` (95% range ${pct(ci[0])}–${pct(ci[1])})`:''}, maximum drawdown ${pct(Math.abs(Number(s.max_drawdown)||0))}, across ${folds?`${folds} walk-forward fold${folds===1?'':'s'}`:'the walk-forward folds'}.`,
+    'One dataset, one parameter family: this is evidence to collect more of, not a forecast of what happens next; the regime and cost tables slice the same past, nothing more.'].join(' ');
+  runShareText=`${core} Verified by Loki walk-forward research · fingerprint ${String(report.data_fingerprint||'').slice(0,10)}…`;
+  host.textContent=core;
+  host.hidden=false;
+  if(copy)copy.disabled=false;
+}
+$('#copy-run-summary').addEventListener('click',async()=>{
+  if(!report||!runShareText)return;
+  let copied=false;
+  try{await navigator.clipboard.writeText(runShareText);copied=true;}
+  catch(_e){try{const box=document.createElement('textarea');box.value=runShareText;box.style.position='fixed';box.style.opacity='0';document.body.append(box);box.select();copied=document.execCommand('copy');box.remove();}catch(_e2){copied=false;}}
+  toast(copied?'Run summary copied — paste it anywhere as an honest evidence card.':'This browser blocked the clipboard. Export the report instead.');
+});

@@ -264,6 +264,24 @@ class DeploymentConfigTests(unittest.TestCase):
         planner = (ROOT / "static" / "js" / "planner.js").read_text(encoding="utf-8")
         self.assertIn("no decision to save yet", planner)  # empty-save tells the user, never silently no-ops
 
+    def test_run_summary_evidence_card_and_practice_streak(self):
+        source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="run-summary"', source)         # plain-English paragraph from real numbers
+        self.assertIn('id="copy-run-summary"', source)    # honest shareable evidence card
+        self.assertIn('id="practice-streak"', source)     # habit strip on the Bored? page
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("renderRunSummary", workspace)
+        self.assertIn("walk-forward fold", workspace)     # written from real report fields
+        self.assertIn("not a forecast of what happens next", workspace)
+        self.assertIn("Cleared as a paper candidate.", workspace)
+        self.assertIn("blocked the clipboard", workspace)  # copy failures are told, never faked
+        practice = (ROOT / "static" / "js" / "practice.js").read_text(encoding="utf-8")
+        self.assertIn("loki_practice_stats_v1", practice)
+        self.assertIn("bumpDrill", practice)              # bumps only at real drill completion
+        self.assertIn("never grades skill", practice)
+        backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
+        self.assertIn("loki_practice_stats_v1", backup)   # streak survives backups too
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance

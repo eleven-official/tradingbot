@@ -61,6 +61,49 @@
   const fmt = (value, digits = 2) =>
     new Intl.NumberFormat(undefined, { minimumFractionDigits: 0, maximumFractionDigits: digits }).format(Number(value) || 0);
 
+  // Drill streak ledger: drills completed per local day, shown on the Bored?
+  // page as a habit strip. It counts habits — it never measures skill.
+  const STATS_KEY = "loki_practice_stats_v1";
+  const localDay = (date) => {
+    const value = new Date(date);
+    value.setMinutes(value.getMinutes() - value.getTimezoneOffset());
+    return value.toISOString().slice(0, 10);
+  };
+  const readStats = () => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(STATS_KEY) || "{}");
+      return parsed && typeof parsed === "object" && parsed.days ? parsed : { days: {} };
+    } catch { return { days: {} }; }
+  };
+  const bumpDrill = () => {
+    const stats = readStats();
+    const day = localDay(new Date());
+    stats.days[day] = (Number(stats.days[day]) || 0) + 1;
+    try { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); } catch { /* storage blocked: today's count lives in the recap only */ }
+  };
+  const streakInfo = () => {
+    const stats = readStats();
+    let streak = 0;
+    const cursor = new Date();
+    if (!(Number(stats.days[localDay(cursor)]) > 0)) cursor.setDate(cursor.getDate() - 1);
+    while (Number(stats.days[localDay(cursor)]) > 0) { streak += 1; cursor.setDate(cursor.getDate() - 1); }
+    const today = Number(stats.days[localDay(new Date())]) || 0;
+    const total = Object.values(stats.days).reduce((sum, count) => sum + (Number(count) || 0), 0);
+    return { today, streak, total };
+  };
+  const renderStreak = () => {
+    const host = document.getElementById("practice-streak");
+    if (!host) return;
+    const { today, streak, total } = streakInfo();
+    host.hidden = false;
+    if (!total) {
+      host.textContent = "No practice drills logged yet — when one finishes, this strip counts drills today and your day streak. Drills train habits, not performance.";
+      return;
+    }
+    host.textContent = `Practice: ${today} drill${today === 1 ? "" : "s"} today · ${streak > 1 ? `${streak}-day streak` : "streak starts or continues today"} · ${total} logged in total. Habits compound; this strip counts them, it never grades skill.`;
+  };
+  window.addEventListener("hashchange", () => { if (location.hash === "#game") renderStreak(); });
+
   const snap = () => {
     const shot = window.lokiSimulatedMarket?.snapshot();
     return shot ? { state: shot.state, metrics: shot.metrics } : null;
@@ -164,6 +207,8 @@
       element("p", exercise.recapNote, "muted"),
       element("p", "Run the same drill with a different seed to see how results vary, and export the session before resetting if you want to keep it.", "caption")
     );
+    bumpDrill();
+    renderStreak();
     renderProgress(`${exercise.title} complete — recap above.`);
     active = null;
   };
@@ -177,6 +222,7 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind, { once: true });
   else bind();
+  if (location.hash === "#game") renderStreak();
 
-  window.lokiPractice = { start, active: () => (active ? { ...active } : null) };
+  window.lokiPractice = { start, active: () => (active ? { ...active } : null), streak: streakInfo, renderStreak };
 })();
