@@ -76,8 +76,11 @@
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     });
+    // Decide the sign AFTER rounding: a sub-cent outflow (-0.001) is displayed
+    // as US$0.00, not the misleading "-US$0.00".
+    const roundedMagnitude = Math.round(Math.abs(converted) * 100) / 100;
     const symbol = current === 'AUD' ? 'A$' : 'US$';
-    return (value < 0 ? '-' : '') + symbol + body;
+    return (value < 0 && roundedMagnitude > 0 ? '-' : '') + symbol + body;
   };
 
   const buildSwitcher = () => {

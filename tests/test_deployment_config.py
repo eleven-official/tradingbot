@@ -255,6 +255,9 @@ class DeploymentConfigTests(unittest.TestCase):
 
     def test_display_currency_switch_rerenders_the_paper_portfolio(self):
         # The switcher toggles A$/US$ display; every money surface must follow.
+        currency = (ROOT / "static" / "js" / "currency.js").read_text(encoding="utf-8")
+        self.assertIn("roundedMagnitude", currency)  # sub-cent outflows show US$0.00, never "-US$0.00"
+        self.assertIn("Decide the sign AFTER rounding", currency)  # honesty note on the edge case
         workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
         self.assertIn("loki:currency", workspace)  # paper portfolio re-renders on switch
         self.assertIn("displayMoney", workspace)  # metric cards and ledger follow
