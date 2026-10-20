@@ -29,3 +29,46 @@
 .loki-currency .cur-opt:hover{color:#e7f0ff}
 .loki-currency .cur-opt.active{background:rgba(139,218,212,.16);color:#8bdad4}
 @media(max-width:760px){.loki-currency{top:8px;right:10px}.loki-currency .cur-opt{padding:6px 11px}}
+
+/* Loki Dive — arcade (krillion-style rare-answer trivia, unlimited) */
+.dive-panel{background:linear-gradient(180deg,#0f1721 0,var(--panel) 55%)}
+.dive-mode{color:var(--green)}
+.dive-legend{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 22px}
+.dive-tier{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:10px;letter-spacing:.6px;font-weight:600;white-space:nowrap}
+.dive-tier-0{color:#9fb3c2}
+.dive-tier-1{color:var(--amber);border-color:#615137;background:#272319}
+.dive-tier-2{color:#cdd8e0}
+.dive-tier-3{color:var(--green);border-color:#3c5d48;background:#17251e}
+.dive-tier-4{color:var(--accent);border-color:#4d5f66;background:#13231f}
+.dive-tier-5{color:#8bdad4;border-color:#3a6d63;background:radial-gradient(ellipse at 50% 0%,#173e3a 0,#12241f 65%);box-shadow:0 0 18px rgba(139,218,212,.14)}
+.dive-tier-miss{color:var(--red);border-color:#68483f;background:#2d201d}
+.dive-stage{position:relative;min-height:300px}
+.dive-screen[hidden]{display:none}
+.dive-start-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:20px 0 6px}
+.dive-stat{font-size:11px;color:var(--muted);border:1px dashed var(--line);border-radius:7px;padding:7px 11px}
+.dive-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.dive-clock{font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)}
+.dive-timerline{height:4px;border-radius:4px;background:#0b1219;border:1px solid var(--line);overflow:hidden;margin-bottom:18px}
+.dive-timerfill{height:100%;width:100%;background:var(--green);transition:width .12s linear}
+.dive-timerfill.dive-low{background:var(--red)}
+.dive-prompt{font-size:27px;letter-spacing:-.5px;font-weight:500;margin:4px 0 6px}
+.dive-form{display:flex;gap:9px;margin-top:17px}
+.dive-form input{flex:1;min-height:46px;font-size:13px}
+.dive-feedback{margin-top:13px;font-size:12.5px;line-height:1.7;padding:11px 14px;border-radius:8px;border:1px solid var(--line);background:#0d161d;min-height:0}
+.dive-feedback.good{color:var(--accent);border-color:#3c5d48;background:#17251e}
+.dive-feedback.warn{color:var(--amber);border-color:#615137;background:#272319}
+.dive-depthstrip{display:flex;align-items:center;gap:12px;margin-top:20px}
+.dive-depthtrack{flex:1;height:8px;border-radius:8px;background:#0b1219;border:1px solid var(--line);overflow:hidden;display:block}
+.dive-depthfill{display:block;height:100%;width:0;background:linear-gradient(90deg,#9fb3c2 0,var(--green) 45%,#8bdad4 100%);transition:width .5s ease,height .5s ease}
+.dive-depthstrip small{font-size:10px;color:var(--muted);white-space:nowrap}
+.dive-depthstrip strong{color:var(--accent);font-weight:550}
+.dive-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:rgba(11,16,21,.86);color:var(--muted);font-size:12px;border-radius:10px;z-index:5;padding:20px}
+.dive-end-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.dive-end-depth{font-size:44px;letter-spacing:-1.5px;font-weight:450;color:var(--accent)}
+.dive-end-rows{display:grid;gap:8px;margin:18px 0}
+.dive-result-row{display:grid;grid-template-columns:26px minmax(90px,180px) 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#0d161d;font-size:11px}
+.dive-result-n{color:#6b8090}
+.dive-result-q{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dive-result-a{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dive-result-miss .dive-result-a{color:var(--red)}
+@media(max-width:760px){.dive-form{flex-direction:column}.dive-prompt{font-size:23px}.dive-result-row{grid-template-columns:22px 1fr auto;grid-template-rows:auto auto}.dive-result-q{grid-column:2}.dive-result-a{grid-column:2;white-space:normal}.dive-result-row .dive-tier{grid-column:3;grid-row:1 / span 2;align-self:center}}

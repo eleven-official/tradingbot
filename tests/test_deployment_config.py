@@ -122,6 +122,24 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("Live execution is not connected", source)
         self.assertNotIn("github.com/eleven-official", source)
 
+    def test_landing_has_loki_dive_arcade_wiring(self):
+        source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('data-view="game"', source)  # nav item, last in the bar
+        self.assertIn('<section id="game"', source)  # arcade view exists
+        self.assertIn("/static/js/game_data.js", source)  # answer bank loaded
+        self.assertIn("/static/js/game.js", source)  # loader present
+        self.assertIn('id="dive-start-btn"', source)  # button ids intact
+        self.assertLess(
+            source.index('data-view="integrations"'),
+            source.index('data-view="game"'),
+            "the arcade should sit at the very bottom of the navigation bar",
+        )
+
+    def test_no_github_links_in_any_public_template(self):
+        for template in sorted((ROOT / "templates").glob("*.html")):
+            text = template.read_text(encoding="utf-8")
+            self.assertNotIn("github.com/eleven-official", text, str(template))
+
     def test_rule_version_labels_match_replay_engine(self):
         html = (ROOT / "templates" / "research_desk.html").read_text(encoding="utf-8")
         engine = (ROOT / "static" / "js" / "strategy-lab.js").read_text(encoding="utf-8")

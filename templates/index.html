@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
   <meta name="description" content="Loki brings strategy research, structured agent reviews, paper portfolios, and scenario analysis into one evidence-led workspace.">
   <title>Loki · Trading intelligence</title>
-  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css"><link rel="stylesheet" href="/static/css/market.css"><script src="/static/js/workspace.js" defer></script><script src="/static/js/currency.js" defer></script><script src="/static/js/simulated_market.js" defer></script><script src="/static/js/real_account.js" defer></script><script src="/static/js/broker_workspace.js" defer></script><script src="/static/js/trained_book.js" defer></script><script src="/static/js/ai_trading.js" defer></script><script src="/static/js/loki_auth.js" defer></script>
+  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css"><link rel="stylesheet" href="/static/css/market.css"><script src="/static/js/workspace.js" defer></script><script src="/static/js/currency.js" defer></script><script src="/static/js/simulated_market.js" defer></script><script src="/static/js/real_account.js" defer></script><script src="/static/js/broker_workspace.js" defer></script><script src="/static/js/trained_book.js" defer></script><script src="/static/js/game_data.js" defer></script><script src="/static/js/game.js" defer></script><script src="/static/js/ai_trading.js" defer></script><script src="/static/js/loki_auth.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to workspace</a>
@@ -24,9 +24,10 @@
       <a href="#advanced-terminal" data-view="advanced-terminal"><span aria-hidden="true">⌘</span> Advanced terminal</a>
       <a href="#paper-planner" data-view="paper-planner"><span aria-hidden="true">⌁</span> Market planner</a>
       <a href="#integrations" data-view="integrations"><span aria-hidden="true">⊞</span> Integrations</a>
+      <a href="#game" data-view="game"><span aria-hidden="true">🎮</span> Arcade</a>
     </nav>
     <div class="sidebar-context"><p class="eyebrow">CURRENT RESEARCH</p><strong id="sidebar-symbol">No asset loaded</strong><span id="sidebar-data">Import history in Quant lab</span></div>
-    <div class="sidebar-bottom"><span class="status-dot"></span> <span id="sidebar-mode-label">Paper &amp; research</span><p id="sidebar-mode-detail">Separate practice accounts</p><a href="https://github.com/eleven-official/tradingbot" target="_blank" rel="noopener noreferrer">View source ↗</a></div>
+    <div class="sidebar-bottom"><span class="status-dot"></span> <span id="sidebar-mode-label">Paper &amp; research</span><p id="sidebar-mode-detail">Separate practice accounts</p></div>
   </aside>
   <main id="main-content" tabindex="-1">
     <header class="topbar"><span>Trading intelligence <span class="slash">/</span> <strong id="page-name">Overview</strong></span><div class="topbar-status"><div class="mode-switch" role="group" aria-label="Trading mode"><button id="mode-paper" type="button" aria-pressed="true">Paper</button><button id="mode-real" type="button" aria-pressed="false">Real</button></div><span class="context-chip" id="context-status">No dataset</span><span class="pill" id="mode-pill"><span class="status-dot"></span> PAPER / RESEARCH</span></div></header>
@@ -80,7 +81,7 @@
     <section id="agent-council" class="workspace-view" aria-label="Agent council" hidden>
       <div class="page-heading"><p class="eyebrow">STRUCTURED CHECKS. ONE SHARED CONTEXT.</p><h1>Challenge the idea.</h1><p class="muted">Bring research, quantitative signals, and portfolio risk into one review before recording a paper decision.</p></div>
       <div class="context-banner"><span class="context-orb" aria-hidden="true">✳</span><div><strong id="council-context">Your research is the starting point.</strong><p id="council-context-detail">Import a dataset in Quant lab. The council evaluates that history and your current paper portfolio.</p></div><a href="#strategy-lab" class="text-link">Quant lab ↗</a></div>
-      <section class="panel"><div class="section-title"><div><p class="eyebrow">NATIVE MIROFISH CODE / SCENARIO EVIDENCE</p><h2>Bring the simulation into the council.</h2></div><span class="tag">Local source · no project API</span></div><p class="muted">Load a completed MiroFish report from its native local data. Loki executes the retained MiroFish report reader and data classes, then adds that scenario to the sentiment reviewer and council checks.</p><div class="form-grid two-col"><label>Native report ID<input id="miro-native-id" maxlength="110" placeholder="report_…"></label><div class="button-row"><button id="inspect-native-report" class="button secondary" type="button">Inspect native report →</button></div></div><label class="caption"><input type="checkbox" id="miro-native-reviewed"> I reviewed this scenario's assumptions and counterarguments for the selected council instrument.</label><p id="miro-native-message" class="form-message" role="status"></p><div id="miro-native-preview"></div><p class="caption">Simulated-agent opinions are scenario research. They do not establish news sentiment, execution readiness or a 70% trading win rate. <a href="https://github.com/eleven-official/tradingbot/tree/codex/loki-research-copilot-upgrade/components/mirofish" target="_blank" rel="noopener">Bundled native source &amp; AGPL licence ↗</a></p></section>
+      <section class="panel"><div class="section-title"><div><p class="eyebrow">NATIVE MIROFISH CODE / SCENARIO EVIDENCE</p><h2>Bring the simulation into the council.</h2></div><span class="tag">Local source · no project API</span></div><p class="muted">Load a completed MiroFish report from its native local data. Loki executes the retained MiroFish report reader and data classes, then adds that scenario to the sentiment reviewer and council checks.</p><div class="form-grid two-col"><label>Native report ID<input id="miro-native-id" maxlength="110" placeholder="report_…"></label><div class="button-row"><button id="inspect-native-report" class="button secondary" type="button">Inspect native report →</button></div></div><label class="caption"><input type="checkbox" id="miro-native-reviewed"> I reviewed this scenario's assumptions and counterarguments for the selected council instrument.</label><p id="miro-native-message" class="form-message" role="status"></p><div id="miro-native-preview"></div><p class="caption">Simulated-agent opinions are scenario research. They do not establish news sentiment, execution readiness or a 70% trading win rate. </p></section>
       <section class="panel"><div class="section-title"><div><p class="eyebrow">RESEARCH / SIGNAL / RISK / EXECUTION</p><h2>A second opinion with reasons.</h2></div><button class="button primary" id="run-council" type="button">Convene council ↗</button></div><p class="muted">Local reviewers apply explicit rules to the supplied evidence. They can disagree, abstain, or reject an idea. Optional external AI engines appear in Integrations when configured.</p><p id="council-message" class="form-message" role="status"></p><div id="council-results" class="council-results"><div class="empty-state compact"><span aria-hidden="true">✳</span><h3>Give the council something to challenge.</h3><p>Your latest dataset, backtest, and paper portfolio travel together.</p></div></div></section>
       <div class="goal-note"><span aria-hidden="true">↳</span><div><strong>Keep the reasoning with the decision.</strong><p>The latest review is included when you export the workspace and when you talk to Loki. Council output is research, not an order.</p></div><a href="#portfolio" class="text-link">Paper portfolio →</a></div>
     </section>
@@ -129,7 +130,7 @@
       </section>
       <section class="panel">
         <div class="section-title"><div><p class="eyebrow">LATEST DECISION</p><h2>The AI's reasoning, in the open.</h2></div></div>
-        <div id="ai-trail"><p class="muted">Start AI trading to watch the Director → Quant → Risk reasoning stream in here, step by step.</p></div>
+        <div id="ai-trail"><p class="muted">Start AI trading to watch the Director → Quant → Risk reasoning stream in here, step by step. While a scan runs, the <a href="#game" class="text-link">Loki Dive arcade</a> is the bottom nav's waiting-room game.</p></div>
       </section>
       <section class="panel">
         <div class="section-title"><div><p class="eyebrow">PAPER BOOK</p><h2>Equity &amp; results.</h2></div><button id="ai-scan" class="button secondary" type="button">Scan all symbols now</button></div>
@@ -170,6 +171,44 @@
       <div class="section-title"><p class="caption" id="integration-summary">Checking component availability…</p><button id="refresh-integrations" type="button" class="button secondary">Refresh status ↻</button></div><p id="integration-message" class="form-message" role="status"></p><div id="integration-cards" class="integration-grid"></div>
       <section class="panel" id="fincept-panel"><div class="section-title"><div><p class="eyebrow">FINCEPT / LICENSED PRIVATE ANALYTICS</p><h2>A deeper risk lens.</h2></div><span class="tag" id="fincept-status">Checking setup</span></div><p class="muted">Run Fincept’s risk engine against your imported asset’s daily returns. The licensed source stays in your private local installation.</p><div id="fincept-availability" class="integration-note">Checking the private engine configuration…</div><form id="fincept-form"><div class="form-grid two-col"><label>Portfolio value<input name="portfolio_value" type="number" min="1" max="1000000000" value="10000" required></label><label>Data frequency<select id="fincept-frequency" required><option value="">Confirm your imported data frequency</option><option value="daily">Daily observations</option><option value="other">Intraday / other (unsupported here)</option></select></label></div><button id="run-fincept" class="button secondary" type="submit" disabled>Analyze imported daily returns →</button></form><p class="caption">Requires 20–2,000 daily returns. Fincept annualizes using 252 trading days; this assumption also applies to imported crypto history. Risk estimates are not trade win rates.</p><p id="fincept-message" class="form-message" role="status"></p><div id="fincept-results" hidden></div></section>
       <section class="panel integration-bridge"><p class="eyebrow">SHARED RESEARCH CONTEXT</p><h2>Use the result, wherever it starts.</h2><p class="muted">Bring OHLCV CSV exports into Quant lab. Factor diagnostics, backtests, council reviews, the paper journal, and local stress share that context inside Loki.</p><div class="button-row"><a href="#strategy-lab" class="button primary">Import history →</a><button id="export-context" type="button" class="button secondary">Export workspace ↓</button></div><p class="caption">Fincept’s source is loaded only from a configured, licensed private installation. MiroFish runs as an optional service. Unconfigured integrations display their setup status without invented results.</p></section>
+    </section>
+    <section id="game" class="workspace-view" aria-label="Game" hidden>
+      <div class="page-heading"><p class="eyebrow">ARCADE / PLAY WHILE YOU WAIT</p><h1>Sink deeper than the crowd.</h1><p class="muted">A Krillion-style rare-answer trivia with unlimited dives. Waiting on a Loki scan? Name what nobody else would think of first.</p></div>
+      <section class="panel dive-panel">
+        <div class="section-title"><div><p class="eyebrow">THE LOKI DIVE</p><h2>Rare answers sink. Common answers float.</h2></div><span class="tag dive-mode">UNLIMITED · ∞ DIVES</span></div>
+        <div id="dive-legend" class="dive-legend" aria-label="Rarity tiers"></div>
+        <div class="dive-stage">
+          <div id="dive-start" class="dive-screen">
+            <p class="muted">Seven rounds a dive · twenty-five seconds each · one answer per round. The <strong>rarer</strong> your answer, the deeper you sink — from Plankton (+10 pts · surface) down to One in a Zillion (+100 pts · 1,000 m). A miss scores nothing but costs nothing; keep typing until the clock runs out.</p>
+            <div class="dive-start-row">
+              <button id="dive-start-btn" class="button primary" type="button">Begin the dive →</button>
+              <span class="dive-stat" id="dive-best">No dive yet</span>
+              <span class="dive-stat" id="dive-dives">Fresh waters</span>
+            </div>
+            <p class="caption">Inspired by the daily game krillion.io — this one runs anytime, with unlimited replays, hand-written answer banks and no account needed. Your answers stay in your browser.</p>
+          </div>
+          <div id="dive-play" class="dive-screen" hidden>
+            <div class="dive-topbar"><span id="dive-round" class="tag">Round 1 of 7</span><span id="dive-clock" class="dive-clock">25s</span></div>
+            <div class="dive-timerline"><div id="dive-timer" class="dive-timerfill"></div></div>
+            <h3 id="dive-prompt" class="dive-prompt">…</h3>
+            <p id="dive-rules" class="caption"></p>
+            <form id="dive-form" class="dive-form" autocomplete="off">
+              <input id="dive-answer" type="text" maxlength="60" placeholder="Type the answer almost nobody thinks of first…" aria-label="Your rare answer">
+              <button class="button primary" type="submit">Dive →</button>
+            </form>
+            <div id="dive-feedback" class="dive-feedback" role="status" hidden></div>
+            <div class="dive-depthstrip"><span class="dive-depthtrack" aria-hidden="true"><span id="dive-depthbar" class="dive-depthfill"></span></span><small>Depth <strong id="dive-depth-num">0 m</strong></small></div>
+            <div id="dive-overlay" class="dive-overlay" hidden>Dive paused — come back to this tab and the clock keeps its word.</div>
+          </div>
+          <div id="dive-end" class="dive-screen" hidden>
+            <div class="dive-end-head"><p class="eyebrow">DIVE COMPLETE</p><strong id="dive-end-depth" class="dive-end-depth">0 m</strong><span id="dive-end-points" class="tag good">0 points</span></div>
+            <p id="dive-end-best" class="caption"></p>
+            <p id="dive-end-verdict" class="muted"></p>
+            <div id="dive-end-rows" class="dive-end-rows"></div>
+            <div class="button-row"><button id="dive-again-btn" class="button primary" type="button">Dive again · unlimited →</button><button id="dive-copy" class="button secondary" type="button">Copy result</button></div>
+          </div>
+        </div>
+      </section>
     </section>
     <footer><span>Loki <span class="footer-sub">/ Trading intelligence</span></span><span>Evidence first. Costs included. No guaranteed returns.</span></footer>
   </main><dialog id="broker-connect-dialog" aria-labelledby="broker-dialog-title"><div class="section-title"><h2 id="broker-dialog-title">Connect your account.</h2><button id="broker-dialog-close" type="button" class="button secondary" aria-label="Close broker connection">×</button></div><p class="muted">Credentials go to this local Loki server. They stay in memory until disconnect, restart or four-hour expiry. This form does not place an order.</p><form id="broker-connect-form" autocomplete="off"><div class="form-grid two-col"><label>Provider<select name="provider" id="broker-provider"><option value="alpaca">Alpaca</option><option value="kraken">Kraken · inspection</option><option value="coinbase">Coinbase · inspection</option><option value="binance">Binance · inspection</option></select></label><label>Account<select name="mode" id="broker-connection-mode"><option value="paper">Paper · Alpaca AI trading</option><option value="live">Live · inspect balances</option></select></label><label>API key ID<input name="api_key" type="password" autocomplete="new-password" maxlength="256" required></label><label>API secret<input name="api_secret" type="password" autocomplete="new-password" maxlength="256" required></label><label id="broker-passphrase-label" hidden>API passphrase<input name="passphrase" type="password" autocomplete="new-password" maxlength="256"></label></div><p class="caption">Alpaca paper and live accounts use different keys. Select the matching account. Exchange links inspect balances and do not enable the AI runner.</p><button class="button primary" type="submit">Verify &amp; connect →</button><p id="broker-dialog-message" class="form-message" role="status"></p></form></dialog><div id="toast" class="toast" role="status" hidden></div>
