@@ -11,6 +11,7 @@
     "loki_dive_best", "loki_dive_dives", "loki_dive_challenge",
     "loki_currency", "loki_visit_snapshot",
     "loki_steps_data", "loki_steps_run", "loki_steps_council", "loki_steps_journal",
+    "loki-synthetic-market-v1",   // saved simulated-market practice session
     "loki_guest"
   ];
   const $ = (id) => document.getElementById(id);

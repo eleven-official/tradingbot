@@ -208,6 +208,23 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("manual mark", portfolio)
         self.assertIn("entry fill", portfolio)
 
+    def test_results_read_note_research_links_and_backup_coverage(self):
+        source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="research-read-note"', source)  # how-to-read framing on the results page
+        # the regime table sits between the headline metrics and the cost grid
+        self.assertLess(
+            source.index('id="regime-panel"'),
+            source.index('id="evidence-list"'),
+            "regime breakdown should read before evidence/limitations",
+        )
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("Research link", workspace)  # ledger ties fills back to runs
+        self.assertIn("report_fingerprint", workspace)
+        backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
+        self.assertIn("loki-synthetic-market-v1", backup)  # saved practice sessions travel in backups
+        simulated = (Path(__file__).resolve().parents[1] / "core" / "fusion" / "simulated_market.py").read_text(encoding="utf-8")
+        self.assertIn("generated close", simulated)  # synthetic marks never claim to be manual
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance
