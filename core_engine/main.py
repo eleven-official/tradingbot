@@ -71,15 +71,11 @@ class QuantumTradingEngine:
     """
     
     def __init__(self, config_path: Optional[str] = None):
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
-            handlers=[
-                logging.FileHandler('quantum_trading.log'),
-                logging.StreamHandler()
-            ]
-        )
+        # No global logging side effects here: importing this class in tests
+        # or hosted tools must not open a log file in the working tree.
+        # Desktop `python -m core_engine.main` configures file logging below.
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
         self.config_path = config_path or os.environ.get("QUANTUM_CONFIG", "config.yaml")
         self.config = self._load_config()
         self.state = SystemState.INITIALIZING
@@ -488,4 +484,14 @@ async def main():
 
 
 if __name__ == "__main__":
+    # Desktop runs get a local log file; the file handle lives for the whole
+    # process on purpose (this is the only entry point that writes it).
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
+        handlers=[
+            logging.FileHandler('quantum_trading.log'),
+            logging.StreamHandler()
+        ]
+    )
     asyncio.run(main())
