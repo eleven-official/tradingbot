@@ -18,18 +18,16 @@ jobs:
   test:
     name: Run Tests
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.allow_failure == true }}
     strategy:
+      # One leg failing must not mask the others' results.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # ubuntu runs the site in production (Vercel); windows covers the
+        # desktop path. macOS hosted runners have been unavailable for long
+        # stretches (capacity), which cancelled the run and blocked shipping,
+        # so the leg is disabled until it is dependable again.
+        os: [ubuntu-latest, windows-latest]
         python-version: ['3.12']
-        include:
-          # macOS arm64 hosted runners are frequently unavailable; keep the
-          # coverage attempt but let capacity outages fail the leg quietly
-          # instead of blocking the pipeline.
-          - os: macos-latest
-            allow_failure: true
     
     steps:
     - name: Checkout code
