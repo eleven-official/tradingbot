@@ -88,12 +88,28 @@
           })
         });
         if (!res.ok) {
-          const detail = ((await res.json().catch(() => ({}))) || {}).detail;
-          if (res.status === 503 || res.status === 404 || res.status >= 500) {
-            msg.textContent = 'The account service is waking up — give it a minute and try again.';
+          const raw = await res.text().catch(() => "");
+          let data = null;
+          try { data = JSON.parse(raw) || null; } catch { data = null; }
+          const detail = (data && data.detail) || null;
+          const looksLikeVercelWall = !detail && (/^(<!|<)/.test(raw.trim()) || /vercel/i.test(raw.slice(0, 400)));
+          if (detail) {
+            msg.textContent = detail;
+          } else if (res.status === 401 || res.status === 403 || looksLikeVercelWall) {
+            msg.textContent = "Vercel's visitor wall answered instead of Loki — open the site again and log in to Vercel once (or use your shareable link), then sign in here.";
+          } else if (res.status === 503 || res.status === 404 || res.status >= 500) {
+            msg.textContent = "The account service is waking up — give it a minute and try again.";
           } else {
-            msg.textContent = detail || 'Something went wrong. Try again.';
+            msg.textContent = "Something went wrong. Try again.";
           }
+          btn.disabled = false;
+          return;
+        }
+        const rawOk = await res.text().catch(() => "");
+        let okData = null;
+        try { okData = JSON.parse(rawOk) || null; } catch { okData = null; }
+        if (!okData || !okData.email) {
+          msg.textContent = "That reply wasn't Loki — Vercel's visitor wall probably stepped in. Open the site again, log in to Vercel once, then sign in here.";
           btn.disabled = false;
           return;
         }

@@ -24,7 +24,7 @@
       <a href="#advanced-terminal" data-view="advanced-terminal"><span aria-hidden="true">⌘</span> Advanced terminal</a>
       <a href="#paper-planner" data-view="paper-planner"><span aria-hidden="true">⌁</span> Market planner</a>
       <a href="#integrations" data-view="integrations"><span aria-hidden="true">⊞</span> Integrations</a>
-      <a href="#game" data-view="game"><span aria-hidden="true">🎮</span> Arcade</a>
+      <a href="#game" data-view="game"><span aria-hidden="true">🎮</span> Bored?</a>
     </nav>
     <div class="sidebar-context"><p class="eyebrow">CURRENT RESEARCH</p><strong id="sidebar-symbol">No asset loaded</strong><span id="sidebar-data">Import history in Quant lab</span></div>
     <div class="sidebar-bottom"><span class="status-dot"></span> <span id="sidebar-mode-label">Paper &amp; research</span><p id="sidebar-mode-detail">Separate practice accounts</p></div>
@@ -130,7 +130,7 @@
       </section>
       <section class="panel">
         <div class="section-title"><div><p class="eyebrow">LATEST DECISION</p><h2>The AI's reasoning, in the open.</h2></div></div>
-        <div id="ai-trail"><p class="muted">Start AI trading to watch the Director → Quant → Risk reasoning stream in here, step by step. While a scan runs, the <a href="#game" class="text-link">Loki Dive arcade</a> is the bottom nav's waiting-room game.</p></div>
+        <div id="ai-trail"><p class="muted">Start AI trading to watch the Director → Quant → Risk reasoning stream in here, step by step. While a scan runs, <a href="#game" class="text-link">Bored? → the Loki Dive</a> in the bottom nav is the waiting-room game.</p></div>
       </section>
       <section class="panel">
         <div class="section-title"><div><p class="eyebrow">PAPER BOOK</p><h2>Equity &amp; results.</h2></div><button id="ai-scan" class="button secondary" type="button">Scan all symbols now</button></div>
@@ -172,8 +172,8 @@
       <section class="panel" id="fincept-panel"><div class="section-title"><div><p class="eyebrow">FINCEPT / LICENSED PRIVATE ANALYTICS</p><h2>A deeper risk lens.</h2></div><span class="tag" id="fincept-status">Checking setup</span></div><p class="muted">Run Fincept’s risk engine against your imported asset’s daily returns. The licensed source stays in your private local installation.</p><div id="fincept-availability" class="integration-note">Checking the private engine configuration…</div><form id="fincept-form"><div class="form-grid two-col"><label>Portfolio value<input name="portfolio_value" type="number" min="1" max="1000000000" value="10000" required></label><label>Data frequency<select id="fincept-frequency" required><option value="">Confirm your imported data frequency</option><option value="daily">Daily observations</option><option value="other">Intraday / other (unsupported here)</option></select></label></div><button id="run-fincept" class="button secondary" type="submit" disabled>Analyze imported daily returns →</button></form><p class="caption">Requires 20–2,000 daily returns. Fincept annualizes using 252 trading days; this assumption also applies to imported crypto history. Risk estimates are not trade win rates.</p><p id="fincept-message" class="form-message" role="status"></p><div id="fincept-results" hidden></div></section>
       <section class="panel integration-bridge"><p class="eyebrow">SHARED RESEARCH CONTEXT</p><h2>Use the result, wherever it starts.</h2><p class="muted">Bring OHLCV CSV exports into Quant lab. Factor diagnostics, backtests, council reviews, the paper journal, and local stress share that context inside Loki.</p><div class="button-row"><a href="#strategy-lab" class="button primary">Import history →</a><button id="export-context" type="button" class="button secondary">Export workspace ↓</button></div><p class="caption">Fincept’s source is loaded only from a configured, licensed private installation. MiroFish runs as an optional service. Unconfigured integrations display their setup status without invented results.</p></section>
     </section>
-    <section id="game" class="workspace-view" aria-label="Game" hidden>
-      <div class="page-heading"><p class="eyebrow">ARCADE / PLAY WHILE YOU WAIT</p><h1>Sink deeper than the crowd.</h1><p class="muted">A Krillion-style rare-answer trivia with unlimited dives. Waiting on a Loki scan? Name what nobody else would think of first.</p></div>
+    <section id="game" class="workspace-view" aria-label="Bored game" hidden>
+      <div class="page-heading"><p class="eyebrow">BORED? / PLAY WHILE YOU WAIT</p><h1>Sink deeper than the crowd.</h1><p class="muted">Bored? A Krillion-style rare-answer trivia with unlimited dives. Waiting on a Loki scan? Name what nobody else would think of first.</p></div>
       <section class="panel dive-panel">
         <div class="section-title"><div><p class="eyebrow">THE LOKI DIVE</p><h2>Rare answers sink. Common answers float.</h2></div><span class="tag dive-mode">UNLIMITED · ∞ DIVES</span></div>
         <div id="dive-legend" class="dive-legend" aria-label="Rarity tiers"></div>

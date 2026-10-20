@@ -125,6 +125,7 @@ class DeploymentConfigTests(unittest.TestCase):
     def test_landing_has_loki_dive_arcade_wiring(self):
         source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
         self.assertIn('data-view="game"', source)  # nav item, last in the bar
+        self.assertIn("Bored?</a>", source)  # the tab reads "Bored?"
         self.assertIn('<section id="game"', source)  # arcade view exists
         self.assertIn("/static/js/game_data.js", source)  # answer bank loaded
         self.assertIn("/static/js/game.js", source)  # loader present
@@ -132,7 +133,7 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertLess(
             source.index('data-view="integrations"'),
             source.index('data-view="game"'),
-            "the arcade should sit at the very bottom of the navigation bar",
+            "Bored? should sit at the very bottom of the navigation bar",
         )
 
     def test_no_github_links_in_any_public_template(self):
