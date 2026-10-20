@@ -249,6 +249,11 @@
     if (els["dive-end-rows"]) els["dive-end-rows"].innerHTML = rows;
     renderDepth();
     show("dive-end");
+    if (!challenge.done && state.points >= challenge.target) {
+      challenge.done = true;
+      try { localStorage.setItem(LS_CHALLENGE, JSON.stringify({ d: dayKey(), o: state.points })); } catch { /* ignore */ }
+      renderChallenge();
+    }
     if (els["dive-copy"]) els["dive-copy"].textContent = "Copy result";
   }
   function copyResult(ev) {
@@ -311,19 +316,46 @@
     if (state.tLeft <= 0) { state.running = false; timeUp(); }
   }
 
+  /* ---------- daily challenge ---------- */
+  const LS_CHALLENGE = "loki_dive_challenge";
+  const CHALLENGE_STEPS = [110, 130, 150, 170, 120, 140, 160]; // target points per weekday (UTC)
+  const challenge = { target: 0, done: false };
+  function dayKey() { return new Date().toISOString().slice(0, 10); }
+  function loadChallenge() {
+    challenge.target = CHALLENGE_STEPS[new Date().getUTCDay()];
+    let best = 0;
+    try {
+      const saved = JSON.parse(localStorage.getItem(LS_CHALLENGE) || "null");
+      if (saved && saved.d === dayKey()) best = Number(saved.o) || 0;
+    } catch { /* unreadable storage — the challenge simply resets */ }
+    challenge.done = best >= challenge.target;
+  }
+  function renderChallenge() {
+    const node = els["dive-challenge"];
+    if (!node) return;
+    node.textContent = challenge.done
+      ? "🎯 Challenge done ✓"
+      : "🎯 Today: " + challenge.target + "+ pts";
+    node.title = challenge.done
+      ? "Depth target cleared — a fresh one arrives tomorrow."
+      : "Score " + challenge.target + "+ points in one dive today.";
+  }
+
   /* ---------- init ---------- */
   function init() {
     ["dive-start", "dive-play", "dive-end", "dive-legend", "dive-form", "dive-answer", "dive-feedback",
       "dive-timer", "dive-clock", "dive-round", "dive-prompt", "dive-rules", "dive-best", "dive-dives",
       "dive-depth-num", "dive-depthbar", "dive-end-depth", "dive-end-points", "dive-end-best",
       "dive-end-verdict", "dive-end-rows", "dive-copy", "dive-start-btn", "dive-again-btn",
-      "dive-overlay", "dive-pause"].forEach((id) => { els[id] = $(id); });
+      "dive-overlay", "dive-pause", "dive-challenge"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
 
     state.best = storage(LS_BEST, 0);
     state.dives = storage(LS_DIVES, 0);
+    loadChallenge();
     renderLegend();
     renderBest();
+    renderChallenge();
     renderDepth();
     show("dive-start");
 

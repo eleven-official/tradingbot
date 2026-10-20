@@ -72,3 +72,8 @@
 .dive-result-a{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dive-result-miss .dive-result-a{color:var(--red)}
 @media(max-width:760px){.dive-form{flex-direction:column}.dive-prompt{font-size:23px}.dive-result-row{grid-template-columns:22px 1fr auto;grid-template-rows:auto auto}.dive-result-q{grid-column:2}.dive-result-a{grid-column:2;white-space:normal}.dive-result-row .dive-tier{grid-column:3;grid-row:1 / span 2;align-self:center}}
+/* Wait-time cross-prompts + daily challenge */
+.dive-wait{margin-top:12px;padding:10px 14px;border:1px dashed rgba(184,240,216,.38);border-radius:10px;background:rgba(184,240,216,.06);color:#c9e2da;font-size:13px;line-height:1.5}
+.dive-wait a{color:#b8f0d8;font-weight:600}
+.tag.ai-next{color:#9fb0c2;font-weight:500}
+.dive-challenge{color:#b8f0d8}

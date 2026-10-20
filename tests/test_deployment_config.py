@@ -129,12 +129,31 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn('<section id="game"', source)  # arcade view exists
         self.assertIn("/static/js/game_data.js", source)  # answer bank loaded
         self.assertIn("/static/js/game.js", source)  # loader present
+        self.assertIn("/static/js/visit_note.js", source)  # "since last visit" diff
         self.assertIn('id="dive-start-btn"', source)  # button ids intact
+        self.assertIn('id="dive-challenge"', source)  # daily challenge stat line
+        self.assertIn('id="dive-wait-chip"', source)  # play-while-scans-run prompt
+        self.assertIn('id="ai-next-tick"', source)  # next-check countdown slot
+        self.assertIn('id="visit-note"', source)  # what-changed-since-last-visit slot
         self.assertLess(
             source.index('data-view="integrations"'),
             source.index('data-view="game"'),
             "Bored? should sit at the very bottom of the navigation bar",
         )
+
+    def test_gate_page_recovery_explanations_and_preview(self):
+        source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
+        self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance
+        self.assertIn('id="help-block"', source)  # inline recovery guidance
+        self.assertIn('id="forget-device"', source)  # shared-computer eraser
+        self.assertIn("30 days", source)  # the 30-day unlock is explained
+        self.assertIn("five-minute break", source)  # lockout recovery copy
+        self.assertIn("peek-card", source)  # workspace preview cards
+        self.assertIn("paper mode", source)  # privacy promise states what is real
+        self.assertIn("/api/gate/forget", source)  # eraser hits the server endpoint
+        server_src = (ROOT / "loki" / "api" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"/api/gate/forget"', server_src)  # and the endpoint exists
+        self.assertIn("delete_cookie(site_access.GATE_COOKIE", server_src)  # clears the httponly gate cookie
 
     def test_no_github_links_in_any_public_template(self):
         for template in sorted((ROOT / "templates").glob("*.html")):

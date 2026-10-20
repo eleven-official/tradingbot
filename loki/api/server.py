@@ -163,6 +163,13 @@ async def access_gate_submit(request: Request):
     return response
 
 
+@app.post("/api/gate/forget", include_in_schema=False)
+async def gate_forget(response: Response):
+    """Shared-computer eraser: makes this browser un-remember site access."""
+    response.delete_cookie(site_access.GATE_COOKIE, path="/")
+    return {"ok": True, "forgotten": True}
+
+
 class AuthBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: str = Field(min_length=3, max_length=254)

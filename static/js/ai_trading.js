@@ -29,6 +29,7 @@
   let state = loadState();
   let timer = null;
   let busy = false;
+  let nextCheckAt = 0;
 
   function loadState() {
     try {
@@ -120,6 +121,7 @@
     if (busy || !state.running) return;
     if (document.hidden || $('ai-trading').hidden) return;
     busy = true;
+    nextCheckAt = Date.now() + POLL_MS; // rough "next check in Ns" for the header ticker
     try {
       const res = await fetch('/api/fusion/ai/step', {
         method: 'POST',
@@ -360,6 +362,15 @@
       tag.textContent = state.running ? `Running · ${state.symbol}` : 'Idle';
       tag.style.color = state.running ? '#b8f0d8' : '';
     }
+    const chip = $('dive-wait-chip');
+    if (chip) chip.hidden = !state.running;
+    const nextTag = $('ai-next-tick');
+    if (nextTag) {
+      nextTag.hidden = !state.running;
+      if (state.running && nextCheckAt) {
+        nextTag.textContent = `next check in ${Math.max(0, Math.ceil((nextCheckAt - Date.now()) / 1000))}s`;
+      }
+    }
     const start = $('ai-start');
     const stop = $('ai-stop');
     if (start && stop) {
@@ -438,7 +449,17 @@
 
   function startLoop() {
     if (timer) clearInterval(timer);
+    nextCheckAt = Date.now() + POLL_MS;
     timer = setInterval(step, POLL_MS);
+  }
+
+  function tickCountdown() {
+    const nextTag = $('ai-next-tick');
+    if (!nextTag) return;
+    nextTag.hidden = !state.running;
+    if (state.running && nextCheckAt) {
+      nextTag.textContent = `next check in ${Math.max(0, Math.ceil((nextCheckAt - Date.now()) / 1000))}s`;
+    }
   }
 
   function bind() {
@@ -495,6 +516,8 @@
       startLoop();
       step();
     }
+    setInterval(tickCountdown, 1000);
+    tickCountdown();
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
