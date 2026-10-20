@@ -88,6 +88,27 @@ class DeploymentConfigTests(unittest.TestCase):
                 f"TemplateResponse at line {call.lineno} must keep the keyword form.",
             )
 
+    def test_static_assets_carry_version_cache_busting(self):
+        # Fresh deploys must not mix new templates with browsers' cached old
+        # JS/CSS: every static asset tag is versioned from the context var.
+        import re
+        tag_pattern = re.compile(r'(?:src|href)="(/static/[^"]+)"', re.IGNORECASE)
+        indexed = ("index.html", "research_desk.html")
+        for name in indexed:
+            text = (ROOT / "templates" / name).read_text(encoding="utf-8")
+            urls = tag_pattern.findall(text)
+            self.assertTrue(urls, f"{name} should reference static assets")
+            for url in urls:
+                self.assertTrue(url.endswith("?v={{ version }}"), f"{name}: asset {url} has no ?v={{ version }} cache bust")
+                self.assertTrue(url.split("?")[0].endswith((".css", ".js")), f"{name}: unexpected asset {url}")
+        for name in ("strategy_lab.html", "paper_tools.html"):
+            text = (ROOT / "templates" / name).read_text(encoding="utf-8")
+            self.assertIn("url_for('static'", text, f"{name} should load assets")
+            lines = [line for line in text.splitlines() if "url_for('static'" in line]
+            self.assertTrue(lines, f"{name} has url_for assets")
+            for line in lines:
+                self.assertIn("?v={{ version }}", line, f"{name}: url_for asset line lacks ?v cache bust: {line[:60]}")
+
     def test_landing_assets_are_included_in_the_deployment_bundle(self):
         config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
         included = config["functions"]["main.py"]["includeFiles"]
@@ -108,8 +129,8 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertEqual(inputs["profileNickname"].get("autocomplete"), "nickname")
         self.assertEqual(inputs["profileEmail"].get("type"), "email")
         self.assertEqual(inputs["profileEmail"].get("autocomplete"), "email")
-        self.assertIn("/static/js/profile.js", page.scripts)
-        self.assertIn("/static/css/research_desk.css", page.stylesheets)
+        self.assertTrue(any(s.startswith("/static/js/profile.js") for s in page.scripts), page.scripts)
+        self.assertTrue(any(s.startswith("/static/css/research_desk.css") for s in page.stylesheets), page.stylesheets)
         self.assertIn("does not send your details to the server", " ".join(page.text))
 
     def test_workspace_has_navigable_research_views_and_no_github_promotion(self):
