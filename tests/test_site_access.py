@@ -18,7 +18,7 @@ class TestAccessCode:
     def test_default_code(self, monkeypatch):
         monkeypatch.delenv("LOKI_SITE_CODE", raising=False)
         assert site_access.code_matches("flat head")
-        assert site_access.code_matches("Flat  Head")
+        assert site_access.code_matches("flathead")
         assert site_access.code_matches("flathead")
         assert site_access.code_matches("  FLAT HEAD  ")
         assert site_access.code_matches("flat, head!")

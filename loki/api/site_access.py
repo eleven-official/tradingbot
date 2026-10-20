@@ -37,7 +37,7 @@ GATE_COOKIE = "loki_gate"
 SESSION_COOKIE = "loki_session"
 GATE_MAX_AGE = 30 * 24 * 3600
 SESSION_MAX_AGE = 14 * 24 * 3600
-_DEFAULT_CODE = "flat head"
+_DEFAULT_CODE = "flathead"
 
 _COOKIE_SALT = b"loki-site-access-v1"
 
