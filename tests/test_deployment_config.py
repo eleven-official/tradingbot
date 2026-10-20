@@ -242,16 +242,22 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("a[data-view]", palette)  # palette entries come from the real nav
         self.assertIn("data-practice", palette)  # drills are one command away
         self.assertIn("will not pretend", palette)  # actions refuse to fake success
+        self.assertIn("Ctrl K", palette)  # non-Mac users see the real binding
         self.assertIn("Escape", palette)
         workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
         self.assertIn("loki_pinned_report_v1", workspace)  # pinned runs survive reloads
         self.assertIn("ppDeltaCell", workspace)  # honest change arithmetic
         self.assertIn("it does not forecast anything", workspace)  # delta honesty line
+        self.assertIn("Compare with the pinned run ↓", workspace)  # compare is discoverable from the top
+        self.assertIn("same fingerprint as the pinned run", workspace)  # disabled state explains itself
+        self.assertIn("✓ Selected:", workspace)  # upload zone shows the chosen file
         backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
         self.assertIn("loki_pinned_report_v1", backup)  # pins ride in backups too
         styles = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
         self.assertIn(".palette-overlay", styles)
         self.assertIn(".pinned-strip", styles)
+        self.assertIn(".pin-flash", styles)  # compare jump highlights the strip
+        self.assertIn("topbar-status{flex-wrap:wrap", styles)  # crowded bar wraps on phones
 
     def test_display_currency_switch_rerenders_the_paper_portfolio(self):
         # The switcher toggles A$/US$ display; every money surface must follow.

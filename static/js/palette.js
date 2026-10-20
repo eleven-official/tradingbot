@@ -11,6 +11,8 @@
   const hint = document.getElementById('palette-hint');
   const chip = document.getElementById('open-palette');
   if (!overlay || !input || !list || !hint) return;
+  // The label matches the actual binding on the user's own platform.
+  if (chip && !/Mac|iPhone|iPad/.test(navigator.userAgent || '')) chip.textContent = 'Ctrl K';
 
   let entries = [];
   let active = -1;

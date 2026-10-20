@@ -277,6 +277,7 @@ function renderPinStrip(){
     row.append(cmp);
     const unp=element('button','Unpin','button secondary small');unp.type='button';unp.addEventListener('click',clearPin);row.append(unp);
     parts.push(row);
+    if(report&&pinData.fingerprint===report.data_fingerprint)parts.push(element('p','This run is the same fingerprint as the pinned run — same dataset, same settings: nothing honest to compare.','caption'));
     if(report&&pinData.fingerprint!==report.data_fingerprint){parts.push(buildPinCompare(pinData,report));}
     else if(!report)parts.push(element('p','The pinned run is stored. Open or reload the live report to compare against it.','caption'));
   }
@@ -320,6 +321,12 @@ function renderRunSummary(){
   host.textContent=core;
   host.hidden=false;
   if(copy)copy.disabled=false;
+  const pinData=readPin();
+  if(pinData&&pinData.fingerprint!==report.data_fingerprint){
+    const jump=element('button','Compare with the pinned run ↓','text-link jump-pin');jump.type='button';
+    jump.addEventListener('click',()=>{const strip=$('#pinned-strip');if(strip){strip.scrollIntoView({block:'center',behavior:'smooth'});strip.classList.add('pin-flash');setTimeout(()=>strip.classList.remove('pin-flash'),1700);}});
+    host.append(document.createElement('br'),jump);
+  }
 }
 $('#copy-run-summary').addEventListener('click',async()=>{
   if(!report||!runShareText)return;
@@ -327,4 +334,12 @@ $('#copy-run-summary').addEventListener('click',async()=>{
   try{await navigator.clipboard.writeText(runShareText);copied=true;}
   catch(_e){try{const box=document.createElement('textarea');box.value=runShareText;box.style.position='fixed';box.style.opacity='0';document.body.append(box);box.select();copied=document.execCommand('copy');box.remove();}catch(_e2){copied=false;}}
   toast(copied?'Run summary copied — paste it anywhere as an honest evidence card.':'This browser blocked the clipboard. Export the report instead.');
+});
+
+// CHOSEN-FILE LABEL — the upload zone tells you what is loaded before you run.
+const dataFileInput=$('#data-file'),fileLabel=$('#file-label');
+if(dataFileInput&&fileLabel)dataFileInput.addEventListener('change',()=>{
+  const file=dataFileInput.files&&dataFileInput.files[0];
+  if(file)fileLabel.textContent=`✓ Selected: ${file.name} · ${(file.size/1024).toFixed(0)} KB`;
+  else fileLabel.textContent='Choose historical OHLCV data';
 });
