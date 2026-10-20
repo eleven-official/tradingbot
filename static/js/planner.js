@@ -458,7 +458,10 @@ function persistJournal(nextEntries) {
 
 function saveDecisionToJournal(trackPosition) {
   const feedback = document.querySelector("#decision-journal-feedback");
-  if (!lastDecision) return;
+  if (!lastDecision) {
+    feedback.textContent = "Run the Defence Council first — there is no decision to save yet.";
+    return;
+  }
   if (trackPosition && lastDecision.tracked) return;
   if (!trackPosition && lastDecision.reviewSaved) return;
 

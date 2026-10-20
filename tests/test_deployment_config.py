@@ -253,6 +253,17 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn(".palette-overlay", styles)
         self.assertIn(".pinned-strip", styles)
 
+    def test_display_currency_switch_rerenders_the_paper_portfolio(self):
+        # The switcher toggles A$/US$ display; every money surface must follow.
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("loki:currency", workspace)  # paper portfolio re-renders on switch
+        self.assertIn("displayMoney", workspace)  # metric cards and ledger follow
+        self.assertIn("window.LokiCurrency", workspace)  # via the shared formatter
+        ai = (ROOT / "static" / "js" / "ai_trading.js").read_text(encoding="utf-8")
+        self.assertIn("loki:currency", ai)  # AI panel already followed; keep it so
+        planner = (ROOT / "static" / "js" / "planner.js").read_text(encoding="utf-8")
+        self.assertIn("no decision to save yet", planner)  # empty-save tells the user, never silently no-ops
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance
