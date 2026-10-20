@@ -445,6 +445,9 @@ function persistJournal(nextEntries) {
   try {
     localStorage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(nextEntries));
     journalEntries = nextEntries;
+    if (Array.isArray(nextEntries) && nextEntries.length) {
+      try { localStorage.setItem("loki_steps_journal", JSON.stringify({ at: Date.now() })); } catch { /* marker is best-effort */ }
+    }
     renderJournal();
     updateDailyRisk();
     return true;

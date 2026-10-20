@@ -77,3 +77,36 @@
 .dive-wait a{color:#b8f0d8;font-weight:600}
 .tag.ai-next{color:#9fb0c2;font-weight:500}
 .dive-challenge{color:#b8f0d8}
+/* Responsive nav with the "More" group */
+.sidebar nav .nav-more{padding:10px 12px;color:var(--muted);border-radius:6px;font-size:12px;display:flex;align-items:center;gap:12px;min-height:43px;border:0;background:#111b20;cursor:pointer;font-family:inherit;text-align:left}
+.sidebar nav .nav-more:hover{color:var(--text);background:#172127}
+.sidebar nav .nav-more[aria-expanded="true"]{color:var(--accent);background:#1b2c27}
+.nav-more-group{display:grid;gap:7px;margin-top:7px;padding-top:7px;border-top:1px dashed rgba(139,218,212,.18)}
+@media(max-width:760px){.sidebar nav{flex-wrap:wrap}.nav-more-group.open,.nav-more-group:not([hidden]){flex-basis:100%;display:flex;flex-wrap:wrap;gap:5px}}
+/* Topbar account pill (was a floating badge) */
+.topbar .loki-user-pill{position:static}
+/* Overview: latest-run heading, next steps, data context */
+.metrics-heading{margin-top:8px}
+.next-steps ol.steps-list{list-style:none;display:grid;gap:8px;margin:12px 0 4px;padding:0}
+.next-steps .steps-list li{display:flex;gap:11px;align-items:flex-start;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#111b20;font-size:13px}
+.next-steps .steps-list li.done{border-color:rgba(164,230,188,.35);background:rgba(164,230,188,.06)}
+.next-steps .step-check{color:var(--muted);font-size:15px;line-height:1.2;min-width:14px}
+.next-steps .steps-list li.done .step-check{color:#a4e6bc}
+.next-steps .steps-list li span[data-step-mark]{color:#8296a4;font-size:11.5px}
+.next-steps .steps-list a.text-link{font-weight:600}
+/* Quant lab CSV preview */
+#quant-csv-preview{margin-top:14px;padding:14px;border:1px dashed rgba(139,218,212,.3);border-radius:10px;background:rgba(9,17,28,.5)}
+/* AI heartbeat */
+#ai-heartbeat{color:#9fb0c2}
+/* Evidence links in chat */
+.chat-context-row{margin-top:6px;font-size:11px;color:#8296a4;letter-spacing:.4px}
+.chat-context-row .chat-evidence-label{color:var(--green);font-size:10px;letter-spacing:1px;margin-right:6px}
+.chat-context-row a{margin-right:8px;color:#8bdad4}
+/* Backup & restore */
+.backup-panel .button-row{margin-top:6px}
+#backup-where{margin-top:8px}
+/* FX rate note in the currency switcher */
+.cur-rate-note{display:block;font-size:10.5px;color:#9fb0c2;letter-spacing:.2px;text-align:right;margin-top:6px;padding-right:2px}
+.loki-currency{display:flex;flex-direction:column;align-items:flex-end;gap:0}
+.loki-currency .cur-opt{margin-left:4px}
+@media(max-width:760px){.cur-rate-note{font-size:9.5px}}

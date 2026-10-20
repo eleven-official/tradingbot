@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
   <meta name="description" content="Loki brings strategy research, structured agent reviews, paper portfolios, and scenario analysis into one evidence-led workspace.">
   <title>Loki · Trading intelligence</title>
-  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css"><link rel="stylesheet" href="/static/css/market.css"><script src="/static/js/workspace.js" defer></script><script src="/static/js/currency.js" defer></script><script src="/static/js/simulated_market.js" defer></script><script src="/static/js/real_account.js" defer></script><script src="/static/js/broker_workspace.js" defer></script><script src="/static/js/trained_book.js" defer></script><script src="/static/js/game_data.js" defer></script><script src="/static/js/game.js" defer></script><script src="/static/js/ai_trading.js" defer></script><script src="/static/js/visit_note.js" defer></script><script src="/static/js/loki_auth.js" defer></script>
+  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css"><link rel="stylesheet" href="/static/css/market.css"><script src="/static/js/workspace.js" defer></script><script src="/static/js/currency.js" defer></script><script src="/static/js/simulated_market.js" defer></script><script src="/static/js/real_account.js" defer></script><script src="/static/js/broker_workspace.js" defer></script><script src="/static/js/trained_book.js" defer></script><script src="/static/js/game_data.js" defer></script><script src="/static/js/game.js" defer></script><script src="/static/js/ai_trading.js" defer></script><script src="/static/js/visit_note.js" defer></script><script src="/static/js/next_steps.js" defer></script><script src="/static/js/backup.js" defer></script><script src="/static/js/loki_auth.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to workspace</a>
@@ -14,17 +14,20 @@
     <nav aria-label="Workspace sections">
       <a class="active" href="#overview" data-view="overview" aria-current="page"><span aria-hidden="true">◈</span> Overview</a>
       <a href="#strategy-lab" data-view="strategy-lab"><span aria-hidden="true">⌁</span> Quant lab</a>
-      <a href="#agent-council" data-view="agent-council"><span aria-hidden="true">✳</span> Agent council</a>
       <a href="#portfolio" data-view="portfolio"><span aria-hidden="true">▥</span> Paper portfolio</a>
-      <a href="#simulated-market" data-view="simulated-market"><span aria-hidden="true">▥</span> Simulated market</a>
-      <a href="#ai-trading" data-view="ai-trading"><span aria-hidden="true">🤖</span> AI trading</a>
-      <a href="#real-market" data-view="real-market"><span aria-hidden="true">↗</span> Real account</a>
-      <a href="#scenarios" data-view="scenarios"><span aria-hidden="true">◇</span> Scenarios</a>
-      <a href="#copilot" data-view="copilot"><span aria-hidden="true">✧</span> Talk to Loki</a>
-      <a href="#advanced-terminal" data-view="advanced-terminal"><span aria-hidden="true">⌘</span> Advanced terminal</a>
-      <a href="#paper-planner" data-view="paper-planner"><span aria-hidden="true">⌁</span> Market planner</a>
-      <a href="#integrations" data-view="integrations"><span aria-hidden="true">⊞</span> Integrations</a>
-      <a href="#game" data-view="game"><span aria-hidden="true">🎮</span> Bored?</a>
+      <button type="button" class="nav-more" id="nav-more-toggle" aria-expanded="false" aria-controls="nav-more-group"><span aria-hidden="true">▣</span> More</button>
+      <div class="nav-more-group" id="nav-more-group" hidden>
+        <a href="#agent-council" data-view="agent-council"><span aria-hidden="true">✳</span> Agent council</a>
+        <a href="#simulated-market" data-view="simulated-market"><span aria-hidden="true">▥</span> Simulated market</a>
+        <a href="#ai-trading" data-view="ai-trading"><span aria-hidden="true">🤖</span> AI trading</a>
+        <a href="#real-market" data-view="real-market"><span aria-hidden="true">↗</span> Real account</a>
+        <a href="#scenarios" data-view="scenarios"><span aria-hidden="true">◇</span> Scenarios</a>
+        <a href="#copilot" data-view="copilot"><span aria-hidden="true">✧</span> Talk to Loki</a>
+        <a href="#advanced-terminal" data-view="advanced-terminal"><span aria-hidden="true">⌘</span> Advanced terminal</a>
+        <a href="#paper-planner" data-view="paper-planner"><span aria-hidden="true">⌁</span> Market planner</a>
+        <a href="#integrations" data-view="integrations"><span aria-hidden="true">⊞</span> Integrations</a>
+        <a href="#game" data-view="game"><span aria-hidden="true">🎮</span> Bored?</a>
+      </div>
     </nav>
     <div class="sidebar-context"><p class="eyebrow">CURRENT RESEARCH</p><strong id="sidebar-symbol">No asset loaded</strong><span id="sidebar-data">Import history in Quant lab</span></div>
     <div class="sidebar-bottom"><span class="status-dot"></span> <span id="sidebar-mode-label">Paper &amp; research</span><p id="sidebar-mode-detail">Separate practice accounts</p></div>
@@ -40,6 +43,17 @@
         <article class="metric"><p>Closed-trade win rate</p><strong id="winrate-metric">—</strong><small id="trades-metric">Target: 70% · not yet measured</small></article>
         <article class="metric"><p>Research verdict</p><strong id="verdict-metric" class="small-value">Awaiting evidence</strong><small>Historical evidence, never a guarantee</small></article>
       </div>
+      <div class="section-title metrics-heading"><div><p class="eyebrow">YOUR LATEST RUN / UNSEEN WINDOWS</p><h2>The evidence you produced.</h2></div><span class="caption">Separate from the trained book below.</span></div>
+      <section class="panel next-steps" id="next-steps-panel">
+        <div class="section-title"><div><p class="eyebrow">GET GOING / FOUR STEPS</p><h2>Next steps.</h2></div><span class="tag" id="next-steps-score">0 of 4 done</span></div>
+        <ol class="steps-list">
+          <li data-step="data"><span class="step-check" aria-hidden="true">○</span><div><a class="text-link" href="#strategy-lab">Import history</a> in Quant lab<span data-step-mark="data"></span></div></li>
+          <li data-step="run"><span class="step-check" aria-hidden="true">○</span><div>Run a walk-forward <a class="text-link" href="#strategy-lab">replay</a> and read the honest numbers<span data-step-mark="run"></span></div></li>
+          <li data-step="council"><span class="step-check" aria-hidden="true">○</span><div>Review it with the <a class="text-link" href="#agent-council">Agent council</a><span data-step-mark="council"></span></div></li>
+          <li data-step="journal"><span class="step-check" aria-hidden="true">○</span><div>Record a <a class="text-link" href="#paper-planner">paper decision</a> in the journal<span data-step-mark="journal"></span></div></li>
+        </ol>
+        <p class="caption" id="data-context-line">Data context: synthetic demo prices until you import history · your paper trades stay in this browser · last update <span id="data-context-time">—</span></p>
+      </section>
       <section class="panel" id="trained-book-panel">
         <div class="section-title"><div><p class="eyebrow">TRAINED STRATEGY BOOK</p><h2>Signed off on unseen data.</h2></div><span class="tag">Out-of-sample, per symbol</span></div>
         <p class="muted">Loki's live strategy book: per-asset parameters trained on years of history, verified on out-of-sample windows, then measured once more on the final 20% of history that no training step ever touched.</p>
@@ -73,6 +87,12 @@
           <div class="form-grid"><label>Starting capital<input name="initial_capital" type="number" min="1" max="1000000000" value="10000" required></label><label>Fee / side (bps)<input name="fee_bps" type="number" min="0" max="500" step="0.1" value="10" required></label><label>Slippage / side (bps)<input name="slippage_bps" type="number" min="0" max="500" step="0.1" value="5" required></label><label>Bars / year<select name="periods_per_year"><option value="365">Crypto · daily (365)</option><option value="252">Equities · daily (252)</option><option value="8760">Crypto · hourly (8,760)</option><option value="105120">Crypto · 5 minutes (105,120)</option></select></label></div>
           <div class="form-footer"><p class="caption">161–5,000 ordered bars · ISO 8601 timestamps with timezone · one asset per file</p><button class="button primary" id="run-research" type="submit">Evaluate strategy ↗</button></div>
         </form><p id="research-message" class="form-message" role="status"></p>
+        <div id="quant-csv-preview" hidden>
+          <div class="section-title"><div><p class="eyebrow">CSV CHECK / PREVIEW BEFORE THE RUN</p><h3 id="preview-title">Nothing chosen yet.</h3></div></div>
+          <div class="inline-metrics" id="preview-metrics"></div>
+          <p class="caption" id="preview-notes"></p>
+          <div class="button-row"><button type="button" class="button primary" id="preview-apply" disabled>Use this data →</button><button type="button" class="button secondary" id="preview-discard">Choose another file</button></div>
+        </div>
         <div id="research-details" hidden><div class="inline-metrics" id="research-summary"></div><div class="report-grid"><div><h3>Evidence &amp; limitations</h3><ul id="evidence-list"></ul></div><div><h3>Execution cost stress</h3><div id="stress-table"></div></div></div><details><summary>Inspect test windows and selected parameters</summary><div class="table-scroll"><table><thead><tr><th>Test start</th><th>Test end</th><th>Parameters</th><th>Net return</th></tr></thead><tbody id="fold-table"></tbody></table></div></details><div class="report-footer"><p id="report-statistics" class="caption"></p><div class="button-row"><button class="button secondary" type="button" id="download-report">Export report ↓</button><a class="button primary" href="#agent-council">Review with council →</a></div></div></div>
       </section>
       <section class="panel"><div class="section-title"><div><p class="eyebrow">02 / FACTOR DIAGNOSTICS &amp; SHADOW REPLAY</p><h2>Look beneath the return.</h2></div><button id="run-quant" type="button" class="button secondary">Analyze imported history →</button></div><p class="muted">Inspect the dataset’s momentum, volatility, and trend, then replay a transparent paper strategy with trading costs.</p><p id="quant-message" class="form-message" role="status">Uses the same imported dataset and cost assumptions as your research.</p><div id="quant-results" hidden></div></section>
@@ -127,6 +147,7 @@
           <button id="ai-reset" class="button secondary" type="button">Reset paper account</button>
         </div>
         <p id="ai-message" class="form-message" role="status"></p>
+        <p class="caption" id="ai-heartbeat">Runner idle — press Start AI trading to activate.</p>
         <p class="caption">Checks the market every 20 seconds while this tab is visible. Fills are simulated at the latest traded price, with the AI's own stop and target enforced. Decisions come from the same verified profiles shown on Overview.</p>
         <div class="dive-wait" id="dive-wait-chip" hidden>⏳ While the AI waits between checks, the Dive is waiting too — <a href="#game" class="text-link">play The Loki Dive ↗</a></div>
       </section>
@@ -161,11 +182,19 @@
       <div class="section-title"><div><p class="eyebrow">YOUR NEW STRATEGY ENGINE</p><h1>Advanced terminal</h1></div><a class="button secondary" href="/terminal/" target="_blank" rel="noopener">Open full terminal ↗</a></div>
       <p class="muted">Multi-factor signals, regime monitoring, historical training, Monte Carlo risk and Supabase persistence. The engine uses an independent local paper balance. Start the paper loop explicitly when ready.</p>
       <iframe class="integrated-terminal" data-src="/terminal/" title="Loki advanced paper terminal"></iframe>
+      <p class="caption" id="terminal-offline-note">Engine shows nothing live? It connects when the local launcher (launch_loki_fusion.py) runs on your machine. Balances and fills shown inside before connecting are locally generated demo values for the interface — not your account.</p>
     </section>
     <section id="paper-planner" class="workspace-view" aria-label="Market planner" hidden>
       <div class="section-title"><div><p class="eyebrow">MARKET STRUCTURE &amp; RISK</p><h1>Market planner</h1></div><a class="button secondary" href="/paper-tools" target="_blank" rel="noopener">Open full planner ↗</a></div>
       <p class="muted">Public market snapshots, strategy replays, the six-role council, a paper journal and daily loss-cap estimates.</p>
       <p><a class="text-link" href="/research-desk" target="_blank" rel="noopener">Open CSV agent and versioned rule workbench ↗</a> · <a class="text-link" href="/strategy-lab" target="_blank" rel="noopener">Open public-candle strategy lab ↗</a></p>
+      <section class="panel backup-panel">
+        <div class="section-title"><div><p class="eyebrow">YOUR DATA / SAFEKEEPING</p><h2>Backup &amp; restore.</h2></div></div>
+        <p class="muted">Everything Loki papers — research journal, AI trading, planner entries, Dive records — lives in this browser's localStorage on this device only. Nothing is uploaded anywhere. Export a backup file before clearing the browser or moving laptops; import it on another device to restore.</p>
+        <div class="button-row"><button class="button primary" id="backup-export" type="button">Export backup ↓</button><label class="button secondary" id="backup-import-label" for="backup-file">Import backup ↥<input id="backup-file" type="file" accept="application/json,.json" hidden></label></div>
+        <p id="backup-message" class="form-message" role="status"></p>
+        <p class="caption" id="backup-where">Saved in this browser (localStorage) · exported as a JSON file you keep wherever you like.</p>
+      </section>
       <iframe class="integrated-terminal" data-src="/paper-tools" title="Loki market planner"></iframe>
     </section>
     <section id="integrations" class="workspace-view" aria-label="Integrations" hidden>

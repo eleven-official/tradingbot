@@ -24,6 +24,7 @@
 
   const emit = () => {
     document.dispatchEvent(new CustomEvent('loki:currency', { detail: get() }));
+    updateFxNote();
   };
 
   const loadRate = async () => {
@@ -37,10 +38,23 @@
         if (aud > 0) {
           rate = aud;
           rateLive = data.live === true;
+          rateAt = new Date();
           emit();
         }
       }
     } catch { /* keep the fallback rate */ }
+  };
+
+  let rateAt = null;
+
+  const updateFxNote = () => {
+    const note = document.getElementById('loki-fx-note');
+    if (!note) return;
+    const when = rateAt ? ` · updated ${new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' }).format(rateAt)}` : '';
+    note.textContent = current === 'AUD'
+      ? `US$1 → A$${rate.toFixed(2)} · ${rateLive ? 'live rate' : 'fallback rate'}${when}`
+      : 'Ledger stays in US$ · showing plain USD';
+    note.title = 'Market prices and paper math are always USD. The AUD option only converts what is displayed.';
   };
 
   const get = () => ({ code: current, rate, rateLive });
@@ -82,8 +96,14 @@
       return button;
     };
     bar.append(mk('AUD'), mk('USD'));
+    const note = document.createElement('span');
+    note.className = 'cur-rate-note';
+    note.id = 'loki-fx-note';
+    note.setAttribute('aria-live', 'polite');
+    bar.append(note);
     document.body.appendChild(bar);
     updateButtons();
+    updateFxNote();
   };
 
   function updateButtons() {

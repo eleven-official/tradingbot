@@ -141,6 +141,42 @@ class DeploymentConfigTests(unittest.TestCase):
             "Bored? should sit at the very bottom of the navigation bar",
         )
 
+    def test_workspace_responsive_nav_next_steps_and_backup(self):
+        source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        # Nav: Overview / Quant lab / Paper portfolio stay visible; the rest is grouped under "More".
+        group_start = source.index('id="nav-more-group"')
+        for visible in ('data-view="overview"', 'data-view="strategy-lab"', 'data-view="portfolio"'):
+            self.assertLess(source.index(visible), group_start)
+        self.assertIn('id="nav-more-toggle"', source)
+        for grouped in ("agent-council", "simulated-market", "ai-trading", "real-market",
+                        "scenarios", "copilot", "advanced-terminal", "paper-planner", "integrations", "game"):
+            self.assertGreater(source.index(f'data-view="{grouped}"'), group_start, grouped)
+        # Account pill mounts into the topbar instead of floating over content.
+        auth_js = (ROOT / "static" / "js" / "loki_auth.js").read_text(encoding="utf-8")
+        self.assertIn(".topbar-status", auth_js)
+        # Next-steps panel with markers written at the moment each action succeeds.
+        self.assertIn('id="next-steps-panel"', source)
+        self.assertIn('id="data-context-line"', source)
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        for marker in ("loki_steps_data", "loki_steps_run", "loki_steps_council"):
+            self.assertIn(marker, workspace)
+        self.assertIn("loki_steps_journal", (ROOT / "static" / "js" / "planner.js").read_text(encoding="utf-8"))
+        # CSV preview before a replay.
+        self.assertIn('id="quant-csv-preview"', source)
+        self.assertIn('id="preview-apply"', source)
+        self.assertIn("function previewCsv", workspace)
+        # AI heartbeat, FX note, evidence links, backup/restore.
+        self.assertIn('id="ai-heartbeat"', source)
+        self.assertIn("loki-fx-note", (ROOT / "static" / "js" / "currency.js").read_text(encoding="utf-8"))
+        self.assertIn("EVIDENCE", workspace)
+        self.assertIn('id="backup-export"', source)
+        backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
+        self.assertIn("loki-fusion-paper-v1", backup)
+        self.assertIn("browser-backup", backup)
+        self.assertIn('id="terminal-offline-note"', source)
+        self.assertIn("/static/js/next_steps.js", source)
+        self.assertIn("/static/js/backup.js", source)
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance

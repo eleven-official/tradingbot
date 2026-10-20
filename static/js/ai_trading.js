@@ -30,6 +30,7 @@
   let timer = null;
   let busy = false;
   let nextCheckAt = 0;
+  let lastCheckAt = 0, lastCheckOk = null, lastCheckWhy = '';
 
   function loadState() {
     try {
@@ -137,6 +138,7 @@
       });
       if (!res.ok) {
         const detail = ((await res.json().catch(() => ({}))) || {}).detail;
+        lastCheckAt = Date.now(); lastCheckOk = false; lastCheckWhy = String(detail || 'AI feed unavailable').slice(0, 60);
         logLine(detail || 'AI feed unavailable — will retry.', 'warn');
         render();
         return;
@@ -182,8 +184,10 @@
       };
       state.curve.push({ t: Date.now(), e: equityNow() });
       if (state.curve.length > 240) state.curve.splice(0, state.curve.length - 240);
+      lastCheckAt = Date.now(); lastCheckOk = true; lastCheckWhy = '';
       render();
     } catch {
+      lastCheckAt = Date.now(); lastCheckOk = false; lastCheckWhy = 'connection hiccup';
       logLine('Connection hiccup — will retry.', 'warn');
       render();
     } finally {
@@ -459,6 +463,22 @@
     nextTag.hidden = !state.running;
     if (state.running && nextCheckAt) {
       nextTag.textContent = `next check in ${Math.max(0, Math.ceil((nextCheckAt - Date.now()) / 1000))}s`;
+    }
+    // visible heartbeat: is the runner active, when did it last check, why might it be quiet
+    const hb = $('ai-heartbeat');
+    if (hb) {
+      const inSecs = Math.max(0, Math.ceil((nextCheckAt - Date.now()) / 1000));
+      if (!state.running) {
+        hb.textContent = 'Runner idle — press Start AI trading to activate. It checks the market every 20 s and needs this tab visible.';
+      } else if (document.hidden) {
+        hb.textContent = 'Runner waiting — this tab is hidden, so Loki paused politely. It resumes the moment you come back.';
+      } else if (!lastCheckAt) {
+        hb.textContent = `Runner active · first check in ${inSecs}s · it only checks while this tab is visible`;
+      } else {
+        hb.textContent = `Runner active · last check ${fmtTime(lastCheckAt)}` +
+          (lastCheckOk === false ? ` · ${lastCheckWhy}` : ' · ok') +
+          ` · next in ${inSecs}s · needs this tab visible`;
+      }
     }
   }
 

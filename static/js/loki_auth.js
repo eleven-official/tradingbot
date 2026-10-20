@@ -12,6 +12,22 @@
   const linkStyle =
     'border:0;background:transparent;color:#8bdad4;font:600 12px Inter,system-ui,sans-serif;cursor:pointer;padding:2px 4px;border-radius:6px;';
 
+  const topbarPillStyle =
+    'display:inline-flex;align-items:center;gap:9px;padding:7px 13px;border-radius:999px;background:rgba(14,22,36,.94);color:#e7f0ff;' +
+    'border:1px solid rgba(139,218,212,.32);font:600 12px Inter,system-ui,sans-serif;white-space:nowrap;';
+
+  // Accounts live in the header (topbar) so they never float over page content.
+  const mount = (pill) => {
+    const host = document.querySelector('.topbar-status');
+    if (host) {
+      pill.style.cssText = topbarPillStyle;
+      host.appendChild(pill);
+    } else {
+      pill.style.cssText = pillStyle;
+      document.body.appendChild(pill);
+    }
+  };
+
   const buildSignedIn = (session) => {
     //
     // Personalize the home-page hero: greet the member by nickname.
@@ -40,6 +56,7 @@
       window.location.href = '/login';
     });
     pill.append(label, button);
+    mount(pill);
     return pill;
   };
 
@@ -55,6 +72,7 @@
     button.setAttribute('aria-label', 'Sign in');
     button.style.cssText = linkStyle + 'text-decoration:none;';
     pill.append(label, button);
+    mount(pill);
     return pill;
   };
 
@@ -66,7 +84,7 @@
       const res = await fetch('/api/auth/session', { cache: 'no-store' });
       if (res.status === 401) {
         if (guestMode) {
-          document.body.appendChild(buildGuest());
+          buildGuest();
           return;
         }
         window.location.href = '/login';
@@ -75,7 +93,7 @@
       if (res.ok) {
         const data = await res.json();
         if (data && data.enabled === false) {
-          document.body.appendChild(buildGuest());
+          buildGuest();
           return; // accounts not configured: open guest experience
         }
         session = data;
@@ -85,7 +103,7 @@
     } catch {
       return;
     }
-    if (session) document.body.appendChild(buildSignedIn(session));
+    if (session) buildSignedIn(session);
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
