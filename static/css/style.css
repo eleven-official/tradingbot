@@ -242,6 +242,17 @@
 .desk-checks li span{color:var(--muted)}
 .desk-execute-panel .button{margin-top:6px}
 .desk-log{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+/* watchlist sweep rows + the desk's council second opinion */
+.desk-sweep-grid{display:grid;gap:12px}
+.desk-sweep-row{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:rgba(255,255,255,0.02)}
+.desk-sweep-badges{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.desk-chip{font-size:10px;letter-spacing:0.04em;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.desk-sweep-line{font-size:12px;color:#c4d0da;margin-top:6px;line-height:1.55}
+.desk-sweep-line.veto{color:var(--red)}
+.desk-sweep-line.ok{color:var(--accent)}
+.desk-council .council-decision{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:rgba(255,255,255,0.02)}
+.desk-council .council-decision h3{margin:6px 0 8px}
+.desk-council .metrics{margin-top:12px}
 .desk-log-row{font-size:11px;color:#c4d0da;border-top:1px solid var(--line);padding:9px 2px 0;line-height:1.7;overflow-wrap:anywhere}
 .desk-log-row.error{color:var(--red)}
 .desk-log-title{margin-top:24px}

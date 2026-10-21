@@ -258,6 +258,23 @@
         <div class="section-title desk-log-title"><p class="eyebrow">DESK LOG (this session only — the browser keeps no history)</p></div>
         <div id="desk-log" class="desk-log"><p class="caption desk-log-empty">The log says empty because it is empty. Executions and refusals land here as they happen.</p></div>
       </section>
+      <section class="panel desk-council-panel">
+        <div class="section-title"><div><p class="eyebrow">04 / SECOND OPINION / THE AGENT COUNCIL</p><h2>Send the same bars to the council.</h2></div><span class="tag">Independent reviewers · hard rules</span></div>
+        <p class="muted">The desk's proposal is one read. The council is a different set of deterministic reviewers over the same public five-minute bars — quant, sentiment, risk, execution, then a director. It can disagree, and when it does, that is the point of asking.</p>
+        <button id="desk-council-run" class="button secondary" type="button">Second opinion from the council ↗</button>
+        <p id="desk-council-message" class="form-message" role="status"></p>
+        <div id="desk-council" class="desk-council"><p class="muted">No second opinion has run yet in this session. The council answers on evidence as of its own fetch and never counts toward the research-target gate.</p></div>
+      </section>
+      <section class="panel desk-sweep-panel">
+        <div class="section-title"><div><p class="eyebrow">05 / WATCHLIST SWEEP / UP TO SIX SYMBOLS</p><h2>Sweep a watchlist.</h2></div><span class="tag">Same five agents · per-row gates</span></div>
+        <p class="muted">One call reviews several instruments through the same five agents, independently, each row facing the same hard risk gates. A symbol whose feed answers nothing useful becomes an honest abstain and the sweep keeps going.</p>
+        <form id="desk-sweep-form" class="form-grid">
+          <label>Watchlist (comma separated, up to 6)<input id="desk-sweep-symbols" value="AAPL, MSFT, BTC/USDT" autocomplete="off" maxlength="120"></label>
+          <button id="desk-sweep-run" class="button primary" type="submit">Run sweep →</button>
+        </form>
+        <p id="desk-sweep-message" class="form-message" role="status"></p>
+        <div id="desk-sweep-results" class="desk-sweep-grid"><p class="muted">No sweep has run yet in this session.</p></div>
+      </section>
     </section>
     <section id="game" class="workspace-view" aria-label="Bored game" hidden>
       <div class="page-heading"><p class="eyebrow">BORED? / PLAY WHILE YOU WAIT</p><h1>Sink deeper than the crowd.</h1><p class="muted">Bored? A Krillion-style rare-answer trivia with unlimited dives. Waiting on a Loki scan? Name what nobody else would think of first.</p></div>

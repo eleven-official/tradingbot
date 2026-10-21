@@ -76,6 +76,10 @@ EVIDENCE_BARS_MAX = 400
 PERIODS_PER_YEAR_EQUITY = 19_656
 PERIODS_PER_YEAR_CRYPTO = 105_120
 
+# A sweep is a watchlist read, not a bulk job: six instruments at a time
+# keeps the call gentle on the public feeds and the log honest.
+DESK_SWEEP_MAX = 6
+
 # Open lexicon, weights in (-1, 1]; matched word-boundary case-insensitive
 # like the news desk's visible signal chips. Kept short and readable.
 _LEXICON: Tuple[Tuple[str, float], ...] = (
@@ -579,6 +583,18 @@ def _require_gate(request: Request) -> None:
         raise HTTPException(403, "Open the workspace through its access door first.")
 
 
+async def _desk_pipeline(normalized: str) -> Tuple[Dict[str, Any], ...]:
+    """The five-agent thread for one normalized symbol, verbatim JSON handoffs."""
+    news, technical, fundamentals = await asyncio.gather(
+        run_in_threadpool(news_agent, normalized),
+        run_in_threadpool(technical_agent, normalized),
+        run_in_threadpool(fundamentals_agent, normalized),
+    )
+    proposal = strategist(news, technical, fundamentals)
+    verdict = risk_manager(proposal, technical)
+    return news, technical, fundamentals, proposal, verdict
+
+
 @router.post("/run", include_in_schema=False)
 async def run_desk(request: Request, body: DeskRequest) -> Dict[str, Any]:
     """One public-data pipeline: news → technicals → fundamentals → proposal → risk."""
@@ -589,13 +605,7 @@ async def run_desk(request: Request, body: DeskRequest) -> Dict[str, Any]:
     except MarketFeedError as error:
         raise HTTPException(422, str(error)) from error
 
-    news, technical, fundamentals = await asyncio.gather(
-        run_in_threadpool(news_agent, normalized),
-        run_in_threadpool(technical_agent, normalized),
-        run_in_threadpool(fundamentals_agent, normalized),
-    )
-    proposal = strategist(news, technical, fundamentals)
-    verdict = risk_manager(proposal, technical)
+    news, technical, fundamentals, proposal, verdict = await _desk_pipeline(normalized)
 
     return {
         "mode": "trading-desk",
@@ -679,5 +689,64 @@ async def desk_evidence(request: Request, body: DeskRequest) -> Dict[str, Any]:
             "This evidence is exactly what the desk's agents quote — same fetch, same numbers, no second "
             "escalation. Bars are 5-minute public records and the annualization constant matches. "
             "It is information for a review, never advice."
+        ),
+    }
+
+
+class DeskSweepRequest(BaseModel):
+    """Up to a handful of watchlist entries the desk reviews in one call."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbols: List[str] = Field(min_length=1, max_length=DESK_SWEEP_MAX)
+
+
+@router.post("/sweep", include_in_schema=False)
+async def desk_sweep(request: Request, body: DeskSweepRequest) -> Dict[str, Any]:
+    """The same five agents, review after review, one call.
+
+    Rows are independent by construction: a symbol whose feed answers
+    nothing usable becomes an honest abstain row and the sweep keeps
+    going; a duplicate is marked skipped rather than reviewed twice.
+    Every row faces the same hard risk gates as a single run.
+    """
+    _require_gate(request)
+    rows: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in body.symbols:
+        compact = str(raw).strip().upper()
+        try:
+            normalized = normalize_symbol(compact)
+        except MarketFeedError as error:
+            rows.append({"symbol": compact, "status": "abstain", "error": str(error)[:160]})
+            continue
+        if normalized in seen:
+            rows.append({"symbol": normalized, "status": "skipped", "reason": "already reviewed once in this sweep"})
+            continue
+        seen.add(normalized)
+        try:
+            news, technical, fundamentals, proposal, verdict = await _desk_pipeline(normalized)
+            rows.append(
+                {
+                    "symbol": normalized,
+                    "status": "ok",
+                    "agents": {
+                        "news": {"status": news.get("status"), "score": news.get("score")},
+                        "technical": {"status": technical.get("status"), "score": technical.get("score")},
+                        "fundamentals": {"status": fundamentals.get("status"), "score": fundamentals.get("score")},
+                    },
+                    "proposal": {"side": proposal.get("side"), "qty": proposal.get("qty"), "score": proposal.get("score")},
+                    "verdict": {"approved": verdict["approved"], "reason": verdict["reason"]},
+                }
+            )
+        except Exception as error:  # one row's feed trouble never breaks the sweep
+            rows.append({"symbol": normalized, "status": "abstain", "error": str(error)[:160]})
+    return {
+        "mode": "desk-sweep",
+        "rows": rows,
+        "note": (
+            "One call, independent rows, the same published weights and the same hard gates per row. "
+            "Abstains are named, never guessed, and a sweep never places an order — proposals are "
+            "re-runnable one at a time on the desk above."
         ),
     }

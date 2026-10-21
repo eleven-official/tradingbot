@@ -228,9 +228,128 @@
     });
     const execButton = document.querySelector('#desk-exec');
     if (execButton) execButton.addEventListener('click', executeProposal);
+    const sweepForm = document.querySelector('#desk-sweep-form');
+    if (sweepForm) {
+      sweepForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        runSweep();
+      });
+    }
+    const councilButton = document.querySelector('#desk-council-run');
+    if (councilButton) councilButton.addEventListener('click', askCouncil);
     updateOrderCount();
     document.querySelector('#desk-note').textContent =
       'Agents read public feeds (Yahoo Finance search & chart, Binance Spot) and compute in code; no language model and no order moves from the server. Abstain means the feed was unusable, never a guess.';
+  }
+
+  // ------------------------------------------------------------------
+  // Watchlist sweep: one call, independent rows, same hard gates.
+  // ------------------------------------------------------------------
+  let sweepBusy = false;
+
+  function sweepCard(row) {
+    const card = element('article', null, 'desk-sweep-row');
+    const head = element('div', null, 'desk-agent-head');
+    head.append(element('p', String(row.symbol || 'SYMBOL'), 'eyebrow'), element('strong', STATUS_LABELS[String(row.status)] || String(row.status || '')));
+    card.append(head);
+    if (row.status === 'ok') {
+      const agents = row.agents || {};
+      const badges = element('p', null, 'desk-sweep-badges');
+      ['news', 'technical', 'fundamentals'].forEach((name) => {
+        const agent = agents[name] || {};
+        badges.append(element('span', `${name}: ${agent.status === 'ok' ? agent.score : STATUS_LABELS[String(agent.status)] || agent.status}`, 'desk-chip'));
+      });
+      card.append(badges);
+      const proposal = row.proposal || {};
+      const verdict = row.verdict || {};
+      card.append(
+        element('p', proposal.side && proposal.side !== 'hold' ? `Proposal: ${String(proposal.side).toUpperCase()} ${proposal.qty} ${row.symbol}` : `Proposal: ${proposal.side || 'hold'} (score ${proposal.score ?? '—'})`, 'desk-sweep-line'),
+        element('p', verdict.approved ? `Risk: approved — ${verdict.reason}` : `Risk: vetoed — ${verdict.reason}`, verdict.approved ? 'desk-sweep-line ok' : 'desk-sweep-line veto')
+      );
+    } else if (row.error) {
+      card.append(element('p', row.error, 'desk-sweep-line'));
+    } else if (row.reason) {
+      card.append(element('p', row.reason, 'desk-sweep-line'));
+    }
+    return card;
+  }
+
+  async function runSweep() {
+    if (sweepBusy) return;
+    const raw = (document.querySelector('#desk-sweep-symbols').value || '').trim();
+    const symbols = raw ? raw.split(',').map((item) => item.trim()).filter(Boolean) : [];
+    if (!symbols.length) {
+      message('#desk-sweep-message', 'Type a watchlist first — even one symbol works.', true);
+      return;
+    }
+    if (symbols.length > 6) {
+      message('#desk-sweep-message', 'Up to six per sweep — the public feeds stay gentle that way.', true);
+      return;
+    }
+    sweepBusy = true;
+    const button = document.querySelector('#desk-sweep-run');
+    button.disabled = true;
+    message('#desk-sweep-message', `Running the five agents across ${symbols.length} instrument${symbols.length === 1 ? '' : 's'} — rows answer independently…`);
+    try {
+      const answer = await request('/api/desk/sweep', { symbols });
+      document.querySelector('#desk-sweep-results').replaceChildren();
+      (answer.rows || []).forEach((row) => document.querySelector('#desk-sweep-results').append(sweepCard(row)));
+      const approved = (answer.rows || []).filter((row) => row.status === 'ok' && row.verdict && row.verdict.approved).length;
+      message('#desk-sweep-message', `Sweep read ${(answer.rows || []).length} rows — ${approved} approved proposal${approved === 1 ? '' : 's'} on paper. Nothing was executed; re-run a symbol above to take it further.`);
+    } catch (error) {
+      message('#desk-sweep-message', error.message || 'The sweep did not answer; nothing was invented.', true);
+    } finally {
+      sweepBusy = false;
+      button.disabled = false;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Second opinion: the council reviews the same instrument's public
+  // bars through its own deterministic reviewers. Independent read.
+  // ------------------------------------------------------------------
+  let councilBusy = false;
+
+  async function askCouncil() {
+    if (councilBusy) return;
+    const symbol = ((currentRun && currentRun.symbol) || document.querySelector('#desk-symbol').value || '').trim().toUpperCase();
+    if (!symbol) {
+      message('#desk-council-message', 'Run the desk for a symbol first, or type one above — the council needs evidence to review.', true);
+      return;
+    }
+    councilBusy = true;
+    const button = document.querySelector('#desk-council-run');
+    button.disabled = true;
+    message('#desk-council-message', `Gathering public bars for ${symbol} and waking the council reviewers…`);
+    try {
+      const evidence = await request('/api/desk/evidence', { symbol });
+      if (evidence.status && evidence.status !== 'ok') {
+        message('#desk-council-message', evidence.error || evidence.note || 'The public bars answered nothing usable — the council declined to review on invented evidence.', true);
+        return;
+      }
+      const report = await request('/api/fusion/council', {
+        bars: evidence.bars,
+        symbol: evidence.symbol,
+        config: { periods_per_year: evidence.periods_per_year },
+      });
+      const target = document.querySelector('#desk-council');
+      target.replaceChildren();
+      const director = report.director || {};
+      const decision = element('div', null, 'council-decision' + (director.decision === 'paper_proposal' ? '' : ' wait'));
+      decision.append(element('p', 'DIRECTOR / ' + human(director.decision || '').toUpperCase(), 'eyebrow'), element('h3', director.decision === 'paper_proposal' ? 'The council would take this to a paper proposal.' : 'The council waits for a stronger case.'), element('p', director.summary || ''));
+      target.append(decision);
+      const strip = element('div', null, 'metrics');
+      (report.analysts || []).forEach((analyst) => {
+        strip.append(metricCard(analyst.title || human(analyst.role || ''), analyst.status || '—', (analyst.notes && analyst.notes[0]) || (analyst.summary || analyst.reason || 'reviewed on the live bars')));
+      });
+      target.append(strip);
+      message('#desk-council-message', `Council review complete on the same fetch the desk quotes (evidence as of ${report.as_of}). It never counts toward the research-target gate.`);
+    } catch (error) {
+      message('#desk-council-message', error.message || 'The council did not answer; nothing was invented.', true);
+    } finally {
+      councilBusy = false;
+      button.disabled = false;
+    }
   }
 
   if (document.readyState === 'loading') {

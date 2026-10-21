@@ -9,6 +9,7 @@ trace arrives from public data, execution is the browser's click alone.
 import re
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import loki.api.trading_desk as module
@@ -446,3 +447,289 @@ class TestCouncilPanelWiring:
             "periods_per_year:liveEvidence.periods_per_year",
         ):
             assert needed in js, f"workspace.js is missing {needed}"
+
+
+# --------------------------------------------------------------------------
+# features round two: watchlist sweep + council second opinion
+# --------------------------------------------------------------------------
+class TestSweepEndpoint:
+    def test_sweep_requires_the_access_door(self):
+        fresh = TestClient(app)
+        answer = fresh.post("/api/desk/sweep", json={"symbols": ["AAPL"]})
+        assert answer.status_code == 403
+
+    def test_empty_watchlist_is_a_422(self):
+        gate()
+        answer = client.post("/api/desk/sweep", json={"symbols": []})
+        assert answer.status_code == 422
+
+    def test_seven_symbols_is_a_422(self):
+        gate()
+        answer = client.post("/api/desk/sweep", json={"symbols": ["AAPL", "MSFT", "KO", "PEP", "TSLA", "XOM", "JNJ"]})
+        assert answer.status_code == 422
+
+    def test_extra_fields_are_refused(self):
+        gate()
+        answer = client.post("/api/desk/sweep", json={"symbols": ["AAPL"], "side": "buy"})
+        assert answer.status_code == 422
+
+    def test_unreadable_symbols_become_honest_abstain_rows(self):
+        gate()
+        answer = client.post("/api/desk/sweep", json={"symbols": ["NOT A SYMBOL"]})
+        assert answer.status_code == 200
+        rows = answer.json()["rows"]
+        assert len(rows) == 1
+        assert rows[0]["status"] == "abstain"
+        assert rows[0]["symbol"] == "NOT A SYMBOL"
+        assert rows[0]["error"]
+
+    def test_duplicates_are_skipped_and_said_so(self, monkeypatch):
+        gate()
+        monkeypatch.setattr(module, "_yahoo_bars", lambda symbol: list(_fake_bars(70)))
+        monkeypatch.setattr(module, "news_agent", lambda symbol: dict(NEWS_OK))
+        monkeypatch.setattr(module, "fundamentals_agent", lambda symbol: dict(FUND_OK_CHEAP))
+        answer = client.post("/api/desk/sweep", json={"symbols": ["AAPL", "aapl"]})
+        assert answer.status_code == 200
+        rows = answer.json()["rows"]
+        assert [row["status"] for row in rows] == ["ok", "skipped"]
+        assert "once" in rows[1]["reason"]
+
+    def test_rows_are_independent_when_one_feed_explodes(self, monkeypatch):
+        gate()
+        monkeypatch.setattr(module, "_yahoo_bars", lambda symbol: list(_fake_bars(70)))
+        monkeypatch.setattr(module, "fundamentals_agent", lambda symbol: dict(FUND_OK_CHEAP))
+
+        def exploding_news(symbol):
+            if symbol == "MSFT":
+                raise RuntimeError("feed exploded")
+            return dict(NEWS_OK)
+
+        monkeypatch.setattr(module, "news_agent", exploding_news)
+        answer = client.post("/api/desk/sweep", json={"symbols": ["AAPL", "MSFT"]})
+        assert answer.status_code == 200
+        rows = answer.json()["rows"]
+        assert rows[0]["status"] == "ok"
+        assert rows[0]["symbol"] == "AAPL"
+        assert rows[1]["status"] == "abstain"
+        assert "feed exploded" in rows[1]["error"]
+
+    def test_two_ok_rows_carry_proposals_with_the_same_gates(self, monkeypatch):
+        gate()
+        monkeypatch.setattr(module, "_yahoo_bars", lambda symbol: list(_fake_bars(70)))
+        monkeypatch.setattr(module, "news_agent", lambda symbol: dict(NEWS_OK))
+        monkeypatch.setattr(module, "fundamentals_agent", lambda symbol: dict(FUND_OK_CHEAP))
+        answer = client.post("/api/desk/sweep", json={"symbols": ["AAPL", "MSFT"]})
+        rows = answer.json()["rows"]
+        for row in rows:
+            assert row["status"] == "ok"
+            assert set(row["agents"]) == {"news", "technical", "fundamentals"}
+            assert row["proposal"]["side"] in ("buy", "sell", "hold")
+            assert "approved" in row["verdict"]
+
+    def test_the_note_says_what_a_sweep_is_not(self):
+        gate()
+        answer = client.post("/api/desk/sweep", json={"symbols": ["NOT A SYMBOL"]})
+        assert answer.status_code == 200
+        assert "never places an order" in answer.json()["note"]
+
+
+class TestStrategistMatrix:
+    """The published formula pinned across a grid — renormalization included."""
+
+    @staticmethod
+    def _agent(defn):
+        if defn is None:
+            return {"agent": "news", "status": "abstain", "score": None}
+        status, score = defn
+        return {"agent": "news", "status": status, "score": score}
+
+    @pytest.mark.parametrize(
+        "news_def,tech_def,fund_def",
+        [
+            (("ok", 0.9), ("ok", 0.3), ("ok", 0.1)),
+            (("ok", -0.4), ("ok", -0.8), ("ok", -0.3)),
+            (("ok", 0.0), ("ok", 0.0), ("ok", 0.0)),
+            (("ok", 0.5), ("ok", 0.05), None),
+            (("ok", 0.9), None, ("ok", -0.1)),
+            (None, ("ok", 0.7), ("ok", 0.5)),
+            (("ok", 0.1), ("ok", 0.9), None),
+            (("abstain", None), ("ok", -0.6), ("ok", -0.2)),
+            (("ok", 1.0), ("ok", 1.0), ("ok", 1.0)),
+            (("ok", -1.0), ("ok", -1.0), ("ok", -1.0)),
+        ],
+    )
+    def test_side_and_score_follow_the_published_formula(self, news_def, tech_def, fund_def):
+        news = self._agent(news_def)
+        tech = self._agent(tech_def)
+        fund = self._agent(fund_def)
+        # the test computes the expectation independently, from the base weights
+        votes = {"news": news["score"], "technical": tech["score"], "fundamentals": fund["score"]}
+        weights = module.AGENT_WEIGHTS
+        present = {name: value for name, value in votes.items() if isinstance(value, (int, float))}
+        expected_total = sum(weights[name] for name in present)
+        expected_composite = module._clamp(
+            sum(weights[name] * value for name, value in present.items()) / expected_total
+        )
+        expected_side = (
+            "buy" if expected_composite >= module.BUY_THRESHOLD else
+            "sell" if expected_composite <= module.SELL_THRESHOLD else
+            "hold"
+        )
+
+        proposal = module.strategist(news, tech, fund)
+        assert proposal["score"] == pytest.approx(round(expected_composite, 3), abs=1e-9)
+        assert proposal["side"] == expected_side
+        assert sum(proposal["weights_used"].values()) == pytest.approx(1.0, abs=1e-12)
+        if expected_side == "hold":
+            assert proposal["status"] == "hold"
+        else:
+            assert proposal["status"] == "ok"
+
+    def test_every_agent_abstaining_stands_down(self):
+        abstain = self._agent(None)
+        proposal = module.strategist(abstain, abstain, abstain)
+        assert proposal["status"] == "stand_down"
+        assert proposal["side"] == "hold"
+        assert proposal["score"] is None
+        assert "stands down" in " ".join(proposal["reasons"])
+
+
+class TestBarsFetchers:
+    """Both public bar feeders, pinned offline against synthetic responses."""
+
+    @staticmethod
+    def _chart_payload(count, drop_close_at=None, invert_at=None):
+        stamps, opens, highs, lows, closes, volumes = [], [], [], [], [], []
+        for index in range(count):
+            stamps.append(1_760_000_000 + 300 * index)
+            opens.append(100.0 + index)
+            highs.append(101.0 + index)
+            lows.append(99.0 + index)
+            closes.append(100.0 + index)
+            volumes.append(1000 + index)
+        if drop_close_at is not None:
+            closes[drop_close_at] = None
+        if invert_at is not None:
+            highs[invert_at] = 0.5  # a high below open/close is not a candle
+        return {
+            "chart": {
+                "result": [
+                    {
+                        "timestamp": stamps,
+                        "indicators": {"quote": [{"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}]},
+                    }
+                ]
+            }
+        }
+
+    def test_yahoo_bars_drop_junk_rows_and_keep_order(self, monkeypatch):
+        payload = self._chart_payload(70, drop_close_at=1, invert_at=3)
+        monkeypatch.setattr(module, "_http_json", lambda url: payload)
+        assert len(module._yahoo_bars("AAPL")) == 68
+        # clear-eyed about what was offered: 68 usable bars of 70
+
+    def test_yahoo_bars_refuse_a_window_thin_for_the_council(self, monkeypatch):
+        payload = self._chart_payload(40)
+        monkeypatch.setattr(module, "_http_json", lambda url: payload)
+        with pytest.raises(module.MarketFeedError, match="council needs"):
+            module._yahoo_bars("AAPL")
+
+    def test_yahoo_bars_cap_at_four_hundred_and_convert_the_clock(self, monkeypatch):
+        payload = self._chart_payload(430)
+        monkeypatch.setattr(module, "_http_json", lambda url: payload)
+        bars = module._yahoo_bars("AAPL")
+        assert len(bars) == module.EVIDENCE_BARS_MAX
+        stamps = [row["timestamp"] for row in bars]
+        assert stamps == sorted(stamps) and len(set(stamps)) == len(stamps)
+        assert stamps[0].endswith("+00:00")  # UTC, ISO 8601
+
+    def test_yahoo_bars_missing_volume_becomes_zero(self, monkeypatch):
+        payload = self._chart_payload(70)
+        payload["chart"]["result"][0]["indicators"]["quote"][0]["volume"] = [None] * 70
+        monkeypatch.setattr(module, "_http_json", lambda url: payload)
+        bars = module._yahoo_bars("AAPL")
+        assert all(row["volume"] == 0.0 for row in bars)
+
+    def test_yahoo_bars_malformed_payload_is_an_honest_feed_error(self, monkeypatch):
+        monkeypatch.setattr(module, "_http_json", lambda url: {"chart": {"result": []}})
+        with pytest.raises(module.MarketFeedError, match="no usable public bars"):
+            module._yahoo_bars("AAPL")
+
+    def test_binance_bars_parse_kline_rows_and_skip_junk(self, monkeypatch):
+        import loki.api.binance_market_data as binance
+
+        valid = [
+            [1_760_000_000_000 + 300_000 * i, "100", "101", "99", "100.5", "1000"] for i in range(63)
+        ]
+        klines = valid[:1] + [["not even a row"]] + valid[1:2] + [[1_760_000_030_000, "oops", "101", "99", "100.5", "1000"]] + valid[2:]
+        monkeypatch.setattr(binance, "_fetch_json", lambda path, params: klines)
+        bars = module._binance_bars("BTC/USDT")
+        assert len(bars) == 63
+        stamps = [row["timestamp"] for row in bars]
+        assert stamps == sorted(stamps) and len(set(stamps)) == len(stamps)
+
+    def test_binance_adapter_error_is_rewrapped_for_the_desk(self, monkeypatch):
+        import loki.api.binance_market_data as binance
+
+        def rate_limited(path, params):
+            raise binance.MarketDataError("Binance rate limited this IP")
+
+        monkeypatch.setattr(binance, "_fetch_json", rate_limited)
+        with pytest.raises(module.MarketFeedError) as caught:
+            module._binance_bars("BTC/USDT")
+        assert "rate limited" in str(caught.value)
+
+    def test_binance_short_window_refused_like_yahoo(self, monkeypatch):
+        import loki.api.binance_market_data as binance
+
+        monkeypatch.setattr(binance, "_fetch_json", lambda path, params: [[1_760_000_000_000, "1", "2", "1", "2", "5"]])
+        with pytest.raises(module.MarketFeedError, match="council needs"):
+            module._binance_bars("BTC/USDT")
+
+    def test_evidence_bars_are_ascending_and_unique_end_to_end(self, monkeypatch):
+        gate()
+        monkeypatch.setattr(module, "_yahoo_bars", lambda symbol: list(_fake_bars(65)))
+        monkeypatch.setattr(module, "news_agent", lambda symbol: dict(NEWS_OK))
+        monkeypatch.setattr(module, "fundamentals_agent", lambda symbol: dict(FUND_ABSTAIN))
+        evidence = client.post("/api/desk/evidence", json={"symbol": "AAPL"}).json()
+        stamps = [row["timestamp"] for row in evidence["bars"]]
+        assert stamps == sorted(stamps) and len(set(stamps)) == len(stamps)
+
+    def test_council_rejects_a_sixty_bar_window_but_takes_sixty_one(self):
+        for count, expected_status in ((60, 422), (61, 200)):
+            answer = client.post(
+                "/api/fusion/council",
+                json={"bars": _fake_bars(count), "symbol": "FAKE/USDT", "config": {"periods_per_year": module.PERIODS_PER_YEAR_EQUITY}},
+            )
+            assert answer.status_code == expected_status
+
+
+class TestDeskCouncilOpinionWiring:
+    def test_index_wires_both_new_panels_inside_the_desk_before_the_game(self):
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        for needed in (
+            "desk-council-run",
+            "desk-council-message",
+            "desk-council",
+            "desk-sweep-form",
+            "desk-sweep-symbols",
+            "desk-sweep-run",
+            "desk-sweep-message",
+            "desk-sweep-results",
+        ):
+            assert needed in html, f"index.html is missing {needed}"
+        assert html.index("desk-council-run") < html.index('id="game"')
+        assert html.index("desk-sweep-run") < html.index('id="game"')
+
+    def test_desk_script_carries_both_features(self):
+        js = (ROOT / "static" / "js" / "desk.js").read_text(encoding="utf-8")
+        for needed in (
+            "runSweep",
+            "askCouncil",
+            "/api/desk/sweep",
+            "/api/desk/evidence",
+            "/api/fusion/council",
+            "desk-sweep-run",
+            "desk-council-run",
+        ):
+            assert needed in js, f"desk.js is missing {needed}"
