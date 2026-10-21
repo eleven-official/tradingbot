@@ -257,3 +257,43 @@
 .desk-log-row.error{color:var(--red)}
 .desk-log-title{margin-top:24px}
 @media(max-width:760px){.desk-run-panel .form-grid{grid-template-columns:1fr}}
+
+/* Workspace polish: readable cards and controls at narrow content widths. */
+.button{border-radius:9px;white-space:normal;text-align:center}
+.page-heading{max-width:100%;padding:36px 0 28px}
+.page-heading h1{font-size:clamp(32px,4vw,52px);line-height:1.13;letter-spacing:-1.6px;margin:12px 0 18px;text-wrap:balance}
+.page-heading>.muted{max-width:76ch}
+.panel{border-radius:14px}
+.panel>.section-title{align-items:flex-start;flex-wrap:wrap}
+.section-title>div{min-width:0}
+.section-title .tag{white-space:normal;max-width:100%}
+.metric strong{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.topbar{padding:14px 0;flex-wrap:wrap}
+.topbar-status{flex-wrap:wrap;gap:10px}
+.floor-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:16px}
+.floor-cat{padding:16px;background:linear-gradient(145deg,#142128,#10171d)}
+.floor-title{font-weight:600;letter-spacing:1px}
+.floor-tile{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding:12px 0}
+.floor-tile .watch-price{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600}
+.floor-tile .chip{grid-column:1/-1;justify-self:start;max-width:100%;white-space:normal}
+.floor-tile .watch-sub{min-width:0;overflow-wrap:anywhere}
+.desk-run-panel,.desk-sweep-panel{background:linear-gradient(125deg,#14251f 0,var(--panel) 65%)}
+.desk-sweep-panel .form-grid{grid-template-columns:minmax(0,1fr) auto;align-items:end;margin-top:20px}
+.desk-sweep-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));margin-top:20px}
+.desk-sweep-row{display:flex;flex-direction:column;gap:6px;padding:20px}
+.desk-sweep-row>.button{margin-top:auto;align-self:flex-start}
+.desk-chip{font-size:11px;overflow-wrap:anywhere}
+.desk-council .metrics{grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))}
+.desk-council .metric strong{font-size:18px;letter-spacing:0;line-height:1.4}
+#live-evidence-strip>.metrics{grid-column:1/-1}
+.desk-agent-head{align-items:flex-start}
+.desk-agent-head strong{overflow-wrap:anywhere}
+@media(max-width:760px){
+  .page-heading{padding:28px 0 22px}
+  .page-heading h1{font-size:34px;letter-spacing:-1px}
+  .panel{padding:20px}
+  .desk-sweep-panel .form-grid{grid-template-columns:1fr}
+  .desk-sweep-panel .button,.desk-run-panel .button{width:100%}
+  .topbar-status{gap:8px}
+  .floor-grid{grid-template-columns:1fr}
+}
