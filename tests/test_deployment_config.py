@@ -360,6 +360,17 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn('repo_dir / "static"', source)
         self.assertIn('repo_dir / "templates"', source)
 
+    def test_login_page_explains_guest_mode_before_any_attempt(self):
+        # On a deployment without Supabase credentials the sign-in attempt
+        # honestly says so — but that must not be the FIRST time the visitor
+        # learns it. The /api/auth/session probe answers {"enabled": false} in
+        # guest mode, and the page renders that state up front.
+        template = (ROOT / "templates" / "login.html").read_text(encoding="utf-8")
+        self.assertIn("me.enabled === false", template)
+        self.assertIn("the workspace works as a guest meanwhile", template)
+        self.assertIn('id="guest-link"', template)  # the honest exit stays
+
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -130,6 +130,11 @@
             msg.className = 'ok';
             msg.textContent = `Already signed in as ${me.nickname || me.email} — opening the workspace…`;
             setTimeout(() => { window.location.href = '/#overview'; }, 900);
+          } else if (me.enabled === false) {
+            // Guest-mode deployment (no Supabase credentials): say so up front
+            // instead of letting the first sign-in attempt read as "broken".
+            msg.className = 'ok';
+            msg.textContent = 'Accounts are not configured on this deployment — the workspace works as a guest meanwhile, and the guest button below still opens everything.';
           }
         }
       } catch { /* not signed in; show the form */ }
