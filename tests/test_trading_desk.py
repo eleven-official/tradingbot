@@ -295,3 +295,154 @@ class TestPanelWiring:
     def test_desk_script_is_included(self):
         html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
         assert "static/js/desk.js?v={{ version }}" in html
+
+
+# --------------------------------------------------------------------------
+# live evidence for the agent council
+# --------------------------------------------------------------------------
+from datetime import datetime, timedelta, timezone  # noqa: E402 - evidence helpers
+
+EVIDENCE_START = datetime(2026, 10, 21, 15, 0, tzinfo=timezone.utc)
+
+
+def _fake_bars(count: int, base: float = 100.0) -> list:
+    """Clean ascending OHLCV rows in the council's exact bar contract."""
+    rows = []
+    for index in range(count):
+        open_ = base + 0.1 * index
+        rows.append(
+            {
+                "timestamp": (EVIDENCE_START + timedelta(minutes=5 * index)).isoformat(),
+                "open": open_,
+                "high": open_ + 1.0,
+                "low": open_ - 0.25,
+                "close": open_ + 0.4,
+                "volume": 1000.0 + index,
+            }
+        )
+    return rows
+
+
+class TestBarRow:
+    def test_valid_rows_pass_and_keep_the_contract_shape(self):
+        row = module._bar_row(EVIDENCE_START.isoformat(), 10.0, 11.0, 9.5, 10.4, 500)
+        assert row == {
+            "timestamp": EVIDENCE_START.isoformat(),
+            "open": 10.0,
+            "high": 11.0,
+            "low": 9.5,
+            "close": 10.4,
+            "volume": 500.0,
+        }
+
+    def test_inconsistent_candles_are_dropped_not_kept(self):
+        assert module._bar_row(EVIDENCE_START.isoformat(), 10.0, 9.0, 9.5, 10.4, 500) is None
+
+    def test_junk_values_are_dropped(self):
+        assert module._bar_row(EVIDENCE_START.isoformat(), "n/a", 11.0, 9.5, 10.4, 500) is None
+
+    def test_zero_prices_and_missing_volume_are_handled(self):
+        assert module._bar_row(EVIDENCE_START.isoformat(), 0.0, 1.0, 0.5, 0.9, None) is None
+
+
+class TestEvidenceEndpoint:
+    def test_evidence_requires_the_access_door(self):
+        fresh = TestClient(app)
+        answer = fresh.post("/api/desk/evidence", json={"symbol": "AAPL"})
+        assert answer.status_code == 403
+
+    def test_bad_symbols_answer_the_human_422(self):
+        gate()
+        answer = client.post("/api/desk/evidence", json={"symbol": "A B C"})
+        assert answer.status_code == 422
+
+    def test_evidence_returns_bars_and_the_desk_read_from_one_fetch(self, monkeypatch):
+        gate()
+        fake = _fake_bars(70)
+        monkeypatch.setattr(module, "_yahoo_bars", lambda symbol: list(fake))
+        monkeypatch.setattr(module, "news_agent", lambda symbol: dict(NEWS_OK))
+        monkeypatch.setattr(module, "fundamentals_agent", lambda symbol: dict(FUND_OK_CHEAP))
+
+        answer = client.post("/api/desk/evidence", json={"symbol": "aapl"})
+        assert answer.status_code == 200
+        evidence = answer.json()
+        assert evidence["mode"] == "desk-evidence"
+        assert evidence["status"] == "ok"
+        assert evidence["symbol"] == "AAPL"
+        assert evidence["bars"] == fake
+        assert "Yahoo Finance public chart" in evidence["bars_source"]
+        assert evidence["periods_per_year"] == module.PERIODS_PER_YEAR_EQUITY
+        # the technical read used the SAME bars, so its last price is the last close
+        assert evidence["technical"]["status"] == "ok"
+        assert abs(evidence["technical"]["facts"]["last"] - (fake[-1]["open"] + 0.4)) < 1e-9
+        assert evidence["news"]["status"] == "ok"
+        assert "never advice" in evidence["note"]
+
+    def test_crypto_path_uses_the_crypto_clock(self, monkeypatch):
+        gate()
+        fake = _fake_bars(80)
+        monkeypatch.setattr(module, "_binance_bars", lambda symbol: list(fake))
+        answer = client.post("/api/desk/evidence", json={"symbol": "BTC/USDT"})
+        assert answer.status_code == 200
+        evidence = answer.json()
+        assert evidence["periods_per_year"] == module.PERIODS_PER_YEAR_CRYPTO
+        assert "Binance Spot public klines" in evidence["bars_source"]
+        # no quarterly reports on crypto rails, exactly as published
+        assert evidence["fundamentals"]["status"] == "abstain"
+
+    def test_insufficient_bars_abstains_inside_a_200(self, monkeypatch):
+        gate()
+        monkeypatch.setattr(module, "news_agent", lambda symbol: dict(NEWS_OK))
+        monkeypatch.setattr(module, "fundamentals_agent", lambda symbol: dict(FUND_ABSTAIN))
+
+        def only_three(symbol):
+            raise module.MarketFeedError("only 3 usable 5-minute bars right now — the council needs at least 61 clean bars")
+
+        monkeypatch.setattr(module, "_yahoo_bars", only_three)
+        answer = client.post("/api/desk/evidence", json={"symbol": "AAPL"})
+        assert answer.status_code == 200
+        evidence = answer.json()
+        assert evidence["status"] == "abstain"
+        assert "bars" not in evidence
+        assert "only 3" in evidence["error"]
+        assert "invented" in evidence["note"]
+        assert evidence["technical"]["status"] == "abstain"
+
+    def test_council_engine_reviews_the_public_bar_shape_offline(self):
+        # The whole point of the upgrade, pinned: the desk's public bars are
+        # shaped exactly like the council's dataset evidence — 61+ rows slot
+        # straight into the deterministic role pipeline with no spare glue.
+        bars = _fake_bars(90)
+        answer = client.post(
+            "/api/fusion/council",
+            json={"bars": bars, "symbol": "FAKE/USDT", "config": {"periods_per_year": module.PERIODS_PER_YEAR_EQUITY}},
+        )
+        assert answer.status_code == 200
+        report = answer.json()
+        assert report["engine"] == "deterministic_role_pipeline"
+        assert report["as_of"]
+        assert report["director"]["decision"] in ("paper_proposal", "wait")
+        assert [analyst["role"] for analyst in report["analysts"]]
+        assert report["risk_checks"]
+
+
+class TestCouncilPanelWiring:
+    def test_index_wires_the_live_evidence_panel_before_the_bars_review(self):
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        for needed in ("live-evidence-symbol", "live-evidence-run", "live-evidence-message", "live-evidence-strip"):
+            assert needed in html, f"index.html is missing {needed}"
+        live_marker = html.index("LIVE EVIDENCE / ONE FETCH")
+        reviewers_marker = html.index("RESEARCH / SIGNAL / RISK / EXECUTION")
+        miro_marker = html.index("NATIVE MIROFISH CODE")
+        assert miro_marker < live_marker < reviewers_marker
+
+    def test_workspace_carries_the_live_evidence_path(self):
+        js = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        for needed in (
+            "runLiveEvidence",
+            "renderEvidenceStrip",
+            "/api/desk/evidence",
+            "live-evidence-run",
+            "periods_per_year:liveEvidence.periods_per_year",
+        ):
+            assert needed in js, f"workspace.js is missing {needed}"

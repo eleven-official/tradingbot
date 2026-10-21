@@ -28,8 +28,11 @@ information, never advice; every agent that cannot see its data says
 from __future__ import annotations
 
 import asyncio
+import math
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Sequence, Tuple
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -63,6 +66,15 @@ STRONG_SCORE = 0.60
 NEWS_LIMIT = 10
 MIN_CLOSES = 26  # 25 for the SMA plus one more for the RSI deltas
 CLOSES_MAX = 400
+
+# The council's live-evidence window: it needs at least 61 clean bars, the
+# providers are asked for a few days of 5-minute records, and rows are capped.
+EVIDENCE_BARS_MIN = 61
+EVIDENCE_BARS_MAX = 400
+# Bars a year for annualized factor accounting: equities trade 6.5 regular
+# hours a day (~78 five-minute bars) on ~252 trading days; crypto never stops.
+PERIODS_PER_YEAR_EQUITY = 19_656
+PERIODS_PER_YEAR_CRYPTO = 105_120
 
 # Open lexicon, weights in (-1, 1]; matched word-boundary case-insensitive
 # like the news desk's visible signal chips. Kept short and readable.
@@ -197,10 +209,38 @@ def technical_score(last: float, fast: float, slow: float, rsi: float) -> float:
     return _clamp(score)
 
 
-def _yahoo_closes(symbol: str) -> List[float]:
-    """Public 5-minute closes for one equity-style symbol (range 2d)."""
-    from urllib.parse import quote, urlencode
+def _bar_row(timestamp_iso: str, o: Any, h: Any, l: Any, c: Any, v: Any) -> Dict[str, Any] | None:
+    """One validated public bar, or None when the provider row is junk.
 
+    The shape matches the council's bar contract exactly: ascending ISO
+    timestamps, positive OHLC, non-negative volume, low <= open/close <= high.
+    """
+    try:
+        open_, high, low, close, volume = float(o), float(h), float(l), float(c), float(v or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(value) for value in (open_, high, low, close, volume)):
+        return None
+    if min(open_, high, low, close) <= 0 or volume < 0:
+        return None
+    if not low <= min(open_, close) <= max(open_, close) <= high:
+        return None
+    return {
+        "timestamp": timestamp_iso,
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
+        "volume": volume,
+    }
+
+
+def _yahoo_bars(symbol: str) -> List[Dict[str, Any]]:
+    """Public 5-minute OHLCV bars for one equity-style symbol (range 2d).
+
+    Same pinned public chart the desk already reads; the bars feed both the
+    technical agent's averages and the council's live evidence cache.
+    """
     url = (
         f"{YAHOO_CHART_URL}/{quote(symbol, safe='')}?"
         f"{urlencode({'range': '2d', 'interval': '5m', 'includePrePost': 'false'})}"
@@ -210,51 +250,73 @@ def _yahoo_closes(symbol: str) -> List[float]:
         result = payload["chart"]["result"]
         if isinstance(result, list):
             result = result[0]
-        raw = result["indicators"]["quote"][0].get("close") or []
-        closes = [float(value) for value in raw if value is not None]
-    except (KeyError, IndexError, TypeError, ValueError) as error:
-        raise MarketFeedError(f"no usable public closes for {symbol}") from error
-    if len(closes) < MIN_CLOSES:
-        raise MarketFeedError(
-            f"only {len(closes)} usable 5-minute closes right now — not enough for the desk's averages"
+        quote_block = result["indicators"]["quote"][0]
+        stamps = result.get("timestamp") or []
+        opens, highs, lows, closes, volumes = (
+            quote_block.get(key) or [] for key in ("open", "high", "low", "close", "volume")
         )
-    return closes[-CLOSES_MAX:]
+    except (KeyError, IndexError, TypeError, AttributeError, ValueError) as error:
+        raise MarketFeedError(f"no usable public bars for {symbol}") from error
+    rows: List[Dict[str, Any]] = []
+    for index, stamp in enumerate(stamps):
+        try:
+            o, h, l, c, v = opens[index], highs[index], lows[index], closes[index], volumes[index]
+        except IndexError:
+            break
+        if o is None or h is None or l is None or c is None or stamp is None:
+            continue
+        stamp_iso = datetime.fromtimestamp(float(stamp), tz=timezone.utc).isoformat()
+        row = _bar_row(stamp_iso, o, h, l, c, v)
+        if row is None:
+            continue
+        rows.append(row)
+    if len(rows) < EVIDENCE_BARS_MIN:
+        raise MarketFeedError(
+            f"only {len(rows)} usable 5-minute bars right now — the council needs at least {EVIDENCE_BARS_MIN} clean bars"
+        )
+    return rows[-EVIDENCE_BARS_MAX:]
 
 
-def _binance_closes(pair: str) -> List[float]:
-    """Public 5-minute closes for one crypto pair via the site's adapter."""
-    from loki.api.binance_market_data import MarketDataError, get_binance_spot_snapshot
+def _binance_bars(pair: str) -> List[Dict[str, Any]]:
+    """Public 5-minute OHLCV bars for one crypto pair through the pinned adapter."""
+    from loki.api.binance_market_data import MarketDataError, _fetch_json
 
     try:
-        snapshot = get_binance_spot_snapshot(pair.replace("/", ""), "5m")
+        klines = _fetch_json(
+            "/api/v3/klines",
+            {"symbol": pair.replace("/", ""), "interval": "5m", "limit": 120},
+        )
     except MarketDataError as error:
         raise MarketFeedError(str(error)) from error
-    closes = [float(candle["close"]) for candle in snapshot.candles if "close" in candle]
-    if len(closes) < MIN_CLOSES:
+    rows: List[Dict[str, Any]] = []
+    if isinstance(klines, list):
+        for kline in klines:
+            if not isinstance(kline, list) or len(kline) < 6:
+                continue
+            try:
+                stamp_iso = datetime.fromtimestamp(float(kline[0]) / 1000.0, tz=timezone.utc).isoformat()
+            except (TypeError, ValueError, OSError, OverflowError):
+                continue
+            row = _bar_row(stamp_iso, kline[1], kline[2], kline[3], kline[4], kline[5])
+            if row is None:
+                continue
+            rows.append(row)
+    if len(rows) < EVIDENCE_BARS_MIN:
         raise MarketFeedError(
-            f"only {len(closes)} usable 5-minute closes right now — not enough for the desk's averages"
+            f"only {len(rows)} usable 5-minute bars right now — the council needs at least {EVIDENCE_BARS_MIN} clean bars"
         )
-    return closes[-CLOSES_MAX:]
+    return rows[-EVIDENCE_BARS_MAX:]
 
 
-def technical_agent(symbol: str) -> Dict[str, Any]:
-    """Intraday technicals computed in code from public closes."""
-    provider = classify_symbol(symbol)
-    try:
-        if provider == "binance":
-            closes = _binance_closes(symbol)
-            provider_name = "Binance Spot public API (5m)"
-        else:
-            closes = _yahoo_closes(symbol)
-            provider_name = "Yahoo Finance public chart (5m, 2d)"
-    except MarketFeedError as error:
+def _technical_view(closes: Sequence[float], provider_name: str) -> Dict[str, Any]:
+    """The technical agent's answer, computed from whatever closes it holds."""
+    if len(closes) < MIN_CLOSES:
         return {
             "agent": "technical",
             "status": "abstain",
             "score": None,
-            "error": str(error)[:160],
-            "provider": provider_name if provider else None,
-            "method": "SMA10/SMA25/RSI14 computed in code on completed 5-minute bars",
+            "error": "bars arrived but not enough to compute the desk's averages",
+            "provider": provider_name,
         }
     last = closes[-1]
     fast = sma(closes, 10)
@@ -280,6 +342,31 @@ def technical_agent(symbol: str) -> Dict[str, Any]:
             "the same trend vocabulary as the autopilot's published rule, computed in code"
         ),
     }
+
+
+def _public_bars(symbol: str) -> List[Dict[str, Any]]:
+    """Public OHLCV bars for one symbol from the provider the desk classifies it as."""
+    if classify_symbol(symbol) == "binance":
+        return _binance_bars(symbol)
+    return _yahoo_bars(symbol)
+
+
+def technical_agent(symbol: str) -> Dict[str, Any]:
+    """Intraday technicals computed in code from public bars."""
+    provider = classify_symbol(symbol)
+    provider_name = "Binance Spot public klines (5m)" if provider == "binance" else "Yahoo Finance public chart (5m, 2d)"
+    try:
+        bars = _public_bars(symbol)
+    except MarketFeedError as error:
+        return {
+            "agent": "technical",
+            "status": "abstain",
+            "score": None,
+            "error": str(error)[:160],
+            "provider": provider_name,
+            "method": "SMA10/SMA25/RSI14 computed in code on completed 5-minute bars",
+        }
+    return _technical_view([float(row["close"]) for row in bars], provider_name)
 
 
 # --------------------------------------------------------------------------
@@ -524,5 +611,73 @@ async def run_desk(request: Request, body: DeskRequest) -> Dict[str, Any]:
             "Five deterministic agents over public data; every handoff is the JSON you can read below. "
             "No language model, no hidden weight, no persistence. The proposal is information, never advice, "
             "and execution only ever happens on your click through your own paper keys."
+        ),
+    }
+
+
+@router.post("/evidence", include_in_schema=False)
+async def desk_evidence(request: Request, body: DeskRequest) -> Dict[str, Any]:
+    """Public bars plus the desk's read on them, shaped for the agent council.
+
+    One fetch of public data serves both callers: the same bars that feed
+    the technical agent's averages are what the council receives as OHLCV
+    evidence, so a desk run and a live council review of this instrument
+    can only ever quote the same numbers.
+    """
+    _require_gate(request)
+    try:
+        normalized = normalize_symbol(body.symbol)
+    except MarketFeedError as error:
+        raise HTTPException(422, str(error)) from error
+
+    crypto = classify_symbol(normalized) == "binance"
+    bars_source = "Binance Spot public klines (5m)" if crypto else "Yahoo Finance public chart (5m, 2d)"
+    periods_per_year = PERIODS_PER_YEAR_CRYPTO if crypto else PERIODS_PER_YEAR_EQUITY
+
+    news, fundamentals = await asyncio.gather(
+        run_in_threadpool(news_agent, normalized),
+        run_in_threadpool(fundamentals_agent, normalized),
+    )
+    try:
+        bars = _public_bars(normalized)
+    except MarketFeedError as error:
+        technical = {
+            "agent": "technical",
+            "status": "abstain",
+            "score": None,
+            "error": str(error)[:160],
+            "provider": bars_source,
+            "method": "SMA10/SMA25/RSI14 computed in code on completed 5-minute bars",
+        }
+        return {
+            "mode": "desk-evidence",
+            "status": "abstain",
+            "symbol": normalized,
+            "error": str(error)[:200],
+            "bars_source": bars_source,
+            "news": news,
+            "technical": technical,
+            "fundamentals": fundamentals,
+            "note": (
+                "The public bars feed answered nothing usable, so a live council review is not on offer — "
+                "nothing will be invented to fill the evidence window. The imported-dataset path still stands."
+            ),
+        }
+    closes = [float(row["close"]) for row in bars]
+    technical = _technical_view(closes, bars_source)
+    return {
+        "mode": "desk-evidence",
+        "status": "ok",
+        "symbol": normalized,
+        "bars": bars,
+        "bars_source": bars_source,
+        "periods_per_year": periods_per_year,
+        "news": news,
+        "technical": technical,
+        "fundamentals": fundamentals,
+        "note": (
+            "This evidence is exactly what the desk's agents quote — same fetch, same numbers, no second "
+            "escalation. Bars are 5-minute public records and the annualization constant matches. "
+            "It is information for a review, never advice."
         ),
     }

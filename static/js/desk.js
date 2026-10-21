@@ -109,12 +109,15 @@
     const proposalBar = document.querySelector('#desk-proposal');
     target.replaceChildren();
     (run.trace || []).forEach((row) => target.append(agentCard(row)));
+    const strategyRow = (run.trace || []).find((row) => row.agent === 'strategy') || {};
     const proposal = run.proposal || {};
     proposalBar.hidden = false;
     proposalBar.textContent =
       proposal.side && proposal.side !== 'hold'
         ? `Proposal: ${proposal.side.toUpperCase()} ${proposal.qty} ${run.symbol} (score ${proposal.score}) — then the risk manager had its say.`
-        : 'Proposal: hold — no trade under consideration.';
+        : strategyRow.status === 'stand_down'
+          ? 'Proposal: none — not one agent had data, so the desk stands down instead of squeezing a guess out of silence.'
+          : 'Proposal: hold — the composite sits inside the middle band, and the desk holds its fire rather than force a trade.';
     const approved = !!(run.verdict && run.verdict.approved && proposal.side && proposal.side !== 'hold');
     document.querySelector('#desk-exec-wrap').hidden = !approved;
     currentRun = approved ? run : null;
