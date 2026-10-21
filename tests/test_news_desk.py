@@ -160,3 +160,8 @@ class TestWiring:
         assert source.index('data-view="game"') > source.index('id="nav-more-group"'), "Bored? stays inside the group"
         server = (root / "loki" / "api" / "server.py").read_text(encoding="utf-8")
         assert "news_desk_router" in server
+
+    def test_news_list_wide_mode_is_two_columns_with_a_lede(self):
+        styles = (Path(__file__).resolve().parents[1] / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        assert "@media(min-width:1100px){.news-list{grid-template-columns:1fr 1fr" in styles
+        assert ".news-list .news-item:first-child{grid-column:1 / -1}" in styles

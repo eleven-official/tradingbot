@@ -108,18 +108,22 @@
     message('#alpaca-message', 'Keys forgotten — nothing stays in this browser.');
   });
 
-  // Verify once per view arrival; never on page background.
+  // Verify on arrival — but only when the stored keys changed since the last
+  // check. A fingerprint on the key ID (not object identity) keeps repeat
+  // visits from re-hitting Alpaca's endpoint without reason.
   window.addEventListener('hashchange', () => {
-    if (viewActive() && verifiedFor !== load() && !busy) {
-      verifiedFor = load() || 'unchecked';
-      if (load()) verify();
+    if (viewActive() && !busy) {
+      const saved = load();
+      const fingerprint = saved ? saved.key_id : null;
+      if (fingerprint && verifiedFor !== fingerprint) verify();
     }
   });
 
   statusTag();
   renderAccount(null);
-  if (viewActive() && load()) {
-    verifiedFor = 'init';
+  const savedOnInit = load();
+  if (viewActive() && savedOnInit) {
+    verifiedFor = savedOnInit.key_id;
     verify();
   }
   controls();

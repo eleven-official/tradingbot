@@ -191,3 +191,11 @@ class TestSiteHygiene:
         assert "static/js/alpaca_keys.js" in index
         server = (ROOT / "loki" / "api" / "server.py").read_text(encoding="utf-8")
         assert "broker_alpaca_router" in server
+
+    def test_arrival_verification_keys_on_a_fingerprint(self):
+        module = (ROOT / "static" / "js" / "alpaca_keys.js").read_text(encoding="utf-8")
+        assert "verifiedFor !== fingerprint" in module, \
+            "arrival verification must compare the key-ID fingerprint"
+        assert "verifiedFor !== load()" not in module, \
+            "object-identity comparison would re-hit Alpaca on every single visit"
+        assert "savedOnInit.key_id" in module

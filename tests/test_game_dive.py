@@ -129,3 +129,9 @@ class TestTemplateWiring:
         src = TEMPLATE.read_text(encoding="utf-8")
         assert 'src="/static/js/game_data.js?v={{ version }}"' in src
         assert 'src="/static/js/game.js?v={{ version }}"' in src
+
+    def test_dive_input_never_spellchecks_the_player(self):
+        src = TEMPLATE.read_text(encoding="utf-8")
+        assert re.search(r'id="dive-answer"[^>]*spellcheck="false"', src), \
+            "an input a player may deliberately misspell must not be spell-checked"
+        assert re.search(r'id="dive-answer"[^>]*autocapitalize="none"', src)
