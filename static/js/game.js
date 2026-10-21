@@ -1,6 +1,12 @@
 /* Loki Dive — a rare-answer trivia game (krillion-style), unlimited mode.
  * Pure vanilla JS, no console noise, pauses itself whenever the view is hidden.
  * Scoring is local: nothing about a player's answers leaves the browser.
+ *
+ * Spelling is forgiven: answers match through a Damerau-Levenshtein distance
+ * with a small, length-aware tolerance, plus folded articles ("a parrot" ==
+ * "parrot") and folded plurals ("gorgonzolas" == "gorgonzola"). When a typo
+ * is fixed, the round says so. Prompt draws avoid recently seen prompts so
+ * consecutive dives stay fresh until the pool runs low.
  */
 "use strict";
 (function () {
@@ -10,11 +16,14 @@
   const ROUND_MS = 25000;
   const ROUNDS_PER_DIVE = 7;
   const POINTS_PER_METRE = 10;
-  const METER_MAX = ROUNDS_PER_DIVE * 100 * POINTS_PER_METRE; // 7,000 m, a perfect dive
+  const CLEAN_SWEEP_BONUS = 50; // all seven rounds found
+  const METER_MAX = ROUNDS_PER_DIVE * 100 * POINTS_PER_METRE + CLEAN_SWEEP_BONUS * POINTS_PER_METRE; // 7,500 m headroom
+  const RECENT_LIMIT = 10; // remember this many prompts to keep dives fresh
 
   const els = {};
   const LS_BEST = "loki_dive_best";
   const LS_DIVES = "loki_dive_dives";
+  const LS_RECENT = "loki_dive_recent";
 
   const state = {
     phase: "idle", // idle | round | between | done
@@ -22,7 +31,9 @@
     cursor: 0,
     round: 0,
     points: 0,
-    rounds: [], // {prompt, tier|null, points, answer}
+    bonus: 0,
+    fixed: 0, // spelling corrections this dive
+    rounds: [], // {prompt, tier|null, points, answer, fixed}
     current: null,
     deadline: 0,
     tLeft: ROUND_MS,
@@ -62,8 +73,70 @@
     }
     s = s.replace(/&/g, " and ").replace(/[^a-z0-9\s']/g, " ").replace(/'/g, "").replace(/\s+/g, " ").trim();
     if (s === "the answer") return "";
-    // drop a leading "a"/"an"/"the" for matching ("a parrot" == "parrot")    s = s.replace(/^(a|an|the)\s+/, "").replace(/\s+/g, " ").trim();
     return s;
+  }
+  /* Fold articles and plurals so near-hits meet exactly before distances kick in. */
+  function fold(text) {
+    let s = normalize(text);
+    if (!s) return "";
+    s = s.replace(/^(a|an|the)\s+/, "").replace(/\s+/g, " ").trim();
+    if (s.length > 3 && s.endsWith("s") && !s.endsWith("ss")) s = s.slice(0, -1);
+    return s;
+  }
+  /* Length-aware tolerance: short words must be exact, long ones forgive two. */
+  function toleranceFor(len) {
+    if (len <= 4) return 0;
+    if (len <= 7) return 1;
+    return 2;
+  }
+  /* Damerau-Levenshtein (optimal string alignment) distance. */
+  function damerauDistance(a, b) {
+    const m = a.length;
+    const n = b.length;
+    if (!m || !n) return m + n;
+    const d = [];
+    for (let i = 0; i <= m; i += 1) { d.push([i]); d[i][0] = i; }
+    for (let j = 0; j <= n; j += 1) d[0][j] = j;
+    for (let i = 1; i <= m; i += 1) {
+      for (let j = 1; j <= n; j += 1) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        let best = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+          best = Math.min(best, d[i - 2][j - 2] + 1); // transposition
+        }
+        d[i][j] = best;
+      }
+    }
+    return d[m][n];
+  }
+  /* Exact first, folded variants next, then closest bank entry inside tolerance. */
+  function findAnswer(index, raw) {
+    const key = normalize(raw);
+    if (!key) return null;
+    const exact = index.get(key);
+    if (exact) return { hit: exact, fixed: false };
+    const folded = fold(raw);
+    if (folded && index.has(folded)) return { hit: index.get(folded), fixed: false };
+    let best = null;
+    let bestDist = Infinity;
+    let bestKey = "";
+    index.forEach((value, entryKey) => {
+      const candidates = [entryKey];
+      const alt = entryKey.replace(/^the\s+/, "");
+      if (alt !== entryKey) candidates.push(alt);
+      for (const cand of candidates) {
+        if (cand === folded) return; // already checked exactly
+        const dist = damerauDistance(folded, cand);
+        const tol = toleranceFor(Math.max(folded.length, cand.length));
+        if (dist <= tol && dist < bestDist) {
+          bestDist = dist;
+          best = value;
+          bestKey = cand;
+        }
+      }
+    });
+    if (best) return { hit: best, fixed: true, via: bestKey };
+    return null;
   }
   function fmtM(m) { return Number(m).toLocaleString("en-AU") + " m"; }
   function storage(key, fallback) {
@@ -75,6 +148,18 @@
   function saveStorage(key, value) {
     try { window.localStorage.setItem(key, String(value)); } catch { /* private mode */ }
   }
+  function readRecent() {
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(LS_RECENT) || "[]");
+      return Array.isArray(raw) ? raw.filter((v) => Number.isInteger(v)) : [];
+    } catch { return []; }
+  }
+  function pushRecent(indexes) {
+    try {
+      const recent = indexes.slice(-RECENT_LIMIT * 2);
+      window.localStorage.setItem(LS_RECENT, JSON.stringify(recent));
+    } catch { /* storage unavailable — freshness simply restarts */ }
+  }
   function shuffle(list) {
     const out = list.slice();
     for (let i = out.length - 1; i > 0; i -= 1) {
@@ -82,6 +167,15 @@
       [out[i], out[j]] = [out[j], out[i]];
     }
     return out;
+  }
+  function freshOrder() {
+    const all = bank.prompts.map((_, i) => i);
+    const recent = readRecent();
+    const fresh = all.filter((i) => !recent.includes(i));
+    const pool = fresh.length >= ROUNDS_PER_DIVE ? fresh : all;
+    const order = shuffle(pool);
+    pushRecent(recent.concat(order).slice(-(RECENT_LIMIT * 2)));
+    return order;
   }
   function tierClass(i) { return "dive-tier dive-tier-" + i; }
 
@@ -110,11 +204,12 @@
     )).join("");
   }
   function renderDepth() {
-    const depth = state.points * POINTS_PER_METRE;
+    const depth = (state.points + state.bonus) * POINTS_PER_METRE;
     const pct = Math.max(0, Math.min(100, (depth / METER_MAX) * 100));
     if (els["dive-depth-num"]) els["dive-depth-num"].textContent = fmtM(depth);
     if (els["dive-depthbar"]) els["dive-depthbar"].style.height = pct + "%";
   }
+  function totalPoints() { return state.points + state.bonus; }
   function renderBest() {
     if (els["dive-best"]) els["dive-best"].textContent = state.best ? "Best " + fmtM(state.best * POINTS_PER_METRE) : "No dive yet";
     if (els["dive-dives"]) els["dive-dives"].textContent = state.dives ? state.dives + (state.dives === 1 ? " dive" : " dives") : "Fresh waters";
@@ -122,10 +217,12 @@
 
   /* ---------- game flow ---------- */
   function startRun() {
-    state.order = shuffle(bank.prompts.map((_, i) => i));
+    state.order = freshOrder();
     state.cursor = 0;
     state.round = 0;
     state.points = 0;
+    state.bonus = 0;
+    state.fixed = 0;
     state.rounds = [];
     state.dives += 1;
     saveStorage(LS_DIVES, state.dives);
@@ -166,6 +263,13 @@
     node.textContent = text || "";
     node.className = "dive-feedback" + (cls ? " " + cls : "");
   }
+  const MISS_LINES = [
+    "Not on the bank's radar. The clock waits — try another shape of idea.",
+    "The bank doesn't know that one. Different angle?",
+    "No match — the list stayed quiet. Something rarer, maybe.",
+    "Not this time. The rarer names live further out.",
+    "Nothing folded into that. Spin the idea again."
+  ];
   function submit(ev) {
     if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
     if (state.phase === "between" && state.accepted) {
@@ -181,30 +285,43 @@
       feedback("Type one answer first — the clock is kind enough.", "warn");
       return;
     }
-    const hit = state.current.index.get(key);
-    if (hit) {
+    const match = findAnswer(state.current.index, raw);
+    if (match) {
       state.accepted = true;
       state.phase = "between";
-      const tier = bank.tiers[hit.tier];
+      const tier = bank.tiers[match.hit.tier];
       const pts = tier.points;
       state.points += pts;
-      state.rounds.push({ q: state.current.prompt.q, tier: hit.tier, points: pts, answer: hit.answer });
-      feedback("✓ “" + hit.answer + "” — " + tier.name + "! +" + pts + " points · " + fmtM(pts * POINTS_PER_METRE), "good");
+      const shown = match.fixed ? `${match.hit.answer} (spelling forgiven)` : match.hit.answer;
+      if (match.fixed) state.fixed += 1;
+      state.rounds.push({ q: state.current.prompt.q, tier: match.hit.tier, points: pts, answer: shown, fixed: match.fixed });
+      feedback("✓ " + shown + " — " + tier.name + "! +" + pts + " points · " + fmtM(pts * POINTS_PER_METRE), "good");
       renderDepth();
       window.clearTimeout(state.nextTimer);
       state.nextTimer = window.setTimeout(nextRound, 2600);
       state.running = false; // clock stops between rounds
     } else {
-      feedback("Not on the list. Keep the clock company — try another idea.", "warn");
+      const line = MISS_LINES[Math.floor(Math.random() * MISS_LINES.length)];
+      feedback(line, "warn");
       if (els["dive-answer"]) { els["dive-answer"].select(); }
     }
+  }
+  function skipRound() {
+    if (state.phase !== "round" || state.accepted) return;
+    state.accepted = true;
+    state.running = false;
+    state.phase = "between";
+    state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
+    feedback("Let go — that one swims past. The next wave is coming.", "warn");
+    window.clearTimeout(state.nextTimer);
+    state.nextTimer = window.setTimeout(nextRound, 1300);
   }
   function timeUp() {
     if (state.phase !== "round") return;
     state.accepted = true;
     state.running = false;
     state.phase = "between";
-    state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "" });
+    state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
     feedback("Time's up for this round. The current moves on.", "warn");
     window.clearTimeout(state.nextTimer);
     state.nextTimer = window.setTimeout(nextRound, 1900);
@@ -214,11 +331,39 @@
     if (state.rafId) { window.cancelAnimationFrame(state.rafId); state.rafId = 0; }
     state.phase = "done";
     state.running = false;
-    const depth = state.points * POINTS_PER_METRE;
+    const foundAll = state.rounds.length === ROUNDS_PER_DIVE && state.rounds.every((r) => r.tier !== null);
+    if (foundAll && state.points > 0) {
+      state.bonus = CLEAN_SWEEP_BONUS;
+      if (els["dive-end-extra"]) {
+        els["dive-end-extra"].textContent = "🧹 Clean sweep — every round found: +" + CLEAN_SWEEP_BONUS + " bonus points.";
+      }
+    } else if (els["dive-end-extra"]) {
+      els["dive-end-extra"].textContent = "";
+    }
+    const depth = totalPoints() * POINTS_PER_METRE;
+    const tally = {};
+    state.rounds.forEach((r) => {
+      if (r.tier !== null) tally[r.tier] = (tally[r.tier] || 0) + 1;
+    });
+    let rarestTier = -1;
+    state.rounds.forEach((r) => { if (r.tier !== null && r.tier > rarestTier) rarestTier = r.tier; });
+    const rarestLine = rarestTier >= 0
+      ? "Deepest find: " + (state.rounds.filter((r) => r.tier === rarestTier)[0].answer || "—")
+        + " (" + bank.tiers[rarestTier].name + ")."
+      : "";
+    const tallyLine = Object.keys(tally).map((t) => bank.tiers[t].name + " ×" + tally[t]).join(" · ");
+    const spellingLine = state.fixed
+      ? " The engine forgave " + state.fixed + (state.fixed === 1 ? " typo" : " typos") + " this dive."
+      : "";
+    if (els["dive-end-extra"] && rarestLine) {
+      const extra = els["dive-end-extra"];
+      extra.textContent = (extra.textContent ? extra.textContent + " " : "") + rarestLine
+        + (tallyLine ? " Tally: " + tallyLine + "." : "") + spellingLine;
+    }
     const prevBest = state.best;
-    const newBest = state.points > state.best;
+    const newBest = totalPoints() > state.best;
     if (newBest) {
-      state.best = state.points;
+      state.best = totalPoints();
       saveStorage(LS_BEST, state.best);
       renderBest();
     }
@@ -234,37 +379,38 @@
         + `</div>`);
     }).join("");
     if (els["dive-end-depth"]) els["dive-end-depth"].textContent = fmtM(depth);
-    if (els["dive-end-points"]) els["dive-end-points"].textContent = state.points + " points";
+    if (els["dive-end-points"]) els["dive-end-points"].textContent = totalPoints() + " points";
     if (els["dive-end-best"]) {
       els["dive-end-best"].textContent = newBest
-        ? "New personal best — a full " + fmtM((state.points - prevBest) * POINTS_PER_METRE) + " deeper than before!"
+        ? "New personal best — a full " + fmtM((totalPoints() - prevBest) * POINTS_PER_METRE) + " deeper than before!"
         : "Personal best: " + fmtM(state.best * POINTS_PER_METRE);
     }
-    const verdict = depth >= 5000 ? "Abyssal. You think in trenches."
-      : depth >= 3500 ? "Strong dive — well past the shelves."
-        : depth >= 2000 ? "Solid mid-water. Worth another drop."
-          : depth >= 900 ? "Shore-ish. The crowd kept you floating."
+    const verdict = depth >= 6500 ? "Abyssal. You think in trenches."
+      : depth >= 4800 ? "Strong dive — well past the shelves."
+        : depth >= 3000 ? "Solid mid-water. Worth another drop."
+          : depth >= 1400 ? "Shore-ish. The crowd kept you floating."
             : "Surface swimming — try thinking like nobody else.";
     if (els["dive-end-verdict"]) els["dive-end-verdict"].textContent = verdict;
     if (els["dive-end-rows"]) els["dive-end-rows"].innerHTML = rows;
     renderDepth();
     show("dive-end");
-    if (!challenge.done && state.points >= challenge.target) {
+    if (!challenge.done && totalPoints() >= challenge.target) {
       challenge.done = true;
-      try { localStorage.setItem(LS_CHALLENGE, JSON.stringify({ d: dayKey(), o: state.points })); } catch { /* ignore */ }
+      try { localStorage.setItem(LS_CHALLENGE, JSON.stringify({ d: dayKey(), o: totalPoints() })); } catch { /* ignore */ }
       renderChallenge();
     }
     if (els["dive-copy"]) els["dive-copy"].textContent = "Copy result";
   }
   function copyResult(ev) {
     if (ev) ev.preventDefault();
-    const depth = state.points * POINTS_PER_METRE;
+    const depth = totalPoints() * POINTS_PER_METRE;
     const lines = state.rounds.map((r, i) => {
       const label = r.tier === null ? "missed" : bank.tiers[r.tier].name;
       return (i + 1) + ". " + r.q + " — " + (r.answer || "—") + " (" + label + ", +" + r.points + ")";
     });
-    const text = "🪂 Loki Dive — " + fmtM(depth) + " deep (" + state.points + " pts)\n" + lines.join("\n")
-      + "\nUnlimited rare-answer trivia, only on this site.";
+    const bonusLine = state.bonus ? "\nClean sweep bonus: +" + state.bonus : "";
+    const text = "🪂 Loki Dive — " + fmtM(depth) + " deep (" + totalPoints() + " pts)\n" + lines.join("\n")
+      + bonusLine + "\nUnlimited rare-answer trivia, only on this site.";
     const ok = () => {
       if (els["dive-copy"]) els["dive-copy"].textContent = "Copied ✓";
     };
@@ -346,9 +492,15 @@
     ["dive-start", "dive-play", "dive-end", "dive-legend", "dive-form", "dive-answer", "dive-feedback",
       "dive-timer", "dive-clock", "dive-round", "dive-prompt", "dive-rules", "dive-best", "dive-dives",
       "dive-depth-num", "dive-depthbar", "dive-end-depth", "dive-end-points", "dive-end-best",
-      "dive-end-verdict", "dive-end-rows", "dive-copy", "dive-start-btn", "dive-again-btn",
-      "dive-overlay", "dive-pause", "dive-challenge"].forEach((id) => { els[id] = $(id); });
+      "dive-end-verdict", "dive-end-rows", "dive-end-extra", "dive-copy", "dive-start-btn", "dive-again-btn",
+      "dive-skip", "dive-count", "dive-overlay", "dive-pause", "dive-challenge"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
+
+    const promptsEl = els["dive-count"];
+    if (promptsEl) {
+      promptsEl.textContent = bank.prompts.length + " prompts · " + bank.prompts.reduce((sum, p) => sum + p.a.length, 0)
+        + " banked answers · spelling forgiven";
+    }
 
     state.best = storage(LS_BEST, 0);
     state.dives = storage(LS_DIVES, 0);
@@ -362,6 +514,7 @@
     state.visible = document.hidden ? false : true;
     if (els["dive-start-btn"]) els["dive-start-btn"].addEventListener("click", (ev) => { ev.preventDefault(); startRun(); });
     if (els["dive-again-btn"]) els["dive-again-btn"].addEventListener("click", (ev) => { ev.preventDefault(); startRun(); });
+    if (els["dive-skip"]) els["dive-skip"].addEventListener("click", skipRound);
     if (els["dive-copy"]) els["dive-copy"].addEventListener("click", copyResult);
     if (els["dive-form"]) els["dive-form"].addEventListener("submit", submit);
     state.sectionEl = els["dive-start"].closest(".workspace-view");
@@ -383,5 +536,6 @@
   } else {
     init();
   }
-  window.LokiDive = { state, normalize, tick: loop }; // debugging + verification handle
+  // Debugging + verification handle (exposes the pure matcher, not live answers).
+  window.LokiDive = { state, normalize, fold, findAnswer, damerauDistance, tick: loop };
 })();
