@@ -220,3 +220,29 @@
 .floor-tile.degraded{opacity:.7}
 .floor-tile .chip{flex-shrink:0}
 @media(max-width:1060px){.floor-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* --- Trading desk: five agents, one pipeline, JSON in the open --- */
+.desk-mode{color:var(--green);border-color:#3c5d48;background:#17251e}
+.desk-run-panel .form-grid{grid-template-columns:minmax(180px,260px) auto;align-items:end}
+.desk-pipeline{display:grid;gap:12px}
+.desk-pipeline>.muted{margin:6px 0}
+.desk-agent{border:1px solid var(--line);border-radius:8px;padding:17px 19px;background:#0e171d}
+.desk-agent+.desk-agent{margin-top:0}
+.desk-agent-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.desk-agent-head strong{font-size:12px;font-weight:550;color:var(--accent)}
+.desk-agent-method{font-size:10px;color:var(--muted);line-height:1.8;margin-top:9px}
+.desk-facts{display:flex;flex-wrap:wrap;gap:6px 16px;margin:10px 0 0;font-size:10px;color:#bccbd5}
+.desk-facts small{font-size:10px;line-height:1.7}
+.desk-headlines{margin:11px 0 0;font-size:11px;line-height:1.8;display:grid;gap:5px}
+.desk-headlines strong{color:var(--accent);margin-right:6px;font-weight:500}
+.desk-reasons{margin:11px 0 0;font-size:11px;color:#c4d0da;line-height:1.8}
+.desk-checks{margin:11px 0 0;font-size:11px;line-height:1.8;display:grid;gap:5px}
+.desk-checks li{list-style:none}
+.desk-checks li.passed strong{color:var(--green)}
+.desk-checks li.failed strong{color:var(--red)}
+.desk-checks li span{color:var(--muted)}
+.desk-execute-panel .button{margin-top:6px}
+.desk-log{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.desk-log-row{font-size:11px;color:#c4d0da;border-top:1px solid var(--line);padding:9px 2px 0;line-height:1.7;overflow-wrap:anywhere}
+.desk-log-row.error{color:var(--red)}
+.desk-log-title{margin-top:24px}
+@media(max-width:760px){.desk-run-panel .form-grid{grid-template-columns:1fr}}

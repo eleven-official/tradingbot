@@ -108,6 +108,17 @@ class TestAccounts:
         assert response.status_code == 200
         assert response.json() == {"enabled": False}
 
+    def test_session_probe_answers_signed_out_inside_a_200(self, monkeypatch):
+        # Accounts are configured but this browser holds no session. The
+        # probe is a question, not a failure: it answers an honest state
+        # inside a 200 so no visitor's console logs a fake error.
+        monkeypatch.setenv("SUPABASE_URL", "https://stub-project.supabase.co")
+        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "sb_secret_stubbish")
+        fresh = TestClient(app)  # a browser with no session cookie jar
+        response = fresh.get("/api/auth/session")
+        assert response.status_code == 200
+        assert response.json() == {"enabled": True, "authenticated": False}
+
     def test_sign_up_sets_personalized_session(self, monkeypatch):
         self._stub_admin(monkeypatch)
 

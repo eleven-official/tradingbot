@@ -227,6 +227,19 @@
     }
   }
 
+  async function railSendOrder(body) {
+    /** One shared send through the busy-flagged lane; used by the panel's
+     * own form and (via the handle below) by the trading desk. */
+    busy = true;
+    controls();
+    try {
+      return await request('/api/broker/alpaca/order', body);
+    } finally {
+      busy = false;
+      controls();
+    }
+  }
+
   async function placeOrder(event) {
     event.preventDefault();
     if (busy) return;
@@ -280,7 +293,7 @@
     try {
       const body = { key_id: saved.key_id, secret_key: saved.secret_key, symbol, side, quantity: qty, order_type: type };
       if (type === 'limit') body.limit_price = limit;
-      const answer = await request('/api/broker/alpaca/order', body);
+      const answer = await railSendOrder(body);
       disarmOrder();
       const status = String((answer.order || {}).status || 'unknown').toLowerCase();
       message('#alpaca-order-message', `Sent to Alpaca paper: ${summary} — Alpaca's status: ${status}.` + (status === 'rejected' ? ' Alpaca refused it; the log will show it as-is.' : ''));
@@ -408,6 +421,11 @@
     start: startAutopilot,
     stop: stopAutopilot,
     tick: autopilotTick,
+    // The trading desk reuses the same busy-flagged send lane; the rail
+    // alone decides what Alpaca accepts, so these two helpers still cannot
+    // move an order by themselves — real keys verified through /test gate it.
+    sendRailOrder: railSendOrder,
+    railReady: () => !!(connected && load()),
     _debug: { setConnected(value) { connected = !!value; } },
   };
 })();

@@ -82,19 +82,21 @@
     let session = null;
     try {
       const res = await fetch('/api/auth/session', { cache: 'no-store' });
-      if (res.status === 401) {
-        if (guestMode) {
-          buildGuest();
-          return;
-        }
-        window.location.href = '/login';
-        return;
-      }
       if (res.ok) {
         const data = await res.json();
         if (data && data.enabled === false) {
           buildGuest();
           return; // accounts not configured: open guest experience
+        }
+        // Accounts are configured but this browser holds no session: either
+        // an invited guest (door passed) or a stranger headed for login.
+        if (data && data.enabled === true && data.authenticated === false) {
+          if (guestMode) {
+            buildGuest();
+            return;
+          }
+          window.location.href = '/login';
+          return;
         }
         session = data;
       } else {

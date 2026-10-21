@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
   <meta name="description" content="Loki brings strategy research, structured agent reviews, paper portfolios, and scenario analysis into one evidence-led workspace.">
   <title>Loki · Trading intelligence</title>
-  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script>
+  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/desk.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to workspace</a>
@@ -27,6 +27,7 @@
         <a href="#advanced-terminal" data-view="advanced-terminal"><span aria-hidden="true">⌘</span> Advanced terminal</a>
         <a href="#paper-planner" data-view="paper-planner"><span aria-hidden="true">⌁</span> Market planner</a>
         <a href="#integrations" data-view="integrations"><span aria-hidden="true">⊞</span> Integrations</a>
+        <a href="#trading-desk" data-view="trading-desk"><span aria-hidden="true">⚙</span> Trading desk</a>
         <a href="#game" data-view="game"><span aria-hidden="true">🎮</span> Bored?</a>
       </div>
     </nav>
@@ -229,6 +230,33 @@
       <div class="section-title"><p class="caption" id="integration-summary">Checking component availability…</p><button id="refresh-integrations" type="button" class="button secondary">Refresh status ↻</button></div><p id="integration-message" class="form-message" role="status"></p><div id="integration-cards" class="integration-grid"></div>
       <section class="panel" id="fincept-panel"><div class="section-title"><div><p class="eyebrow">FINCEPT / LICENSED PRIVATE ANALYTICS</p><h2>A deeper risk lens.</h2></div><span class="tag" id="fincept-status">Checking setup</span></div><p class="muted">Run Fincept’s risk engine against your imported asset’s daily returns. The licensed source stays in your private local installation.</p><div id="fincept-availability" class="integration-note">Checking the private engine configuration…</div><form id="fincept-form"><div class="form-grid two-col"><label>Portfolio value<input name="portfolio_value" type="number" min="1" max="1000000000" value="10000" required></label><label>Data frequency<select id="fincept-frequency" required><option value="">Confirm your imported data frequency</option><option value="daily">Daily observations</option><option value="other">Intraday / other (unsupported here)</option></select></label></div><button id="run-fincept" class="button secondary" type="submit" disabled>Analyze imported daily returns →</button></form><p class="caption">Requires 20–2,000 daily returns. Fincept annualizes using 252 trading days; this assumption also applies to imported crypto history. Risk estimates are not trade win rates.</p><p id="fincept-message" class="form-message" role="status"></p><div id="fincept-results" hidden></div></section>
       <section class="panel integration-bridge"><p class="eyebrow">SHARED RESEARCH CONTEXT</p><h2>Use the result, wherever it starts.</h2><p class="muted">Bring OHLCV CSV exports into Quant lab. Factor diagnostics, backtests, council reviews, the paper journal, and local stress share that context inside Loki.</p><div class="button-row"><a href="#strategy-lab" class="button primary">Import history →</a><button id="export-context" type="button" class="button secondary">Export workspace ↓</button></div><p class="caption">Fincept’s source is loaded only from a configured, licensed private installation. MiroFish runs as an optional service. Unconfigured integrations display their setup status without invented results.</p></section>
+    </section>
+    <section id="trading-desk" class="workspace-view" aria-label="Trading desk" hidden>
+      <div class="page-heading"><p class="eyebrow">TRADING DESK / FIVE AGENTS · HARD RULES · YOUR CLICK</p><h1>A small trading firm, run in public.</h1><p class="muted">News, technicals and fundamentals hand their JSON to a strategist with fixed published weights; a risk manager with veto power sizes and guards the proposal; your click sends it through the paper rail. Every handoff is readable below — information, never advice.</p></div>
+      <section class="panel desk-run-panel">
+        <div class="section-title"><div><p class="eyebrow">01 / ASSEMBLE THE DESK</p><h2>Run the pipeline</h2></div><span class="tag desk-mode">DETERMINISTIC · NO LLM · PAPER ONLY</span></div>
+        <form id="desk-form" class="form-grid">
+          <label>Symbol<input id="desk-symbol" name="symbol" value="AAPL" autocomplete="off" maxlength="15" required></label>
+          <button id="desk-run" class="button primary" type="submit">Run the desk →</button>
+        </form>
+        <p id="desk-status" class="form-message" role="status">A symbol, then five agents. Abstain means the feed was unusable — the desk raises its hand instead of guessing.</p>
+        <p id="desk-note" class="caption">Agents read public feeds (Yahoo Finance search &amp; chart, Binance Spot) and compute in code; no language model sits anywhere in the loop, and no order moves from the server.</p>
+      </section>
+      <section class="panel desk-pipeline-panel">
+        <div class="section-title"><div><p class="eyebrow">02 / THE PIPELINE, IN THE OPEN</p><h2>Five desks, one thread of JSON</h2></div><span class="tag" id="desk-count">Desk orders this session: 0/10 — a reload clears the count.</span></div>
+        <div id="desk-pipeline" class="desk-pipeline"><p class="muted">Nothing has run yet in this session. The agents will appear here in order — news, technicals, fundamentals, strategy, risk — each with the exact JSON the next stage received.</p></div>
+        <p id="desk-proposal" class="caption" hidden></p>
+      </section>
+      <section class="panel desk-execute-panel">
+        <div class="section-title"><div><p class="eyebrow">03 / EXECUTION / YOUR KEYS, YOUR CLICK</p><h2>From proposal to paper order</h2></div></div>
+        <p class="muted">An approved proposal is not an order until you press twice — review, then confirm within 15 seconds — over the same busy-flagged rail the Alpaca panel uses. The desk never stores keys and never fires on its own.</p>
+        <div id="desk-exec-wrap" hidden>
+          <button id="desk-exec" class="button primary" type="button">Execute via the paper rail — review first</button>
+        </div>
+        <p id="desk-exec-message" class="form-message" role="status"></p>
+        <div class="section-title desk-log-title"><p class="eyebrow">DESK LOG (this session only — the browser keeps no history)</p></div>
+        <div id="desk-log" class="desk-log"><p class="caption desk-log-empty">The log says empty because it is empty. Executions and refusals land here as they happen.</p></div>
+      </section>
     </section>
     <section id="game" class="workspace-view" aria-label="Bored game" hidden>
       <div class="page-heading"><p class="eyebrow">BORED? / PLAY WHILE YOU WAIT</p><h1>Sink deeper than the crowd.</h1><p class="muted">Bored? A Krillion-style rare-answer trivia with unlimited dives. Waiting on a Loki scan? Name what nobody else would think of first.</p></div>

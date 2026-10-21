@@ -42,6 +42,9 @@ app.include_router(watchtower_router)
 from loki.api.broker_alpaca import router as broker_alpaca_router
 
 app.include_router(broker_alpaca_router)
+from loki.api.trading_desk import router as trading_desk_router
+
+app.include_router(trading_desk_router)
 from loki.api.news_desk import router as news_desk_router
 
 app.include_router(news_desk_router)
@@ -269,7 +272,11 @@ async def auth_session(request: Request):
     session = site_access.read_session_cookie_value(request.cookies.get(site_access.SESSION_COOKIE))
     if not session:
         if site_access.accounts_available():
-            raise HTTPException(status_code=401, detail="Not signed in.")
+            # A session probe is a question, not a failure: the honest
+            # "not signed in" answer rides inside a 200 like every other
+            # read on this site, so the browser console stays as clean as
+            # the page it serves.
+            return {"enabled": True, "authenticated": False}
         return {"enabled": False}  # guest mode: local launcher without Supabase creds
     return {"enabled": True, "email": session.get("email"), "nickname": session.get("nickname")}
 
