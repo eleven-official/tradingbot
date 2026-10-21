@@ -161,6 +161,86 @@ class TestAccounts:
         )
         assert bad.status_code == 400
 
+    def test_nickname_update_uses_put_not_patch(self, monkeypatch):
+        # Verified live: Supabase's admin endpoint answers HTTP 405 to PATCH
+        # /auth/v1/admin/users/{uid} — updates must travel as PUT.
+        monkeypatch.delenv("SUPABASE_URL", raising=False)
+        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+        monkeypatch.delenv("SUPABASE_KEY", raising=False)
+        calls = {}
+
+        async def fake_threadpool(fn, *args, **kwargs):
+            calls["args"] = (fn, args, kwargs)
+            return {}
+
+        monkeypatch.setattr(site_access, "run_in_threadpool", fake_threadpool)
+        import asyncio
+
+        asyncio.run(site_access.update_nickname("uid_77", "Renamed Hero"))
+        fn, args, kwargs = calls["args"]
+        assert args == ("PUT", "/auth/v1/admin/users/uid_77")
+        assert kwargs.get("json_body") == {"user_metadata": {"nickname": "Renamed Hero"}}
+
+    def test_wrong_password_maps_to_honest_401(self, monkeypatch):
+        # Verified live: Supabase answers HTTP 400 "Invalid login credentials"
+        # for a wrong password — that must surface as 401 with clear wording,
+        # not as a complaint about password length.
+        monkeypatch.setenv("SUPABASE_URL", "https://stub-project.supabase.co")
+        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "sb_secret_stubbish")
+
+        class FakeResponse:
+            status_code = 400
+
+            def json(self):
+                return {"code": 400, "error_code": "invalid_credentials", "msg": "Invalid login credentials"}
+
+            text = '{"code":400,"error_code":"invalid_credentials","msg":"Invalid login credentials"}'
+
+        def fake_request(*args, **kwargs):
+            return FakeResponse()
+
+        import loki.api.site_access as module
+
+        monkeypatch.setattr(module.requests, "request", fake_request)
+        import asyncio
+
+        try:
+            asyncio.run(module._supa_request("POST", "/auth/v1/token?grant_type=password", json_body={"email": "x@y.z", "password": "whatever12"}))
+            failed = False
+        except module.HTTPException as exc:
+            failed = exc.status_code == 401 and "Wrong email or password." in str(exc.detail)
+            if not failed:
+                raise
+        assert failed, "wrong password must surface as the honest 401"
+
+    def test_nickname_route_accepts_a_nickname_only_body(self, monkeypatch):
+        # Route-level: PUT /api/auth/nickname used to 422 because it shared the
+        # sign-up model (email and password are required there). It must accept
+        # exactly {"nickname": ...} for a signed-in session.
+        monkeypatch.delenv("SUPABASE_URL", raising=False)
+        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+        monkeypatch.delenv("SUPABASE_KEY", raising=False)
+
+        async def fake_create(email, password, nickname):
+            assert nickname
+            return {"id": "usr_nick_1"}
+
+        async def fake_update(uid, nickname):
+            assert (uid, nickname) == ("usr_nick_1", "Renamed Hero")
+            return {}
+
+        monkeypatch.setattr(site_access, "create_account", fake_create)
+        monkeypatch.setattr(site_access, "update_nickname", fake_update)
+        created = client.post(
+            "/api/auth/sign-up",
+            json={"email": "nick@test.io", "password": "longenough12", "nickname": "Nick Hero"},
+        )
+        assert created.status_code == 200
+        updated = client.put("/api/auth/nickname", json={"nickname": "Renamed Hero"})
+        assert updated.status_code == 200
+        assert updated.json() == {"email": "nick@test.io", "nickname": "Renamed Hero"}
+        client.post("/api/auth/logout")
+
 
 class TestPublicTrainedBook:
     def test_research_book_is_public_and_complete(self, monkeypatch):

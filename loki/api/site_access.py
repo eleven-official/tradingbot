@@ -227,10 +227,14 @@ def _supa_request(method: str, path: str, *, json_body: Optional[dict] = None) -
         detail = "That email or password was not accepted (passwords need 8+ characters)."
         try:
             body = response.json()
-            ident = body.get("msg") or body.get("error_description") or body.get("error") or ""
-            if "already" in str(ident).lower():
+            ident = str(body.get("msg") or body.get("error_description") or body.get("error") or "")
+            if "invalid login credentials" in ident.lower() or "invalid credentials" in ident.lower():
+                # Supabase answers 400 (not 401) for a wrong password; without
+                # this mapping the visitor got told about password length.
+                raise HTTPException(401, "Wrong email or password.")
+            if "already" in ident.lower():
                 detail = "That email already has an account — try signing in instead."
-            elif "capacity" in str(ident).lower() or "signed up" in str(ident).lower():
+            elif "capacity" in ident.lower() or "signed up" in ident.lower():
                 detail = "Sign-ups are temporarily limited; try again shortly."
         except ValueError:
             pass
@@ -269,9 +273,11 @@ async def sign_in_with_password(email: str, password: str) -> Dict[str, Any]:
 
 
 async def update_nickname(uid: str, nickname: str) -> Dict[str, Any]:
+    # Supabase's admin update endpoint answers 405 to PATCH (verified live):
+    # it takes PUT /auth/v1/admin/users/{uid}.
     return await run_in_threadpool(
         _supa_request,
-        "PATCH",
+        "PUT",
         f"/auth/v1/admin/users/{uid}",
         json_body={"user_metadata": {"nickname": nickname}},
     )

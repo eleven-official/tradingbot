@@ -181,6 +181,13 @@ class AuthBody(BaseModel):
     nickname: Optional[str] = Field(default=None, max_length=24)
 
 
+class NicknameBody(BaseModel):
+    # The nickname-update route only ever receives a nickname; sharing AuthBody
+    # here made every PUT 422 because email/password are required fields on it.
+    model_config = ConfigDict(extra="forbid")
+    nickname: str = Field(default="", max_length=24)
+
+
 def _session_cookie(response: Response, uid: str, email: str, nickname: str) -> None:
     response.set_cookie(
         site_access.SESSION_COOKIE,
@@ -230,7 +237,7 @@ async def auth_login(body: AuthBody, response: Response):
 
 
 @app.put("/api/auth/nickname", include_in_schema=False)
-async def auth_update_nickname(request: Request, body: AuthBody, response: Response):
+async def auth_update_nickname(request: Request, body: NicknameBody, response: Response):
     session = site_access.read_session_cookie_value(request.cookies.get(site_access.SESSION_COOKIE))
     if not session or not session.get("uid"):
         raise HTTPException(status_code=401, detail="Sign in first.")
