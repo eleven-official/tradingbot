@@ -1,28 +1,41 @@
-"""Alpaca paper-account relay: key validation + read-only account facts.
+"""Alpaca paper-account relay: key validation, account facts, explicit orders.
 
 The browser holds the paper-trading keys (they never persist server-side) and
 hands them to this relay per request. The relay talks ONLY to Alpaca's PAPER
-endpoint, only with GET, only for account facts — no orders, no transfers, no
-storage. Error answers are honest: a rejection says the keys were rejected,
-and an unreachable Alpaca never pretends otherwise.
+endpoint. Reading is account facts; writing is orders the user clicked, one
+place-order call per request, day-only, regular hours, hard relay caps
+(100 shares a ticket, limit price ceiling) so a stray click can type neither
+a fortune nor a flood. Error answers are honest: a rejection says the keys
+were rejected, a refused order says Alpaca refused it, and an unreachable
+Alpaca never pretends otherwise.
 """
 from __future__ import annotations
 
 import json
 import urllib.error
 import urllib.request
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 import loki.api.site_access as site_access
 
 router = APIRouter(prefix="/api/broker/alpaca", tags=["Broker relay"])
 
 _PAPER_BASE = "https://paper-api.alpaca.markets"
-_RELAY_UA = "Mozilla/5.0 (compatible; LokiWorkspace/2.0; read-only Alpaca paper relay)"
+_RELAY_UA = "Mozilla/5.0 (compatible; LokiWorkspace/2.0; Alpaca paper relay)"
+# Relay-side guards for the order rail. They are not advice and not a neutral
+# opinion about sizing — they exist so the relay cannot be a fire hose.
+ORDER_QTY_MAX = 100
+LIMIT_PRICE_MAX = 10_000.0
+
+_ORDER_FIELDS = (
+    "id", "symbol", "qty", "side", "type", "time_in_force", "status",
+    "created_at", "submitted_at", "filled_qty", "filled_avg_price",
+)
 
 
 class AlpacaPaperKeys(BaseModel):
@@ -34,6 +47,18 @@ class AlpacaPaperKeys(BaseModel):
     secret_key: str = Field(min_length=32, max_length=96, pattern=r"^[A-Za-z0-9_+\-/=]{32,96}$")
 
 
+class AlpacaOrder(AlpacaPaperKeys):
+    """One explicit paper order, exactly as the user shaped it on screen."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str = Field(min_length=1, max_length=10, pattern=r"^[A-Z][A-Z0-9.]{0,9}$")
+    side: Literal["buy", "sell"]
+    quantity: int = Field(ge=1, le=ORDER_QTY_MAX)
+    order_type: Literal["market", "limit"]
+    limit_price: Optional[float] = Field(default=None, ge=0.01, le=LIMIT_PRICE_MAX)
+
+
 def _require_gate(request: Request) -> None:
     """The relay serves people who already passed the workspace's door."""
     cookie = request.cookies.get(site_access.GATE_COOKIE)
@@ -41,21 +66,45 @@ def _require_gate(request: Request) -> None:
         raise HTTPException(403, "Open the workspace through its access door first.")
 
 
-def _paper_get(path: str, keys: AlpacaPaperKeys) -> Dict[str, Any]:
-    request = urllib.request.Request(
-        f"{_PAPER_BASE}{path}",
-        headers={
-            "User-Agent": _RELAY_UA,
-            "APCA-API-KEY-ID": keys.key_id,
-            "APCA-API-SECRET-KEY": keys.secret_key,
-        },
+def _alpaca_error_detail(error: urllib.error.HTTPError) -> str:
+    """Alpaca explains refusals in JSON; pass the human part through, clipped."""
+    snippet = ""
+    try:
+        body = error.read()
+        if body:
+            parsed = json.loads(body.decode())
+            if isinstance(parsed, dict):
+                snippet = str(parsed.get("message") or parsed.get("detail") or "")
+    except Exception:  # noqa: BLE001 - the detail must never become a crash
+        snippet = ""
+    if not snippet:
+        snippet = str(error.reason or f"HTTP {error.code}")
+    return snippet[:200]
+
+
+def _paper_exchange(
+    method: str, path: str, keys: AlpacaPaperKeys, body: Optional[Dict[str, Any]] = None
+) -> Any:
+    """One credentialed round-trip to Alpaca's PAPER endpoint, honest errors."""
+    data = json.dumps(body).encode() if body is not None else None
+    headers: Dict[str, str] = {
+        "User-Agent": _RELAY_UA,
+        "APCA-API-KEY-ID": keys.key_id,
+        "APCA-API-SECRET-KEY": keys.secret_key,
+    }
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(  # noqa: S310 - fixed https URL
+        f"{_PAPER_BASE}{path}", data=data, headers=headers, method=method
     )
     try:
-        with urllib.request.urlopen(request, timeout=15) as res:  # noqa: S310 - fixed https URL
+        with urllib.request.urlopen(request, timeout=15) as res:
             raw = res.read().decode()
     except urllib.error.HTTPError as error:
         if error.code in (401, 403):
             raise HTTPException(401, "Alpaca rejected those keys — copy them again from the Alpaca dashboard (paper keys).") from error
+        if error.code in (400, 422):
+            raise HTTPException(422, f"Alpaca refused this order: {_alpaca_error_detail(error)}") from error
         if error.code == 429:
             raise HTTPException(503, "Alpaca is rate-limiting this account; wait a minute and check again.") from error
         if error.code == 404:
@@ -67,8 +116,6 @@ def _paper_get(path: str, keys: AlpacaPaperKeys) -> Dict[str, Any]:
         payload = json.loads(raw)
     except ValueError as error:
         raise HTTPException(502, "Alpaca sent something this relay could not parse.") from error
-    if not isinstance(payload, dict):
-        raise HTTPException(502, "Alpaca's answer was not the expected account payload.")
     return payload
 
 
@@ -76,6 +123,13 @@ def _number_or_none(value: Any):
     """Round money numbers to cents; junk becomes None, never 0 (no invention)."""
     try:
         return round(float(value), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_or_none(value: Any):
+    try:
+        return int(float(value))
     except (TypeError, ValueError):
         return None
 
@@ -96,15 +150,78 @@ def _account_view(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _order_view(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Whitelist the order fields that leave the relay; status stays honest."""
+    view: Dict[str, Any] = {}
+    for field in _ORDER_FIELDS:
+        value = payload.get(field)
+        if value is None:
+            continue
+        if field == "qty":
+            quantity = _int_or_none(value)
+            if quantity is None:
+                continue
+            value = quantity
+        if field == "filled_avg_price":
+            value = _number_or_none(value)
+            if value is None:
+                continue
+        view[field] = str(value) if not isinstance(value, (int, float)) else value
+    return view
+
+
+def _dict_payload(payload: Any, what: str) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise HTTPException(502, f"Alpaca's answer was not the expected {what} payload.")
+    return payload
+
+
 @router.post("/test", include_in_schema=False)
 async def alpaca_test_keys(request: Request, keys: AlpacaPaperKeys) -> Dict[str, Any]:
     _require_gate(request)
-    payload = await run_in_threadpool(_paper_get, "/v2/account", keys)
-    return {"ok": True, "account_status": str(payload.get("status") or "unknown"), "paper": True}
+    payload = await run_in_threadpool(_paper_exchange, "GET", "/v2/account", keys)
+    return {"ok": True, "account_status": str(_dict_payload(payload, "account").get("status") or "unknown"), "paper": True}
 
 
 @router.post("/account", include_in_schema=False)
 async def alpaca_account(request: Request, keys: AlpacaPaperKeys) -> Dict[str, Any]:
     _require_gate(request)
-    payload = await run_in_threadpool(_paper_get, "/v2/account", keys)
-    return _account_view(payload)
+    payload = await run_in_threadpool(_paper_exchange, "GET", "/v2/account", keys)
+    return _account_view(_dict_payload(payload, "account"))
+
+
+@router.post("/order", include_in_schema=False)
+async def alpaca_place_order(request: Request, order: AlpacaOrder) -> Dict[str, Any]:
+    _require_gate(request)
+    if order.order_type == "limit" and order.limit_price is None:
+        raise HTTPException(422, "A limit order needs a limit price before it can travel.")
+    if order.order_type == "market" and order.limit_price is not None:
+        raise HTTPException(422, "A market order takes no limit price — send it as a limit order instead.")
+    body: Dict[str, Any] = {
+        "symbol": order.symbol,
+        "qty": str(order.quantity),
+        "side": order.side,
+        "type": order.order_type,
+        "time_in_force": "day",
+        "extended_hours": False,
+    }
+    if order.order_type == "limit":
+        body["limit_price"] = f"{order.limit_price:.2f}"
+    payload = await run_in_threadpool(
+        _paper_exchange, "POST", "/v2/orders", order, body
+    )
+    return {"ok": True, "paper": True, "order": _order_view(_dict_payload(payload, "order"))}
+
+
+@router.post("/orders", include_in_schema=False)
+async def alpaca_recent_orders(request: Request, keys: AlpacaPaperKeys) -> Dict[str, Any]:
+    """The paper book's recent orders — the log the panel reads, whitelisted."""
+    _require_gate(request)
+    payload = await run_in_threadpool(
+        _paper_exchange, "GET", "/v2/orders?status=all&limit=12&direction=desc", keys
+    )
+    if not isinstance(payload, list):
+        raise HTTPException(502, "Alpaca's order log was not the expected list.")
+    orders: List[Dict[str, Any]] = [_order_view(order) for order in payload if isinstance(order, dict)]
+    orders.sort(key=lambda view: str(view.get("created_at") or ""), reverse=True)
+    return {"ok": True, "paper": True, "orders": orders}
