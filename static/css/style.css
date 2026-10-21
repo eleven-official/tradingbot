@@ -131,6 +131,10 @@
 .alpaca-order-log .order-row-quiet .order-status{color:var(--amber)}
 .alpaca-order-log .order-price{color:var(--accent)}
 .alpaca-order-log .order-when{margin-left:auto;font-size:10px;color:var(--muted)}
+.alpaca-autopilot{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.autopilot-log{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:6px}
+.autopilot-log li{font-size:11px;line-height:1.7;color:var(--muted);padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:#0d161d;overflow-wrap:anywhere}
+.autopilot-log li.autopilot-row-error{color:var(--amber)}
 @media(max-width:760px){.alpaca-order-log .order-when{flex-basis:100%;margin-left:0}}
 /* Regime breakdown, shock comparison, guided practice, council disagreement */
 #regime-panel h3{margin:14px 0 6px}

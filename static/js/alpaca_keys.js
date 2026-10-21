@@ -56,7 +56,115 @@
     target.append(element('p', 'Account facts and the order log come from Alpaca\'s paper endpoint; orders are placed only when you click, armed then confirmed.', 'caption'));
   }
 
-  /* ---------- paper order rail (explicit user clicks, relay-guarded) ---------- */
+  /* ---------- autopilot (paper, tab-open only, published rule) ---------- */
+  const AUTOPILOT_TICK_MS = 60000;
+  const AUTOPILOT_SMA = 10;
+  const AUTOPILOT_MAX_ORDERS = 10;
+  const AUTOPILOT_COOLDOWN_MS = 90000;
+  const autopilot = { on: false, timer: 0, held: false, lastSide: null, orders: 0, lastSendAt: 0 };
+
+  function autopilotLog(text, error) {
+    const node = $('#alpaca-autopilot-log');
+    if (!node) return;
+    const row = document.createElement('li');
+    row.textContent = text;
+    if (error) row.className = 'autopilot-row-error';
+    node.prepend(row);
+    while (node.children.length > 30) node.removeChild(node.lastChild);
+  }
+
+  function autopilotStatus(text) {
+    const node = $('#alpaca-autopilot-status');
+    if (node) node.textContent = text;
+  }
+
+  function stopAutopilot(reason) {
+    if (autopilot.on && reason) autopilotLog('Stopped: ' + reason);
+    autopilot.on = false;
+    if (autopilot.timer) { window.clearInterval(autopilot.timer); autopilot.timer = 0; }
+    const sw = $('#alpaca-autopilot-switch');
+    if (sw && sw.checked) sw.checked = false;
+    autopilotStatus('Autopilot off');
+  }
+
+  function startAutopilot() {
+    const saved = load();
+    if (!connected || !saved) {
+      autopilotLog('Switch stayed off — the keys are not verified with Alpaca.', true);
+      const sw = $('#alpaca-autopilot-switch');
+      if (sw) sw.checked = false;
+      return;
+    }
+    const symbolEl = $('#alpaca-order-symbol');
+    if (!symbolEl || !String(symbolEl.value || '').trim()) {
+      autopilotLog('Switch stayed off — type a ticker in the order form first; the autopilot uses it.', true);
+      const sw = $('#alpaca-autopilot-switch');
+      if (sw) sw.checked = false;
+      return;
+    }
+    autopilot.on = true;
+    autopilotStatus('Autopilot on · runs while this tab is open, off the moment it is not.');
+    autopilotLog('Autopilot ON: ' + AUTOPILOT_SMA + '-bar rule on 1-minute bars, 1 share per crossing, only sells what it bought, ' + AUTOPILOT_MAX_ORDERS + ' orders max this session.');
+    autopilotTick();
+    autopilot.timer = window.setInterval(autopilotTick, AUTOPILOT_TICK_MS);
+  }
+
+  async function autopilotTick() {
+    if (!autopilot.on) return;
+    if (document.hidden || viewActive() === false) return; // paused while out of sight; resumes by the clock
+    if (busy) return; // a manual action owns the lane; the next tick reprices
+    if (autopilot.orders >= AUTOPILOT_MAX_ORDERS) {
+      stopAutopilot('the session ceiling of ' + AUTOPILOT_MAX_ORDERS + ' orders was reached.');
+      return;
+    }
+    if (autopilot.lastSendAt && Date.now() - autopilot.lastSendAt < AUTOPILOT_COOLDOWN_MS) return;
+    const saved = load();
+    if (!saved || !connected) {
+      stopAutopilot('the keys stopped verifying — the rule does not run unverified.');
+      return;
+    }
+    const symbol = String(($('#alpaca-order-symbol') || {}).value || '').trim().toUpperCase();
+    if (!symbol) {
+      stopAutopilot('the ticker box went empty — nothing to price.');
+      return;
+    }
+    busy = true;
+    try {
+      const answer = await request('/api/broker/alpaca/bars', { key_id: saved.key_id, secret_key: saved.secret_key, symbol });
+      const bars = Array.isArray(answer.bars) ? answer.bars : [];
+      const closes = bars.map((bar) => Number(bar.c)).filter((c) => Number.isFinite(c) && c > 0);
+      if (closes.length < AUTOPILOT_SMA + 1) {
+        autopilotStatus('Autopilot on · waiting for enough bars (' + closes.length + '/' + (AUTOPILOT_SMA + 1) + ') — nothing traded, nothing invented.');
+        return;
+      }
+      const avg = closes.slice(-AUTOPILOT_SMA).reduce((s, c) => s + c, 0) / AUTOPILOT_SMA;
+      const latest = closes[closes.length - 1];
+      const side = latest > avg ? 'above' : (latest < avg ? 'below' : autopilot.lastSide);
+      autopilotStatus('Autopilot on · ' + symbol + ' ' + latest.toFixed(2) + ' vs ' + AUTOPILOT_SMA + '-bar avg ' + avg.toFixed(2) + ' — ' + (side === 'above' ? 'above' : side === 'below' ? 'below' : 'level') + ' · ' + autopilot.orders + '/' + AUTOPILOT_MAX_ORDERS + ' orders this session');
+      if (autopilot.lastSide && side && side !== autopilot.lastSide) {
+        const crossingUp = side === 'above' && autopilot.lastSide === 'below' && !autopilot.held;
+        const crossingDown = side === 'below' && autopilot.lastSide === 'above' && autopilot.held;
+        if (crossingUp || crossingDown) {
+          const action = crossingUp ? 'buy' : 'sell';
+          const body = { key_id: saved.key_id, secret_key: saved.secret_key, symbol, side: action, quantity: 1, order_type: 'market' };
+          const sent = await request('/api/broker/alpaca/order', body);
+          autopilot.held = crossingUp;
+          autopilot.orders += 1;
+          autopilot.lastSendAt = Date.now();
+          const status = String((sent.order || {}).status || 'unknown').toLowerCase();
+          autopilotLog('Crossing ' + (crossingUp ? 'up' : 'down') + ' (' + latest.toFixed(2) + ' vs avg ' + avg.toFixed(2) + ') → sent ' + action.toUpperCase() + ' 1 ' + symbol + ' @ market — Alpaca status: ' + status + '.');
+        } else {
+          autopilotLog('Crossing ' + (side === 'above' ? 'up' : 'down') + ' noted — no action this side of the rule (' + (autopilot.held ? 'holding its own share' : 'no position of its own') + ').');
+        }
+      }
+      autopilot.lastSide = side;
+    } catch (error) {
+      autopilotLog('Check failed, no trade: ' + (error.message || 'the bars could not be read right now.'), true);
+    } finally {
+      busy = false;
+      controls();
+    }
+  }
   const ORDER_QTY_MAX = 100; // mirrors the relay cap — a guard, not advice
   const LIMIT_PRICE_MAX = 10000; // mirrors the relay cap
   let orderArmed = null, orderArmTimer = 0;
@@ -193,6 +301,7 @@
       statusTag();
       renderAccount(null);
       clearOrders();
+      stopAutopilot();
       controls();
       return;
     }
@@ -211,6 +320,7 @@
       message('#alpaca-message', 'Keys verified — Alpaca confirmed this account on the paper endpoint.');
       fetchOrders();
     } catch (error) {
+      stopAutopilot('Keys stopped verifying with Alpaca.');
       renderAccount(null);
       message('#alpaca-message', error.message || 'The Alpaca check failed.', true);
     } finally {
@@ -241,6 +351,7 @@
     statusTag();
     renderAccount(null);
     clearOrders();
+    stopAutopilot('Keys were forgotten.');
     message('#alpaca-message', 'Keys forgotten — nothing stays in this browser.');
   });
 
@@ -260,6 +371,14 @@
     if (refresh) refresh.addEventListener('click', (event) => { event.preventDefault(); if (!busy) fetchOrders(); });
   }
 
+  const autoSwitch = $('#alpaca-autopilot-switch');
+  if (autoSwitch) {
+    autoSwitch.addEventListener('change', () => {
+      if (autoSwitch.checked) startAutopilot();
+      else stopAutopilot('the switch went off.');
+    });
+  }
+
   // Verify on arrival — but only when the stored keys changed since the last
   // check. A fingerprint on the key ID (not object identity) keeps repeat
   // visits from re-hitting Alpaca's endpoint without reason.
@@ -274,10 +393,21 @@
   statusTag();
   renderAccount(null);
   clearOrders();
+  stopAutopilot();
   const savedOnInit = load();
   if (viewActive() && savedOnInit) {
     verifiedFor = savedOnInit.key_id;
     verify();
   }
   controls();
+  // Debugging + verification handle (local testing only; the relay alone
+  // decides what Alpaca accepts, so a faked `connected` flag in a console
+  // still cannot move a single order).
+  window.LokiAlpaca = {
+    state: autopilot,
+    start: startAutopilot,
+    stop: stopAutopilot,
+    tick: autopilotTick,
+    _debug: { setConnected(value) { connected = !!value; } },
+  };
 })();

@@ -376,6 +376,86 @@ class TestOrderRail:
         assert "not the expected list" in response.json()["detail"]
 
 
+BARS_PAYLOAD = {
+    "bars": [
+        {"t": f"2026-10-21T11:{i:02d}:00Z", "o": 480 + i / 10, "h": 481, "l": 479,
+         "c": 480.5 + i / 100, "v": 1000 + i}
+        for i in range(25)
+    ] + [{"junk": True}],
+}
+
+
+class TestAutopilotBars:
+    def gate(self):
+        opened = client.post("/api/gate", json={"code": "flathead"})
+        assert opened.status_code == 200
+
+    def test_bars_read_reaches_alpacas_data_host_not_the_paper_host(self, monkeypatch):
+        self.gate()
+        later = {}
+
+        def fake(request, timeout=None):
+            later["request"] = request
+            return FakeResponse(json.dumps(BARS_PAYLOAD).encode())
+
+        monkeypatch.setattr(module.urllib.request, "urlopen", fake)
+        response = client.post("/api/broker/alpaca/bars", json={**KEYS, "symbol": "spy", "minutes": 25})
+        assert response.status_code == 200
+        request = later["request"]
+        assert request.full_url == "https://data.alpaca.markets/v2/stocks/SPY/bars?timeframe=1Min&limit=25&feed=iex&sort=asc"
+        headers = {name.lower(): value for name, value in request.header_items()}
+        assert headers.get("apca-api-key-id") == KEYS["key_id"]
+        assert request.get_method() == "GET"
+        assert request.data is None, "the bars read never sends a body upstream"
+
+    def test_bar_view_is_whitelisted_and_junk_bars_drop_out(self, monkeypatch):
+        self.gate()
+        monkeypatch.setattr(
+            module.urllib.request, "urlopen",
+            lambda request, timeout=None: FakeResponse(json.dumps(BARS_PAYLOAD).encode()),
+        )
+        body = client.post("/api/broker/alpaca/bars", json={**KEYS, "symbol": "SPY"}).json()
+        assert set(body) == {"ok", "paper", "symbol", "bars"}
+        first = body["bars"][0]
+        assert set(first) == {"t", "o", "h", "l", "c", "v"}
+        assert body["bars"][0]["t"] == "2026-10-21T11:00:00Z"
+        assert len(body["bars"]) == 25, "the junk bar dropped out, the real ones stayed"
+
+    def test_bar_feed_oversized_rows_are_capped(self, monkeypatch):
+        self.gate()
+        huge = {"bars": [{"t": "2026-10-21T11:00:00Z", "o": 1, "h": 1, "l": 1, "c": 1, "v": 1} for _ in range(200)]}
+        monkeypatch.setattr(
+            module.urllib.request, "urlopen",
+            lambda request, timeout=None: FakeResponse(json.dumps(huge).encode()),
+        )
+        body = client.post("/api/broker/alpaca/bars", json={**KEYS, "symbol": "SPY", "minutes": 60}).json()
+        assert len(body["bars"]) <= module.BARS_MAX
+
+    def test_bar_requests_stay_in_band_before_any_network(self, monkeypatch):
+        self.gate()
+        attempts = {"n": 0}
+
+        def forbidden(*args, **kwargs):
+            attempts["n"] += 1
+            raise AssertionError("out-of-band bar requests must be refused before any network hop")
+
+        monkeypatch.setattr(module.urllib.request, "urlopen", forbidden)
+        assert client.post("/api/broker/alpaca/bars", json={**KEYS, "symbol": "SPY", "minutes": 5}).status_code == 422
+        assert client.post("/api/broker/alpaca/bars", json={**KEYS, "symbol": "SPY", "minutes": 61}).status_code == 422
+        assert client.post("/api/broker/alpaca/bars", json={**KEYS, "symbol": "s.p y"}).status_code == 422
+        assert attempts["n"] == 0
+
+    def test_shapeless_bar_feed_answers_502(self, monkeypatch):
+        self.gate()
+        monkeypatch.setattr(
+            module.urllib.request, "urlopen",
+            lambda request, timeout=None: FakeResponse(b'{"bars": "nope"}'),
+        )
+        response = client.post("/api/broker/alpaca/bars", json={**KEYS, "symbol": "SPY"})
+        assert response.status_code == 502
+        assert "unexpected shape" in response.json()["detail"]
+
+
 class TestSiteHygiene:
     def test_backup_export_excludes_alpaca_keys(self):
         source = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
@@ -426,3 +506,26 @@ class TestSiteHygiene:
         js_cap = _re.search(r"ORDER_QTY_MAX = (\d+)", module)
         assert server_cap and js_cap, "both sides must declare the cap"
         assert server_cap.group(1) == js_cap.group(1), "the panel cap must mirror the relay cap exactly"
+
+    def test_autopilot_is_published_rails_not_a_shrug(self):
+        index = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        for marker in (
+            'id="alpaca-autopilot-switch"', 'id="alpaca-autopilot-status"',
+            'id="alpaca-autopilot-log"', "averages the last ten closes",
+            "buys exactly 1 share", "Closing the tab or reloading turns it off — it never restarts on its own",
+            "never touches positions you opened by hand",
+        ):
+            assert marker in index, f"the published rule is missing its own words: {marker}"
+
+    def test_autopilot_engine_holds_the_rails(self):
+        module = (ROOT / "static" / "js" / "alpaca_keys.js").read_text(encoding="utf-8")
+        assert "AUTOPILOT_MAX_ORDERS = 10" in module, "the session ceiling must be declared"
+        assert "AUTOPILOT_COOLDOWN_MS = 90000" in module, "a cooldown must follow every send"
+        assert "document.hidden" in module, "the loop must pause while the tab is hidden"
+        assert "async function autopilotTick" in module
+        assert "autopilot.lastSide && side && side !== autopilot.lastSide" in module, \
+            "orders fire only on a real crossing, never on a side already held"
+        assert "crossingUp ? 'buy' : 'sell'" in module and "quantity: 1" in module, \
+            "the rule trades exactly one share per crossing"
+        assert "if (!bars" not in module, "placeholder shipped"  # honest mistake guard
+        assert "stopAutopilot('the session ceiling of '" in module, "the ceiling must stand the train down honestly"

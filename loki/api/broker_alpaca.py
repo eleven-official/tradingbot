@@ -26,11 +26,13 @@ import loki.api.site_access as site_access
 router = APIRouter(prefix="/api/broker/alpaca", tags=["Broker relay"])
 
 _PAPER_BASE = "https://paper-api.alpaca.markets"
+_DATA_BASE = "https://data.alpaca.markets"
 _RELAY_UA = "Mozilla/5.0 (compatible; LokiWorkspace/2.0; Alpaca paper relay)"
 # Relay-side guards for the order rail. They are not advice and not a neutral
 # opinion about sizing — they exist so the relay cannot be a fire hose.
 ORDER_QTY_MAX = 100
 LIMIT_PRICE_MAX = 10_000.0
+BARS_MAX = 60
 
 _ORDER_FIELDS = (
     "id", "symbol", "qty", "side", "type", "time_in_force", "status",
@@ -57,6 +59,15 @@ class AlpacaOrder(AlpacaPaperKeys):
     quantity: int = Field(ge=1, le=ORDER_QTY_MAX)
     order_type: Literal["market", "limit"]
     limit_price: Optional[float] = Field(default=None, ge=0.01, le=LIMIT_PRICE_MAX)
+
+
+class AlpacaBarsRequest(AlpacaPaperKeys):
+    """A read-only bars request for the autopilot's published rule."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str = Field(min_length=1, max_length=10, pattern=r"^[A-Za-z][A-Za-z0-9.]{0,9}$")
+    minutes: int = Field(default=25, ge=12, le=60)
 
 
 def _require_gate(request: Request) -> None:
@@ -86,6 +97,14 @@ def _paper_exchange(
     method: str, path: str, keys: AlpacaPaperKeys, body: Optional[Dict[str, Any]] = None
 ) -> Any:
     """One credentialed round-trip to Alpaca's PAPER endpoint, honest errors."""
+    return _exchange(method, path, keys, body, _PAPER_BASE)
+
+
+def _exchange(
+    method: str, path: str, keys: AlpacaPaperKeys, body: Optional[Dict[str, Any]] = None,
+    base: str = _PAPER_BASE,
+) -> Any:
+    """One credentialed round-trip to a pinned Alpaca host, honest errors."""
     data = json.dumps(body).encode() if body is not None else None
     headers: Dict[str, str] = {
         "User-Agent": _RELAY_UA,
@@ -94,8 +113,8 @@ def _paper_exchange(
     }
     if data is not None:
         headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(  # noqa: S310 - fixed https URL
-        f"{_PAPER_BASE}{path}", data=data, headers=headers, method=method
+    request = urllib.request.Request(  # noqa: S310 - fixed https URLs only
+        f"{base}{path}", data=data, headers=headers, method=method
     )
     try:
         with urllib.request.urlopen(request, timeout=15) as res:
@@ -225,3 +244,35 @@ async def alpaca_recent_orders(request: Request, keys: AlpacaPaperKeys) -> Dict[
     orders: List[Dict[str, Any]] = [_order_view(order) for order in payload if isinstance(order, dict)]
     orders.sort(key=lambda view: str(view.get("created_at") or ""), reverse=True)
     return {"ok": True, "paper": True, "orders": orders}
+
+
+@router.post("/bars", include_in_schema=False)
+async def alpaca_bars(request: Request, bars: AlpacaBarsRequest) -> Dict[str, Any]:
+    """One-minute bars from Alpaca's data feed (the free IEX feed), whitelisted.
+
+    Read-only against data.alpaca.markets; the panel's published rule eats the
+    closes. No signals are computed here — the relay just fetches facts.
+    """
+    _require_gate(request)
+    symbol = bars.symbol.upper()
+    path = f"/v2/stocks/{symbol}/bars?timeframe=1Min&limit={bars.minutes}&feed=iex&sort=asc"
+    payload = await run_in_threadpool(_exchange, "GET", path, bars, None, _DATA_BASE)
+    if not isinstance(payload, dict) or not isinstance(payload.get("bars"), list):
+        raise HTTPException(502, "Alpaca's bar feed arrived in an unexpected shape.")
+    views: List[Dict[str, Any]] = []
+    for bar in payload["bars"][:BARS_MAX]:
+        if not isinstance(bar, dict):
+            continue
+        timestamp = str(bar.get("t") or "")
+        close = _number_or_none(bar.get("c"))
+        if not timestamp or close is None:
+            continue
+        views.append({
+            "t": timestamp,
+            "o": _number_or_none(bar.get("o")),
+            "h": _number_or_none(bar.get("h")),
+            "l": _number_or_none(bar.get("l")),
+            "c": close,
+            "v": _number_or_none(bar.get("v")),
+        })
+    return {"ok": True, "paper": True, "symbol": symbol, "bars": views}
