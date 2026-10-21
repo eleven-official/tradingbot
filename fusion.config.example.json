@@ -1,8 +1,0 @@
-{
-  "fincept_path": "C:/path/to/your/licensed/FinceptTerminal-main",
-  "fincept_python": "C:/path/to/python-with-numpy-pandas-scipy/python.exe",
-  "fincept_license_confirmed": false,
-  "fincept_allow_analytics": false,
-  "mirofish_url": "http://127.0.0.1:5001",
-  "mirofish_allow_jobs": false
-}

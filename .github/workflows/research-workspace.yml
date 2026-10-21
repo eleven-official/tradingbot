@@ -37,17 +37,13 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements.txt
-            requirements_desktop.txt
             requirements_test.txt
 
-      - name: Install research and desktop test dependencies
+      - name: Install research and paper test dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements_test.txt
           python -m pip check
-
-      - name: Verify desktop imports are tested rather than skipped
-        run: python -c "import loki_desktop"
 
       - name: Run focused offline regressions
         # These tests never construct a Tk window, contact an exchange or place
@@ -58,45 +54,51 @@ jobs:
           import sys
 
           tests = [
+              "tests/test_ai_paper.py",
+              "tests/test_api.py",
+              "tests/test_binance_market_data.py",
+              "tests/test_bot_copilot.py",
+              "tests/test_broker_alpaca.py",
+              "tests/test_broker_link.py",
               "tests/test_copilot.py",
               "tests/test_copilot_conversation.py",
               "tests/test_copilot_fusion_safety.py",
-              "tests/test_strategy_lab.py",
-              "tests/test_frozen_research.py",
-              "tests/test_pullback_research.py",
-              "tests/test_market_learning.py",
-              "tests/test_simulated_market.py",
-              "tests/test_real_account.py",
-              "tests/test_real_execution.py",
-              "tests/test_miro_native.py",
+              "tests/test_daily_risk.py",
+              "tests/test_deployment_config.py",
+              "tests/test_exit_upgrades.py",
+              "tests/test_fusion_api.py",
+              "tests/test_fusion_council.py",
+              "tests/test_fusion_external.py",
+              "tests/test_fusion_portfolio.py",
+              "tests/test_fusion_provenance.py",
+              "tests/test_fusion_quant.py",
+              "tests/test_fx_rate.py",
+              "tests/test_game_dive.py",
+              "tests/test_infra_stubs.py",
               "tests/test_mode_conversation.py",
-              "tests/test_broker_link.py",
+              "tests/test_news_desk.py",
               "tests/test_paper_agent.py",
               "tests/test_paper_models.py",
-              "tests/test_merged_terminal.py",
+              "tests/test_profile.js",
+              "tests/test_pullback_research.py",
+              "tests/test_real_account.py",
+              "tests/test_real_execution.py",
+              "tests/test_risk_planner.py",
+              "tests/test_simulated_market.py",
+              "tests/test_site_access.py",
+              "tests/test_strategy_backtest.py",
+              "tests/test_strategy_lab.js",
+              "tests/test_strategy_lab.py",
+              "tests/test_trade_council.py",
               "tests/test_trainer.py",
               "tests/test_v8_upgrades.py",
-              "tests/test_exit_upgrades.py",
-              "tests/test_deployment_config.py",
-              "tests/test_portfolio.py",
-              "tests/test_research_api.py",
-              "tests/test_api.py",
-              "tests/test_fusion_api.py",
-              "tests/test_fusion_launcher.py",
-              "tests/test_fusion_quant.py",
-              "tests/test_fusion_provenance.py",
-              "tests/test_fusion_council.py",
-              "tests/test_fusion_portfolio.py",
-              "tests/test_fusion_external.py",
-              "tests/test_setup_mirofish.py",
-              "tests/test_desktop_presenter.py",
-              "tests/test_desktop_execution.py",
-              "tests/test_walk_forward.py",
-              "tests/test_risk_controller.py",
-              "tests/test_metrics.py",
-              "tests/test_core.py",
+              "tests/test_watchtower.py",
           ]
           subprocess.run(
-              [sys.executable, "-m", "pytest", "-o", "addopts=", "--strict-markers", "--tb=short", "-q", *tests],
+              [sys.executable, "-m", "pytest", "-o", "addopts=", "--strict-markers", "--tb=short", "-q", *[t for t in tests if t.endswith(".py")]],
+              check=True,
+          )
+          subprocess.run(
+              ["node", "--test", *[t for t in tests if t.endswith(".js")]],
               check=True,
           )

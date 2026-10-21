@@ -1,5 +1,0 @@
-# Optional legacy broker environment; do not combine with requirements_enhanced.
-# This SDK pins websockets<11. Modern research/desktop clients use newer versions.
-# core_engine.alpaca_broker reports this optional SDK as unavailable when absent.
-alpaca-trade-api>=3.2,<4
-python-dotenv>=1.0

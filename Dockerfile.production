@@ -13,14 +13,12 @@ ENV PATH="/opt/venv/bin:$PATH" \
     LOKI_ENV=production
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
-COPY main.py index.py supabase_manager.py supabase_schema.sql README.md ./
+COPY main.py supabase_schema.sql README.md ./
 COPY loki/ ./loki/
 COPY loki_v8/ ./loki_v8/
 COPY core/ ./core/
-COPY core_engine/ ./core_engine/
 COPY components/ ./components/
 COPY third_party/ ./third_party/
-COPY docs/ ./docs/
 COPY templates/ ./templates/
 COPY static/ ./static/
 RUN groupadd --gid 10001 loki && useradd --uid 10001 --gid loki --create-home loki \
