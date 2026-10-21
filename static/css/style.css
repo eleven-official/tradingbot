@@ -111,6 +111,17 @@
 .loki-currency.in-topbar{position:static;box-shadow:none}
 .loki-currency.hidden-view{display:none}
 @media(max-width:1120px){.cur-rate-inline{display:none}}
+
+/* Market news desk view */
+.news-list{display:grid;gap:10px;margin-top:6px}
+.news-item{border:1px solid var(--line);border-radius:9px;padding:13px 15px;background:#101a20;display:grid;grid-template-columns:1fr;gap:7px}
+.news-item:hover{border-color:#2c4048}
+.news-title{margin:0;font-size:13.5px;font-weight:550;line-height:1.55}
+.news-title a{color:var(--text);text-decoration:none}
+.news-title a:hover{color:var(--accent);text-decoration:underline}
+.news-themes{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.news-meta{font-size:10px;color:var(--muted);letter-spacing:.4px;margin:0}
+@media(max-width:760px){.news-item{padding:11px 12px}}
 /* Regime breakdown, shock comparison, guided practice, council disagreement */
 #regime-panel h3{margin:14px 0 6px}
 #regime-note{margin:6px 0 10px;max-width:80ch}

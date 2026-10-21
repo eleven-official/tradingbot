@@ -21,6 +21,7 @@ from core.risk_preview import preview_position
 from core.strategy_lab import evaluate_strategy
 from loki.api import site_access
 from loki.api.ai_paper import router as ai_paper_router
+from loki.api.news_desk import router as news_desk_router
 from loki.api.fusion import router as fusion_router
 from loki.api.broker_workspace import router as broker_workspace_router
 
@@ -41,6 +42,9 @@ app.include_router(watchtower_router)
 from loki.api.broker_alpaca import router as broker_alpaca_router
 
 app.include_router(broker_alpaca_router)
+from loki.api.news_desk import router as news_desk_router
+
+app.include_router(news_desk_router)
 
 
 # Load the larger optional strategy engine only for terminal requests.

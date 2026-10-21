@@ -137,8 +137,13 @@ def fetch_headlines(symbol: str, limit: int) -> dict[str, Any]:
     if cached is not None and now - cached[0] < NEWS_TTL_SECONDS:
         return dict(cached[1])
     url = (
-        f"{YAHOO_SEARCH_URL}?{urlencode({'q': quote(_search_query(normalized), safe='') , 'quotesCount': 0, 'newsCount': min(limit, MAX_NEWS_ITEMS) } )}"
+        f"{YAHOO_SEARCH_URL}?{urlencode({'q': _search_query(normalized), 'quotesCount': 0, 'newsCount': min(limit, MAX_NEWS_ITEMS) } )}"
     )
+    return dict(_parsed_search_news(url, key, now, min(limit, MAX_NEWS_ITEMS)))
+
+
+def _parsed_search_news(url: str, cache_key: str, now: float, limit: int) -> dict[str, Any]:
+    """One public Yahoo search-news answer, parsed and cached under a key."""
     payload = _http_json(url)
     try:
         raw_news = payload["news"]
@@ -162,8 +167,28 @@ def fetch_headlines(symbol: str, limit: int) -> dict[str, Any]:
                 break
     except (KeyError, TypeError, AttributeError) as error:
         raise MarketFeedError("the public headlines feed answered unusable data") from error
-    _news_cache[key] = (now, {"items": items})
+    _news_cache[cache_key] = (now, {"items": items})
     return {"items": items}
+
+
+def latest_headlines_for_query(query: str, limit: int) -> dict[str, Any]:
+    """Public headlines for a free-text market topic (e.g. 'Federal Reserve').
+
+    Symbol fetches normalize through the instrument pattern; a term is plain
+    text — length-bounded, cached the same way, never personalized.
+    """
+    text = " ".join(str(query).split())
+    if not text or len(text) > 64:
+        raise MarketFeedError("Use a market topic of 1-64 characters")
+    now = time.time()
+    key = f"q:{text.lower()}:{limit}"
+    cached = _news_cache.get(key)
+    if cached is not None and now - cached[0] < NEWS_TTL_SECONDS:
+        return dict(cached[1])
+    url = (
+        f"{YAHOO_SEARCH_URL}?{urlencode({'q': text, 'quotesCount': 0, 'newsCount': min(limit, MAX_NEWS_ITEMS) } )}"
+    )
+    return dict(_parsed_search_news(url, key, now, min(limit, MAX_NEWS_ITEMS)))
 
 
 def _http_json(url: str, timeout: float = 8.0) -> Any:
