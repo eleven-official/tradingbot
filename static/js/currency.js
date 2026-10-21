@@ -48,13 +48,15 @@
   let rateAt = null;
 
   const updateFxNote = () => {
-    const note = document.getElementById('loki-fx-note');
-    if (!note) return;
-    const when = rateAt ? ` · updated ${new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' }).format(rateAt)}` : '';
-    note.textContent = current === 'AUD'
-      ? `US$1 → A$${rate.toFixed(2)} · ${rateLive ? 'live rate' : 'fallback rate'}${when}`
-      : 'Ledger stays in US$ · showing plain USD';
-    note.title = 'Market prices and paper math are always USD. The AUD option only converts what is displayed.';
+    const seen = rateAt ? ` · updated ${new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' }).format(rateAt)}` : '';
+    const explainer = rateLive
+      ? `Live rate${seen}`
+      : `Fallback rate (rate service unreachable)${seen}`;
+    const inline = document.getElementById('loki-fx-inline');
+    if (!inline) return;
+    inline.hidden = current !== 'AUD';
+    inline.textContent = `US$1 → A$${rate.toFixed(2)}`;
+    inline.title = `${explainer}. Market prices and paper math are always USD; the AUD option only converts what is displayed.`;
   };
 
   const get = () => ({ code: current, rate, rateLive });
@@ -88,6 +90,7 @@
     bar.className = 'loki-currency';
     bar.setAttribute('role', 'group');
     bar.setAttribute('aria-label', 'Display currency');
+    bar.title = 'Market prices and paper math are always USD; the AUD option only converts what is displayed.';
     const mk = (code) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -98,16 +101,33 @@
       button.addEventListener('click', () => set(code));
       return button;
     };
-    bar.append(mk('AUD'), mk('USD'));
-    const note = document.createElement('span');
-    note.className = 'cur-rate-note';
-    note.id = 'loki-fx-note';
-    note.setAttribute('aria-live', 'polite');
-    bar.append(note);
-    document.body.appendChild(bar);
+    const rate = document.createElement('span');
+    rate.className = 'cur-rate-inline';
+    rate.id = 'loki-fx-inline';
+    rate.setAttribute('aria-live', 'polite');
+    bar.append(mk('AUD'), mk('USD'), rate);
+    // It belongs in the topbar's right cluster, next to the mode controls —
+    // never as a floating corner that fights the page for space.
+    const slot = document.querySelector('.topbar .topbar-status') || document.querySelector('.topbar');
+    if (slot) {
+      bar.classList.add('in-topbar');
+      slot.insertBefore(bar, slot.firstChild);
+    } else {
+      document.body.appendChild(bar);
+    }
     updateButtons();
     updateFxNote();
+    updatePlacement();
   };
+
+  /* Frames inside the workspace put their own header in the top-right corner;
+   * when the switcher falls back to a fixed corner it steps aside there. */
+  const updatePlacement = () => {
+    const bar = document.querySelector('.loki-currency');
+    if (!bar || bar.classList.contains('in-topbar')) return;
+    bar.classList.toggle('hidden-view', location.hash === '#advanced-terminal');
+  };
+  window.addEventListener('hashchange', updatePlacement);
 
   function updateButtons() {
     document.querySelectorAll('.loki-currency .cur-opt').forEach((button) => {

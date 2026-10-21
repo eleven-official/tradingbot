@@ -186,9 +186,9 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn('id="quant-csv-preview"', source)
         self.assertIn('id="preview-apply"', source)
         self.assertIn("function previewCsv", workspace)
-        # AI heartbeat, FX note, evidence links, backup/restore.
+        # AI heartbeat, FX rate readout, evidence links, backup/restore.
         self.assertIn('id="ai-heartbeat"', source)
-        self.assertIn("loki-fx-note", (ROOT / "static" / "js" / "currency.js").read_text(encoding="utf-8"))
+        self.assertIn("loki-fx-inline", (ROOT / "static" / "js" / "currency.js").read_text(encoding="utf-8"))
         self.assertIn("EVIDENCE", workspace)
         self.assertIn('id="backup-export"', source)
         backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")

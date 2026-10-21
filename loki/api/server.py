@@ -38,6 +38,9 @@ app.include_router(paper_tools_router)
 from loki.api.watchtower import router as watchtower_router
 
 app.include_router(watchtower_router)
+from loki.api.broker_alpaca import router as broker_alpaca_router
+
+app.include_router(broker_alpaca_router)
 
 
 # Load the larger optional strategy engine only for terminal requests.

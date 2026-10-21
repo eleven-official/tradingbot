@@ -105,11 +105,12 @@
 /* Backup & restore */
 .backup-panel .button-row{margin-top:6px}
 #backup-where{margin-top:8px}
-/* FX rate note in the currency switcher */
-.cur-rate-note{display:block;font-size:10.5px;color:#9fb0c2;letter-spacing:.2px;text-align:right;margin-top:6px;padding-right:2px}
-.loki-currency{display:flex;flex-direction:column;align-items:flex-end;gap:0}
-.loki-currency .cur-opt{margin-left:4px}
-@media(max-width:760px){.cur-rate-note{font-size:9.5px}}
+/* Display-currency control: a compact segmented control that lives in the
+ * topbar itself (fixed corner only as fallback for non-topbar hosts) */
+.cur-rate-inline{font-size:10px;color:#8ea3b6;letter-spacing:.3px;padding:0 6px 0 2px;align-self:center;white-space:nowrap}
+.loki-currency.in-topbar{position:static;box-shadow:none}
+.loki-currency.hidden-view{display:none}
+@media(max-width:1120px){.cur-rate-inline{display:none}}
 /* Regime breakdown, shock comparison, guided practice, council disagreement */
 #regime-panel h3{margin:14px 0 6px}
 #regime-note{margin:6px 0 10px;max-width:80ch}
