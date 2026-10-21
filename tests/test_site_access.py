@@ -32,8 +32,8 @@ class TestAccessCode:
         assert not site_access.code_matches("flat head")
 
     def test_nicknames(self, monkeypatch):
-        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
-        monkeypatch.delenv("SUPABASE_KEY", raising=False)
+        for name in site_access.SUPABASE_KEY_ENV_NAMES:
+            monkeypatch.delenv(name, raising=False)
         assert site_access.clean_nickname("Moon Runner") == "Moon Runner"
         assert site_access.clean_nickname("  moon-runner_2 ") == "moon-runner_2"
         assert site_access.clean_nickname("x") == ""
@@ -98,9 +98,9 @@ class TestGateThrottle:
 
 class TestAccounts:
     def _stub_admin(self, monkeypatch):
+        for name in site_access.SUPABASE_KEY_ENV_NAMES:
+            monkeypatch.delenv(name, raising=False)
         monkeypatch.delenv("SUPABASE_URL", raising=False)
-        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
-        monkeypatch.delenv("SUPABASE_KEY", raising=False)
 
     def test_guest_mode_when_accounts_unconfigured(self, monkeypatch):
         self._stub_admin(monkeypatch)
@@ -164,9 +164,9 @@ class TestAccounts:
     def test_nickname_update_uses_put_not_patch(self, monkeypatch):
         # Verified live: Supabase's admin endpoint answers HTTP 405 to PATCH
         # /auth/v1/admin/users/{uid} — updates must travel as PUT.
+        for name in site_access.SUPABASE_KEY_ENV_NAMES:
+            monkeypatch.delenv(name, raising=False)
         monkeypatch.delenv("SUPABASE_URL", raising=False)
-        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
-        monkeypatch.delenv("SUPABASE_KEY", raising=False)
         calls = {}
 
         async def fake_threadpool(fn, *args, **kwargs):
@@ -217,9 +217,9 @@ class TestAccounts:
         # Route-level: PUT /api/auth/nickname used to 422 because it shared the
         # sign-up model (email and password are required there). It must accept
         # exactly {"nickname": ...} for a signed-in session.
+        for name in site_access.SUPABASE_KEY_ENV_NAMES:
+            monkeypatch.delenv(name, raising=False)
         monkeypatch.delenv("SUPABASE_URL", raising=False)
-        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
-        monkeypatch.delenv("SUPABASE_KEY", raising=False)
 
         async def fake_create(email, password, nickname):
             assert nickname
@@ -242,10 +242,51 @@ class TestAccounts:
         client.post("/api/auth/logout")
 
 
+class TestCredentialNames:
+    """The Supabase–Vercel integration injects the service credential under
+    names hand-set deployments never use; Loki must accept both wirings."""
+
+    _URL = "https://stub-project.supabase.co"
+
+    def test_integration_secret_name_configures_accounts(self, monkeypatch):
+        monkeypatch.setenv("SUPABASE_URL", self._URL)
+        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+        monkeypatch.delenv("SUPABASE_KEY", raising=False)
+        monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+        monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_stubbish")
+        assert site_access.accounts_available() is True
+        assert site_access._supabase_key() == "sb_secret_stubbish"
+
+    def test_integration_legacy_role_name_configures_accounts(self, monkeypatch):
+        monkeypatch.setenv("SUPABASE_URL", self._URL)
+        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+        monkeypatch.delenv("SUPABASE_KEY", raising=False)
+        monkeypatch.delenv("SUPABASE_SECRET_KEY", raising=False)
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "eyJ-stub")
+        assert site_access.accounts_available() is True
+
+    def test_explicit_names_win_over_integration_names(self, monkeypatch):
+        monkeypatch.setenv("SUPABASE_URL", self._URL)
+        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "handset-1")
+        monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_integration")
+        assert site_access._supabase_key() == "handset-1"
+
+    def test_session_signing_follows_the_same_resolution(self, monkeypatch):
+        # _secret() must derive from the same key resolution as _supabase_config
+        # so cookie signatures stay verifiable regardless of which name carried
+        # the credential.
+        monkeypatch.setenv("SUPABASE_URL", self._URL)
+        monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_stubbish")
+        monkeypatch.delenv("LOKI_GATE_SECRET", raising=False)
+        signed = site_access.issue_gate_cookie_value()
+        assert site_access.verify_gate_cookie_value(signed) is True
+
+
 class TestPublicTrainedBook:
     def test_research_book_is_public_and_complete(self, monkeypatch):
+        for name in site_access.SUPABASE_KEY_ENV_NAMES:
+            monkeypatch.delenv(name, raising=False)
         monkeypatch.delenv("SUPABASE_URL", raising=False)
-        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
         response = client.get("/api/fusion/research-book")
         assert response.status_code == 200
         book = response.json()

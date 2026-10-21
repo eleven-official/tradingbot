@@ -41,6 +41,17 @@ _DEFAULT_CODE = "flathead"
 
 _COOKIE_SALT = b"loki-site-access-v1"
 
+# Every environment name a deployment might put the Supabase service credential
+# under — hand-set SUPABASE_SERVICE_KEY / SUPABASE_KEY, or the Supabase–Vercel
+# integration's SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY. The tests use
+# this list to wipe all of them, so guest-mode assertions stay honest.
+SUPABASE_KEY_ENV_NAMES = (
+    "SUPABASE_SERVICE_KEY",
+    "SUPABASE_KEY",
+    "SUPABASE_SECRET_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+)
+
 
 def gate_enabled() -> bool:
     """True when the access gate should guard the website."""
@@ -121,7 +132,7 @@ def _secret() -> bytes:
     explicit = (os.environ.get("LOKI_GATE_SECRET") or "").strip()
     if explicit:
         return hashlib.sha256(_COOKIE_SALT + explicit.encode()).digest()
-    material = f"{os.environ.get('SUPABASE_URL') or ''}\0{os.environ.get('SUPABASE_SERVICE_KEY') or os.environ.get('SUPABASE_KEY') or ''}"
+    material = f"{os.environ.get('SUPABASE_URL') or ''}\0{_supabase_key()}"
     if material.strip("\0"):
         return hashlib.sha256(_COOKIE_SALT + material.encode()).digest()
     # Local/dev deployments: stable-but-throwaway secret keeps cookies verifiable.
@@ -186,9 +197,25 @@ def accounts_available() -> bool:
         return False
 
 
+def _supabase_key() -> str:
+    """The project's service credential, under whatever name the deployment used.
+
+    Deployments wire accounts two ways: an explicit SUPABASE_SERVICE_KEY or
+    SUPABASE_KEY set by hand, or the Supabase–Vercel integration, which injects
+    SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY. One fixed lookup order —
+    and _secret() must derive from this same resolution, so signing material
+    stays stable within a deployment.
+    """
+    for name in SUPABASE_KEY_ENV_NAMES:
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _supabase_config() -> tuple[str, str]:
     url = (os.environ.get("SUPABASE_URL") or "").strip().rstrip("/")
-    key = (os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY") or "").strip()
+    key = _supabase_key()
     if not url or not key or not url.endswith(".supabase.co"):
         raise HTTPException(
             503,
