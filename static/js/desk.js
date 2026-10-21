@@ -131,10 +131,13 @@
       return;
     }
     deskBusy = true;
+    clearArm();
     const runButton = document.querySelector('#desk-run');
     runButton.disabled = true;
     document.querySelector('#desk-exec-wrap').hidden = true;
     currentRun = null;
+    document.querySelector('#desk-pipeline').replaceChildren(element('p', `Loading a fresh review for ${symbol}…`, 'muted'));
+    document.querySelector('#desk-proposal').hidden = true;
     message('#desk-status', 'Running the pipeline — news → technicals → fundamentals → proposal → risk…');
     try {
       const run = await request('/api/desk/run', { symbol });
@@ -271,6 +274,17 @@
     } else if (row.reason) {
       card.append(element('p', row.reason, 'desk-sweep-line'));
     }
+    if (row.status === 'ok') {
+      const review = element('button', 'Review on desk →', 'button secondary');
+      review.type = 'button';
+      review.addEventListener('click', () => {
+        if (deskBusy) return;
+        document.querySelector('#desk-symbol').value = row.symbol;
+        document.querySelector('#desk-form').scrollIntoView({ block: 'center' });
+        runDesk();
+      });
+      card.append(review);
+    }
     return card;
   }
 
@@ -290,6 +304,7 @@
     const button = document.querySelector('#desk-sweep-run');
     button.disabled = true;
     message('#desk-sweep-message', `Running the five agents across ${symbols.length} instrument${symbols.length === 1 ? '' : 's'} — rows answer independently…`);
+    document.querySelector('#desk-sweep-results').replaceChildren(element('p', 'Loading a fresh sweep…', 'muted'));
     try {
       const answer = await request('/api/desk/sweep', { symbols });
       document.querySelector('#desk-sweep-results').replaceChildren();
@@ -312,7 +327,7 @@
 
   async function askCouncil() {
     if (councilBusy) return;
-    const symbol = ((currentRun && currentRun.symbol) || document.querySelector('#desk-symbol').value || '').trim().toUpperCase();
+    const symbol = (document.querySelector('#desk-symbol').value || '').trim().toUpperCase();
     if (!symbol) {
       message('#desk-council-message', 'Run the desk for a symbol first, or type one above — the council needs evidence to review.', true);
       return;
@@ -321,6 +336,7 @@
     const button = document.querySelector('#desk-council-run');
     button.disabled = true;
     message('#desk-council-message', `Gathering public bars for ${symbol} and waking the council reviewers…`);
+    document.querySelector('#desk-council').replaceChildren(element('p', `Loading a fresh council review for ${symbol}…`, 'muted'));
     try {
       const evidence = await request('/api/desk/evidence', { symbol });
       if (evidence.status && evidence.status !== 'ok') {
@@ -343,7 +359,7 @@
         strip.append(metricCard(analyst.title || human(analyst.role || ''), analyst.status || '—', (analyst.notes && analyst.notes[0]) || (analyst.summary || analyst.reason || 'reviewed on the live bars')));
       });
       target.append(strip);
-      message('#desk-council-message', `Council review complete on the same fetch the desk quotes (evidence as of ${report.as_of}). It never counts toward the research-target gate.`);
+      message('#desk-council-message', `${evidence.symbol}: council review complete using a fresh public-data snapshot (evidence as of ${report.as_of}). This may differ from an earlier desk run and does not satisfy the research-target gate.`);
     } catch (error) {
       message('#desk-council-message', error.message || 'The council did not answer; nothing was invented.', true);
     } finally {

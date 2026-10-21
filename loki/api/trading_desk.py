@@ -649,7 +649,7 @@ async def desk_evidence(request: Request, body: DeskRequest) -> Dict[str, Any]:
         run_in_threadpool(fundamentals_agent, normalized),
     )
     try:
-        bars = _public_bars(normalized)
+        bars = await run_in_threadpool(_public_bars, normalized)
     except MarketFeedError as error:
         technical = {
             "agent": "technical",
