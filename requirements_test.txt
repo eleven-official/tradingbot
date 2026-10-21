@@ -6,6 +6,9 @@ pandas>=2.1
 pytest>=8.2,<10
 pytest-cov>=5,<8
 pytest-asyncio>=0.24,<2
+# The real-broker tests patch ccxt's classes; the runtime treats ccxt as an
+# optional dependency (lazy import with an availability probe), the suite pins it.
+ccxt>=4.0
 # Blocking lint/format/type checks for the maintained workspace modules.
 black>=24,<27
 flake8>=7,<8

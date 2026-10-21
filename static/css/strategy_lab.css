@@ -404,10 +404,6 @@ body.lab-page {
     gap: 14px;
   }
 
-  .lab-topbar .build-tag {
-    display: none;
-  }
-
   .holdout-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

@@ -44,10 +44,9 @@ button { color: inherit; }
 .brand-mark span:nth-child(2) { height: 18px; }
 .brand-mark span:nth-child(3) { height: 14px; }
 .topbar-meta { align-items: center; display: flex; gap: 16px; }
-.mode-pill, .build-tag { color: var(--muted); font-size: .67rem; font-weight: 750; letter-spacing: .1em; }
+.mode-pill { color: var(--muted); font-size: .67rem; font-weight: 750; letter-spacing: .1em; }
 .mode-pill { align-items: center; border: 1px solid rgba(180, 242, 210, .19); border-radius: 99px; color: var(--mint); display: flex; gap: 8px; padding: 8px 11px; }
 .mode-pill i, .form-note i { background: var(--mint-deep); border-radius: 50%; box-shadow: 0 0 12px rgba(84, 203, 152, .45); height: 6px; width: 6px; }
-.build-tag { color: var(--dim); }
 
 .market-strip { border-bottom: 1px solid var(--line); padding: 34px 0 22px; }
 .market-heading { align-items: end; display: flex; gap: 30px; justify-content: space-between; padding-bottom: 26px; }
@@ -233,7 +232,6 @@ input:focus, select:focus { border-color: var(--mint-deep); box-shadow: 0 0 0 3p
 @media (max-width: 520px) {
   .app-shell { width: calc(100% - 24px); }
   .topbar { min-height: 65px; }
-  .build-tag { display: none; }
   .mode-pill { font-size: .56rem; padding: 7px 8px; }
   .market-strip { padding-top: 27px; }
   h1 { font-size: clamp(2.35rem, 11vw, 3.2rem); }
