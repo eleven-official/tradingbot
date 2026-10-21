@@ -51,3 +51,30 @@ class TestFxRate:
         body = response.json()
         assert body["rate"] > 0
         assert body["live"] is False
+
+    def test_provider_fetch_carries_a_user_agent(self, monkeypatch):
+        # frankfurter.app answers HTTP 403 to python's stock User-Agent, which
+        # silently pinned the currency bar to the fallback rate. The request
+        # must identify itself, exactly like the other public feeds.
+        captured = {}
+
+        class FakeResponse:
+            def read(self):
+                return b'{"rates": {"AUD": 1.4317}}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def fake_urlopen(request, timeout=None):
+            captured["headers"] = dict(getattr(request, "headers", {}) or {})
+            captured["url"] = getattr(request, "full_url", "")
+            return FakeResponse()
+
+        monkeypatch.setattr(server_module.urllib.request, "urlopen", fake_urlopen)
+        assert server_module._fetch_usd_aud_sync() == 1.4317
+        assert captured["url"].startswith("https://api.frankfurter.app/latest")
+        user_agent = captured["headers"].get("User-agent", "")
+        assert "LokiWorkspace" in user_agent, f"frankfurter must receive an identifying UA: {captured['headers']}"

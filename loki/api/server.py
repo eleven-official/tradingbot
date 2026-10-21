@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 import urllib.request
@@ -266,11 +267,16 @@ async def auth_session(request: Request):
 _FX_CACHE: Dict[str, Tuple[float, float]] = {}
 _FX_TTL_SECONDS = 1800.0
 _FX_FALLBACK_RATE = 1.53  # AUD per 1 USD, used if the rate service is down
+# frankfurter.app answers HTTP 403 to python's stock "Python-urllib/x.y"
+# User-Agent; an identifying custom UA is accepted like every other public
+# provider this workspace reads.
+_FX_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; LokiWorkspace/2.0; read-only USD-AUD display rate)"}
 
 
 def _fetch_usd_aud_sync() -> float:
     url = "https://api.frankfurter.app/latest?from=USD&to=AUD"
-    with urllib.request.urlopen(url, timeout=10) as res:  # noqa: S310 - fixed https URL
+    request = urllib.request.Request(url, headers=_FX_HEADERS)  # noqa: S310 - fixed https URL
+    with urllib.request.urlopen(request, timeout=10) as res:
         data = json.loads(res.read().decode())
     rate = float(data["rates"]["AUD"])
     if not rate > 0:
@@ -286,7 +292,10 @@ async def fx_rate():
         return {"from": "USD", "to": "AUD", "rate": cached[1], "live": True}
     try:
         rate = await asyncio.to_thread(_fetch_usd_aud_sync)
-    except Exception:
+    except Exception as error:
+        # A degraded rate must be diagnosable, not silent: the deployment log
+        # says exactly why the bar had to fall back.
+        logging.getLogger(__name__).warning("FX rate fetch failed (%s: %s); serving %s fallback", error.__class__.__name__, error, _FX_FALLBACK_RATE)
         if cached:
             # Service blip: serve the last known rate, flagged not-live.
             return {"from": "USD", "to": "AUD", "rate": cached[1], "live": False}
