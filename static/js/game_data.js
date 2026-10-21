@@ -617,6 +617,90 @@
         ["shishapangma", 4], ["nanga parbat", 4], ["rakaposhi", 4], ["masherbrum", 4], ["cho oyu", 4],
         ["spantik", 5], ["khan tengri", 5], ["ultar sar", 5], ["malubiting", 5], ["muztagh ata", 5]
       ]
+    },
+    {
+      q: "Name a sea",
+      rules: "A salt-water sea on the map; salt ponds and bays don't qualify.",
+      a: [
+        ["mediterranean", 0], ["baltic", 0], ["red sea", 0], ["dead sea", 0],
+        ["caribbean", 1], ["black sea", 1], ["caspian", 1],
+        ["north sea", 2], ["bering", 2], ["adriatic", 2], ["aegean", 2],
+        ["sargasso", 3], ["barents", 3], ["coral sea", 3], ["tasman", 3],
+        ["weddell", 4], ["okhotsk", 4], ["white sea", 4], ["azov", 4],
+        ["laptev", 5], ["beaufort", 5], ["celebes", 5], ["amundsen", 5]
+      ]
+    },
+    {
+      q: "Name a currency",
+      rules: "A real money name in active use beats a collector's coin.",
+      a: [
+        ["dollar", 0], ["euro", 0], ["yen", 0], ["rupee", 0], ["pound", 0],
+        ["yuan", 1], ["ruble", 1], ["franc", 1], ["real", 1], ["riyal", 1], ["krona", 1],
+        ["peso", 2], ["zloty", 2], ["forint", 2], ["baht", 2], ["krone", 2],
+        ["dinar", 3], ["dong", 3], ["sol", 3], ["birr", 3], ["dirham", 3],
+        ["tenge", 4], ["quetzal", 4], ["lempira", 4], ["lev", 4],
+        ["rufiyaa", 5], ["ariary", 5], ["ouguiya", 5], ["gourde", 5], ["dalasi", 5]
+      ]
+    },
+    {
+      q: "Name a sushi item",
+      rules: "Something a sushi bar actually serves — real plates only.",
+      a: [
+        ["tuna", 0], ["salmon", 0], ["nigiri", 0],
+        ["california roll", 1], ["tamago", 1], ["wakame", 1], ["shrimp", 1], ["spicy tuna roll", 1],
+        ["unagi", 2], ["ikura", 2], ["uni", 2], ["mackerel", 2],
+        ["otoro", 3], ["hamachi", 3], ["ankimo", 3], ["temaki", 3],
+        ["fugu", 4], ["kohada", 4], ["chirashi", 4], ["tobiko", 4],
+        ["shirako", 5], ["aburi", 5], ["namerou", 5], ["gomae", 5]
+      ]
+    },
+    {
+      q: "Name a fighter jet",
+      rules: "A real military fighter aircraft, any era — trainers don't count.",
+      a: [
+        ["spitfire", 0], ["f 16", 0],
+        ["mig 21", 1], ["f 22", 1], ["harrier", 1], ["typhoon", 1],
+        ["mirage", 2], ["sabre", 2], ["corsair", 2], ["rafale", 2], ["tornado", 2],
+        ["viggen", 3], ["draken", 3], ["phantom", 3], ["starfighter", 3],
+        ["gripen", 4], ["flanker", 4], ["fulcrum", 4], ["shinden", 4],
+        ["kfir", 5], ["flagon", 5], ["fishbed", 5]
+      ]
+    },
+    {
+      q: "Name a tea",
+      rules: "A true tea or a tisane people steep on purpose.",
+      a: [
+        ["earl grey", 0], ["green tea", 0], ["black tea", 0], ["chamomile", 0],
+        ["peppermint", 1], ["oolong", 1], ["jasmine", 1], ["english breakfast", 1],
+        ["sencha", 2], ["matcha", 2], ["rooibos", 2], ["chai", 2],
+        ["lapsang souchong", 3], ["darjeeling", 3], ["assam", 3], ["genmaicha", 3],
+        ["gyokuro", 4], ["silver needle", 4], ["pu erh", 4], ["hojicha", 4],
+        ["dan cong", 5], ["dianhong", 5], ["yuanyang", 5], ["london fog", 5]
+      ]
+    },
+    {
+      q: "Name a typeface",
+      rules: "A real released typeface — no generic kinds of font.",
+      a: [
+        ["arial", 0], ["times new roman", 0], ["calibri", 0], ["comic sans", 0], ["helvetica", 0],
+        ["courier", 1], ["futura", 1], ["verdana", 1], ["garamond", 1],
+        ["baskerville", 2], ["caslon", 2], ["tahoma", 2], ["gill sans", 2],
+        ["bodoni", 3], ["didot", 3], ["optima", 3], ["univers", 3],
+        ["frutiger", 4], ["rockwell", 4], ["franklin gothic", 4], ["inter", 4],
+        ["akzidenz grotesk", 5], ["cooper black", 5], ["papyrus", 5], ["benguiat", 5]
+      ]
+    },
+    {
+      q: "Name a Norse god",
+      rules: "From the old Norse canon — not the MCU cast list.",
+      a: [
+        ["odin", 0], ["loki", 0], ["freya", 0],
+        ["frigg", 1], ["baldr", 1], ["heimdall", 1], ["tyr", 1],
+        ["njord", 2], ["bragi", 2], ["freyr", 2], ["sif", 2], ["hel", 2],
+        ["forseti", 3], ["mimir", 3], ["hoenir", 3],
+        ["vali", 4], ["vidar", 4], ["gefjon", 4], ["lofn", 4],
+        ["kvasir", 5], ["vili", 5], ["gullveig", 5], ["syn", 5], ["ve", 5]
+      ]
     }
   ];
   window.LokiDiveBank = { tiers, prompts };

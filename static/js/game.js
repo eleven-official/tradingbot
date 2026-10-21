@@ -17,13 +17,19 @@
   const ROUNDS_PER_DIVE = 7;
   const POINTS_PER_METRE = 10;
   const CLEAN_SWEEP_BONUS = 50; // all seven rounds found
-  const METER_MAX = ROUNDS_PER_DIVE * 100 * POINTS_PER_METRE + CLEAN_SWEEP_BONUS * POINTS_PER_METRE; // 7,500 m headroom
+  const HOT_STREAK = 3;         // consecutive finds needed before the combo pays
+  const COMBO_BONUS = 5;        // paid per find from the third in a row onward
+  const MAX_STREAK_BONUS = (ROUNDS_PER_DIVE - HOT_STREAK + 1) * COMBO_BONUS; // 25 headroom
+  const METER_MAX = ROUNDS_PER_DIVE * 100 * POINTS_PER_METRE
+    + (CLEAN_SWEEP_BONUS + MAX_STREAK_BONUS) * POINTS_PER_METRE; // 7,750 m headroom
   const RECENT_LIMIT = 10; // remember this many prompts to keep dives fresh
 
   const els = {};
   const LS_BEST = "loki_dive_best";
   const LS_DIVES = "loki_dive_dives";
   const LS_RECENT = "loki_dive_recent";
+  const LS_HISTORY = "loki_dive_history";
+  const HISTORY_LIMIT = 10;
 
   const state = {
     phase: "idle", // idle | round | between | done
@@ -209,7 +215,7 @@
     if (els["dive-depth-num"]) els["dive-depth-num"].textContent = fmtM(depth);
     if (els["dive-depthbar"]) els["dive-depthbar"].style.height = pct + "%";
   }
-  function totalPoints() { return state.points + state.bonus; }
+  function totalPoints() { return state.points + state.bonus + state.streakBonus; }
   function renderBest() {
     if (els["dive-best"]) els["dive-best"].textContent = state.best ? "Best " + fmtM(state.best * POINTS_PER_METRE) : "No dive yet";
     if (els["dive-dives"]) els["dive-dives"].textContent = state.dives ? state.dives + (state.dives === 1 ? " dive" : " dives") : "Fresh waters";
@@ -223,6 +229,8 @@
     state.points = 0;
     state.bonus = 0;
     state.fixed = 0;
+    state.streak = 0;
+    state.streakBonus = 0;
     state.rounds = [];
     state.dives += 1;
     saveStorage(LS_DIVES, state.dives);
@@ -292,9 +300,17 @@
       const tier = bank.tiers[match.hit.tier];
       const pts = tier.points;
       state.points += pts;
+      state.streak += 1;
+      let combo = 0;
+      if (state.streak >= HOT_STREAK) {
+        combo = COMBO_BONUS;
+        state.streakBonus += combo;
+      }
       const shown = match.fixed ? `${match.hit.answer} (spelling forgiven)` : match.hit.answer;
       if (match.fixed) state.fixed += 1;
-      state.rounds.push({ q: state.current.prompt.q, tier: match.hit.tier, points: pts, answer: shown, fixed: match.fixed });
+      state.rounds.push({ q: state.current.prompt.q, tier: match.hit.tier, points: pts + combo, answer: shown, fixed: match.fixed });
+      feedback("✓ " + shown + " — " + tier.name + "! +" + pts + " points · " + fmtM(pts * POINTS_PER_METRE)
+        + (combo ? " 🔥 streak ×" + state.streak + " (+" + combo + ")" : ""), "good");
       feedback("✓ " + shown + " — " + tier.name + "! +" + pts + " points · " + fmtM(pts * POINTS_PER_METRE), "good");
       renderDepth();
       window.clearTimeout(state.nextTimer);
@@ -310,6 +326,7 @@
     if (state.phase !== "round" || state.accepted) return;
     state.accepted = true;
     state.running = false;
+    state.streak = 0;
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
     feedback("Let go — that one swims past. The next wave is coming.", "warn");
@@ -320,6 +337,7 @@
     if (state.phase !== "round") return;
     state.accepted = true;
     state.running = false;
+    state.streak = 0;
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
     feedback("Time's up for this round. The current moves on.", "warn");
@@ -355,10 +373,13 @@
     const spellingLine = state.fixed
       ? " The engine forgave " + state.fixed + (state.fixed === 1 ? " typo" : " typos") + " this dive."
       : "";
+    const streakLine = state.streakBonus
+      ? " Nested combo: a streak of finds paid +" + state.streakBonus + " extra."
+      : "";
     if (els["dive-end-extra"] && rarestLine) {
       const extra = els["dive-end-extra"];
       extra.textContent = (extra.textContent ? extra.textContent + " " : "") + rarestLine
-        + (tallyLine ? " Tally: " + tallyLine + "." : "") + spellingLine;
+        + (tallyLine ? " Tally: " + tallyLine + "." : "") + spellingLine + streakLine;
     }
     const prevBest = state.best;
     const newBest = totalPoints() > state.best;
@@ -392,6 +413,11 @@
             : "Surface swimming — try thinking like nobody else.";
     if (els["dive-end-verdict"]) els["dive-end-verdict"].textContent = verdict;
     if (els["dive-end-rows"]) els["dive-end-rows"].innerHTML = rows;
+    try {
+      const hist = JSON.parse(localStorage.getItem(LS_HISTORY) || "[]");
+      hist.push({ p: totalPoints(), t: Date.now() });
+      localStorage.setItem(LS_HISTORY, JSON.stringify(hist.slice(-HISTORY_LIMIT)));
+    } catch { /* storage blocked — the trend line simply stays empty */ }
     renderDepth();
     show("dive-end");
     if (!challenge.done && totalPoints() >= challenge.target) {
@@ -409,8 +435,9 @@
       return (i + 1) + ". " + r.q + " — " + (r.answer || "—") + " (" + label + ", +" + r.points + ")";
     });
     const bonusLine = state.bonus ? "\nClean sweep bonus: +" + state.bonus : "";
+    const comboLine = state.streakBonus ? "\nStreak combo bonus: +" + state.streakBonus : "";
     const text = "🪂 Loki Dive — " + fmtM(depth) + " deep (" + totalPoints() + " pts)\n" + lines.join("\n")
-      + bonusLine + "\nUnlimited rare-answer trivia, only on this site.";
+      + bonusLine + comboLine + "\nUnlimited rare-answer trivia, only on this site.";
     const ok = () => {
       if (els["dive-copy"]) els["dive-copy"].textContent = "Copied ✓";
     };
@@ -487,13 +514,39 @@
       : "Score " + challenge.target + "+ points in one dive today.";
   }
 
+  /* ---------- dive history (start-screen trend) ---------- */
+  function loadHistory() {
+    try {
+      const hist = JSON.parse(localStorage.getItem(LS_HISTORY) || "[]");
+      return Array.isArray(hist) ? hist : [];
+    } catch { return []; }
+  }
+  function renderHistory() {
+    const node = els["dive-history"];
+    if (!node) return;
+    const hist = loadHistory();
+    if (!hist.length) { node.textContent = ""; return; }
+    // Points stay in the browser only; meters are just points × 10 rounded.
+    const recent = hist.slice(-5).map((h) => String(Math.round((Number(h.p) || 0) * POINTS_PER_METRE)));
+    const best = hist.reduce((mx, h) => Math.max(mx, Number(h.p) || 0), 0);
+    let trend = "";
+    if (hist.length >= 4) {
+      const six = hist.slice(-6);
+      const mid = Math.ceil(six.length / 2);
+      const older = six.slice(0, mid).reduce((s, h) => s + (Number(h.p) || 0), 0) / mid;
+      const newer = six.slice(mid).reduce((s, h) => s + (Number(h.p) || 0), 0) / (six.length - mid);
+      trend = newer > older * 1.05 ? " ↗ trend up" : newer < older * 0.95 ? " ↘ trend down" : " → steady";
+    }
+    node.textContent = "Recent dives: " + recent.join(" · ") + " m — best " + fmtM(best * POINTS_PER_METRE) + trend;
+  }
+
   /* ---------- init ---------- */
   function init() {
     ["dive-start", "dive-play", "dive-end", "dive-legend", "dive-form", "dive-answer", "dive-feedback",
       "dive-timer", "dive-clock", "dive-round", "dive-prompt", "dive-rules", "dive-best", "dive-dives",
       "dive-depth-num", "dive-depthbar", "dive-end-depth", "dive-end-points", "dive-end-best",
       "dive-end-verdict", "dive-end-rows", "dive-end-extra", "dive-copy", "dive-start-btn", "dive-again-btn",
-      "dive-skip", "dive-count", "dive-overlay", "dive-pause", "dive-challenge"].forEach((id) => { els[id] = $(id); });
+      "dive-skip", "dive-count", "dive-history", "dive-overlay", "dive-pause", "dive-challenge"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
 
     const promptsEl = els["dive-count"];
@@ -508,6 +561,7 @@
     renderLegend();
     renderBest();
     renderChallenge();
+    renderHistory();
     renderDepth();
     show("dive-start");
 

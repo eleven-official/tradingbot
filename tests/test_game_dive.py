@@ -55,6 +55,12 @@ class TestBankIntegrity:
         total = sum(1 for _ in BANK_TEST.entries())
         assert total >= 1000, "rarity layers need enough names to reward hunting"
 
+    def test_bank_grew_into_new_domains(self):
+        assert len(BANK_TEST.qs) >= 57, "this wave promised seven fresh domains"
+        for question in ("Name a sea", "Name a tea", "Name a typeface",
+                         "Name a fighter jet", "Name a currency", "Name a Norse god"):
+            assert question in BANK_TEST.qs, f"a promised domain is missing: {question}"
+
     def test_every_prompt_has_every_tier_populated(self):
         for block in BANK_TEST.blocks:
             found = {}
@@ -111,6 +117,21 @@ class TestEngineWiring:
         assert "dive-end-extra" in src
         assert "dive-count" in src
         assert "Deepest find" in src
+
+    def test_streak_combo_ships_and_breaks_honestly(self):
+        src = ENGINE.read_text(encoding="utf-8")
+        assert "COMBO_BONUS" in src, "the consecutive-find combo is missing"
+        assert "HOT_STREAK" in src, "the streak must have a warm-up before it pays"
+        assert "state.streakBonus" in src, "combo money needs its own bucket beside the clean-sweep bonus"
+        assert src.count("state.streak = 0") >= 2, "skips and time-outs must both break the streak"
+
+    def test_dive_history_ships_and_backs_up(self):
+        engine = ENGINE.read_text(encoding="utf-8")
+        assert 'LS_HISTORY = "loki_dive_history"' in engine
+        assert "Recent dives" in engine, "the start screen trend line must render"
+        assert "loki_dive_history" in BACKUP.read_text(encoding="utf-8"), \
+            "the dive trend lives in backups like every other local truth"
+        assert 'id="dive-history"' in TEMPLATE.read_text(encoding="utf-8")
 
 
 MISSING_ARTICLE = ('drop a leading "a"/"an"/"the" for matching ("a parrot" == "parrot")    s = s.replace')
