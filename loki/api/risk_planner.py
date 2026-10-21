@@ -54,7 +54,7 @@ def _floor_quantity(value: float) -> float:
     scaled = value * _QUANTITY_SCALE
     if not isfinite(scaled):
         raise RiskPlanError("The calculated quantity is too large to represent safely")
-    return floor(scaled) / _QUANTITY_SCALE
+    return float(floor(scaled) / _QUANTITY_SCALE)
 
 
 def _positive_number(name: str, value: float) -> float:

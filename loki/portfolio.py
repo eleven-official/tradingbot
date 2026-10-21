@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import Iterable
+from typing import Iterable, cast
 
 
 class PortfolioInputError(ValueError):
@@ -85,7 +85,7 @@ def build_portfolio_summary(
     unrealized_gain_loss = invested_value - cost_basis
     position_weight_denominator = total_value if total_value else 1.0
 
-    serialized_positions = []
+    serialized_positions: list[dict[str, float | str | None]] = []
     for position in sorted(holdings, key=lambda item: item.market_value, reverse=True):
         gain_loss_percentage = (
             position.unrealized_gain_loss / position.cost_basis * 100
@@ -106,7 +106,7 @@ def build_portfolio_summary(
             }
         )
 
-    weights = [item["portfolio_weight"] for item in serialized_positions]
+    weights: list[float] = [cast(float, item["portfolio_weight"]) for item in serialized_positions]
     concentration_hhi = sum(weight**2 for weight in weights)
     effective_positions = 1 / concentration_hhi if concentration_hhi else 0.0
     largest_position_weight = max(weights, default=0.0)

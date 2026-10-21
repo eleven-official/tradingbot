@@ -7,7 +7,7 @@ import os
 import time
 import urllib.request
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -75,7 +75,7 @@ class FreshStaticFiles(StaticFiles):
     revalidation so a refreshed site is always the current one.
     """
 
-    def file_response(self, *args, **kwargs):  # type: ignore[override]
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response

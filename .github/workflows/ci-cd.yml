@@ -61,7 +61,7 @@ jobs:
       run: black --check main.py
     
     - name: Type check with mypy
-      run: mypy loki --ignore-missing-imports
+      run: mypy loki
       continue-on-error: true
     
     - name: Run tests with pytest

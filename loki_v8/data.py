@@ -19,14 +19,15 @@ import pandas as pd
 # Point TLS libraries at a known CA bundle (silences cert-verify warnings on
 # this machine; data still flows without it, but this keeps it clean).
 try:
-    import truststore  # type: ignore
+    import truststore
 
     truststore.inject_into_ssl()
 except Exception:  # noqa: BLE001
     pass
 
 try:
-    import certifi  # type: ignore
+# certifi ships no stubs; ignore_missing_imports covers it
+    import certifi
 
     os.environ.setdefault("SSL_CERT_FILE", certifi.where())
     os.environ.setdefault("CURL_CA_BUNDLE", certifi.where())

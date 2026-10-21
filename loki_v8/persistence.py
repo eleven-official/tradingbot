@@ -47,7 +47,7 @@ def _load_dotenv_once() -> None:
         return
     _load_dotenv_once._done = True  # type: ignore[attr-defined]
     try:
-        from dotenv import load_dotenv  # type: ignore
+        from dotenv import load_dotenv
 
         load_dotenv()
     except Exception:  # noqa: BLE001 — dot-env is optional

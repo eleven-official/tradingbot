@@ -138,7 +138,7 @@ def _exchange(
     return payload
 
 
-def _number_or_none(value: Any):
+def _number_or_none(value: Any) -> Optional[float]:
     """Round money numbers to cents; junk becomes None, never 0 (no invention)."""
     try:
         return round(float(value), 2)
@@ -146,7 +146,7 @@ def _number_or_none(value: Any):
         return None
 
 
-def _int_or_none(value: Any):
+def _int_or_none(value: Any) -> Optional[int]:
     try:
         return int(float(value))
     except (TypeError, ValueError):

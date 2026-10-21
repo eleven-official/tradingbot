@@ -180,6 +180,8 @@ def read_session_cookie_value(value: Optional[str]) -> Optional[Dict[str, Any]]:
         data = json.loads(base64.urlsafe_b64decode(payload.encode("ascii")))
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict):
+        return None
     issued = float(data.get("iat") or 0)
     if time.time() - issued > SESSION_MAX_AGE:
         return None

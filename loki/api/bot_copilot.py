@@ -118,7 +118,7 @@ def _market_answer(context: dict[str, Any]) -> str:
     age = market.get("data_age_seconds")
     freshness = ""
     try:
-        if float(age) > 60:
+        if float(str(age)) > 60:
             freshness = " The snapshot is older than the 60-second council limit; refresh it before reviewing a setup."
     except (TypeError, ValueError):
         pass
