@@ -23,6 +23,12 @@
   const METER_MAX = ROUNDS_PER_DIVE * 100 * POINTS_PER_METRE
     + (CLEAN_SWEEP_BONUS + MAX_STREAK_BONUS) * POINTS_PER_METRE; // 7,750 m headroom
   const RECENT_LIMIT = 10; // remember this many prompts to keep dives fresh
+  const MISS_LIMIT = 2;           // endless waters: two unanswered rounds end the dive
+  const ROUND_MS_FLOOR = 14000;   // endless: the clock tightens but never below this
+  const ENDLESS_TIGHTEN_MS = 500; // endless: shave this much per completed round
+  const LS_BEST_ENDLESS = "loki_dive_best_endless"; // endless best, this browser only
+  const LS_MODE = "loki_dive_mode";       // last mode picked, restored on arrival
+  const LS_JOURNAL = "loki_dive_journal"; // per-prompt personal bests, never published
 
   const els = {};
   const LS_BEST = "loki_dive_best";
@@ -45,6 +51,11 @@
     streakBonus: 0,
     manualPaused: false,
     fixed: 0, // spelling corrections this dive
+    mode: "classic", // classic (7 fixed rounds) | endless (miss twice, tightening clock)
+    misses: 0,       // endless: unanswered rounds so far this dive
+    roundMs: ROUND_MS,
+    bestEndless: 0,  // endless personal best, kept locally
+    surfaced: false, // endless: true when the diver chose to surface mid-round
     rounds: [], // {prompt, tier|null, points, answer, fixed}
     current: null,
     deadline: 0,
@@ -220,7 +231,10 @@
   }
   function totalPoints() { return state.points + state.bonus + state.streakBonus; }
   function renderBest() {
-    if (els["dive-best"]) els["dive-best"].textContent = state.best ? "Best " + fmtM(state.best * POINTS_PER_METRE) : "No dive yet";
+    const endless = state.mode === "endless";
+    const shown = endless ? state.bestEndless : state.best;
+    const label = endless ? "Endless best" : "Best";
+    if (els["dive-best"]) els["dive-best"].textContent = shown ? label + " " + fmtM(shown * POINTS_PER_METRE) : (endless ? "No endless dive yet" : "No dive yet");
     if (els["dive-dives"]) els["dive-dives"].textContent = state.dives ? state.dives + (state.dives === 1 ? " dive" : " dives") : "Fresh waters";
   }
 
@@ -241,6 +255,10 @@
     state.rounds = [];
     state.dives += 1;
     saveStorage(LS_DIVES, state.dives);
+    state.misses = 0;
+    state.surfaced = false;
+    state.roundMs = ROUND_MS;
+    if (els["dive-surface-btn"]) els["dive-surface-btn"].hidden = state.mode !== "endless";
     renderBest();
     refreshSky();
     renderSky();
@@ -248,8 +266,17 @@
     nextRound();
     els["dive-play"].scrollIntoView({ block: "start" });
   }
+  function moreOrder() {
+    const all = bank.prompts.map((_, i) => i);
+    const recent = readRecent();
+    const fresh = all.filter((i) => !recent.includes(i));
+    return shuffle(fresh.length ? fresh : all); // same honesty as freshOrder: stale prompts only when the pool runs low
+  }
   function nextRound() {
-    if (state.round >= ROUNDS_PER_DIVE || state.cursor >= state.order.length) { endRun(); return; }
+    if (state.mode === "endless") {
+      if (state.misses >= MISS_LIMIT) { endRun(); return; }
+      if (state.cursor >= state.order.length) state.order = state.order.concat(moreOrder()); // endless waters turn over
+    } else if (state.round >= ROUNDS_PER_DIVE || state.cursor >= state.order.length) { endRun(); return; }
     const promptIdx = state.order[state.cursor];
     pushRecent(readRecent().concat(promptIdx));
     state.current = { prompt: bank.prompts[promptIdx], index: buildIndex(bank.prompts[promptIdx]) };
@@ -262,14 +289,20 @@
     els["dive-skip"].disabled = false;
     els["dive-pause"].disabled = false;
     els["dive-examples"].hidden = true;
-    state.tLeft = ROUND_MS;
-    state.deadline = performance.now() + ROUND_MS;
-    els["dive-clock"].textContent = "25s";
+    if (els["dive-progress"]) els["dive-progress"].hidden = state.mode === "endless"; // the fixed 7-dot ladder reads classic only
+    state.roundMs = state.mode === "endless"
+      ? Math.max(ROUND_MS_FLOOR, ROUND_MS - (state.round - 1) * ENDLESS_TIGHTEN_MS)
+      : ROUND_MS;
+    state.tLeft = state.roundMs;
+    state.deadline = performance.now() + state.roundMs;
+    els["dive-clock"].textContent = Math.round(state.roundMs / 1000) + "s";
     els["dive-timer"].style.width = "100%";
     els["dive-timer"].classList.remove("dive-low");
 
     const p = state.current.prompt;
-    if (els["dive-round"]) els["dive-round"].textContent = "Round " + state.round + " of " + ROUNDS_PER_DIVE;
+    if (els["dive-round"]) els["dive-round"].textContent = state.mode === "endless"
+      ? "Endless · round " + state.round + " · pressure " + state.misses + "/" + MISS_LIMIT
+      : "Round " + state.round + " of " + ROUNDS_PER_DIVE;
     els["dive-prompt"].textContent = p.q;
     if (els["dive-rules"]) els["dive-rules"].textContent = p.rules || "";
     if (els["dive-answer"]) els["dive-answer"].value = "";
@@ -346,6 +379,7 @@
     state.streak = 0;
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
+    if (state.mode === "endless") state.misses += 1;
     feedback("Round skipped. Discover a few answers below, then dive again.", "warn");
     finishRound(true);
   }
@@ -356,7 +390,10 @@
     state.streak = 0;
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
-    feedback("Time's up. Here are a few answers to take into your next dive.", "warn");
+    if (state.mode === "endless") state.misses += 1;
+    feedback(state.mode === "endless" && state.misses >= MISS_LIMIT
+      ? "Time's up — pressure " + state.misses + "/" + MISS_LIMIT + " ends the endless dive."
+      : "Time's up. Here are a few answers to take into your next dive.", "warn");
     finishRound(true);
   }
   function finishRound(showExamples) {
@@ -366,7 +403,10 @@
     els["dive-skip"].disabled = true;
     els["dive-pause"].disabled = true;
     els["dive-next"].hidden = false;
-    els["dive-next"].textContent = state.round === ROUNDS_PER_DIVE ? "See dive results →" : "Next round →";
+    els["dive-next"].textContent = state.mode === "endless" && state.misses >= MISS_LIMIT
+      ? "See the dive results →"
+      : state.mode === "endless" ? "Next round →"
+        : state.round === ROUNDS_PER_DIVE ? "See dive results →" : "Next round →";
     if (showExamples) {
       const samples = [0, 3, 5].map(t => state.current.prompt.a.find(a => a[1] === t)).filter(Boolean);
       els["dive-examples"].textContent = "Bank examples: " + samples.map(a => a[0] + " · " + bank.tiers[a[1]].name).join(" / ");
@@ -395,14 +435,17 @@
     if (state.rafId) { window.cancelAnimationFrame(state.rafId); state.rafId = 0; }
     state.phase = "done";
     state.running = false;
-    const foundAll = state.rounds.length === ROUNDS_PER_DIVE && state.rounds.every((r) => r.tier !== null);
+    const foundAll = state.mode !== "endless" && state.rounds.length === ROUNDS_PER_DIVE && state.rounds.every((r) => r.tier !== null);
     if (foundAll && state.points > 0) {
       state.bonus = CLEAN_SWEEP_BONUS;
       if (els["dive-end-extra"]) {
         els["dive-end-extra"].textContent = "🧹 Clean sweep — every round found: +" + CLEAN_SWEEP_BONUS + " bonus points.";
       }
     } else if (els["dive-end-extra"]) {
-      els["dive-end-extra"].textContent = "";
+      els["dive-end-extra"].textContent = state.mode === "endless"
+        ? "Endless waters — the dive ended at round " + state.round
+          + (state.surfaced ? " (surfaced early, answer pending)." : " under pressure " + state.misses + "/" + MISS_LIMIT + ".")
+        : "";
     }
     const depth = totalPoints() * POINTS_PER_METRE;
     const tally = {};
@@ -427,11 +470,14 @@
       extra.textContent = (extra.textContent ? extra.textContent + " " : "") + rarestLine
         + (tallyLine ? " Tally: " + tallyLine + "." : "") + spellingLine + streakLine;
     }
-    const prevBest = state.best;
-    const newBest = totalPoints() > state.best;
+    const endless = state.mode === "endless";
+    const bestKey = endless ? LS_BEST_ENDLESS : LS_BEST;
+    const prevBest = endless ? state.bestEndless : state.best;
+    const newBest = totalPoints() > prevBest;
     if (newBest) {
-      state.best = totalPoints();
-      saveStorage(LS_BEST, state.best);
+      if (endless) state.bestEndless = totalPoints();
+      else state.best = totalPoints();
+      saveStorage(bestKey, totalPoints());
       renderBest();
     }
     const rows = state.rounds.map((r, i) => {
@@ -448,16 +494,17 @@
     if (els["dive-end-depth"]) els["dive-end-depth"].textContent = fmtM(depth);
     if (els["dive-end-points"]) els["dive-end-points"].textContent = totalPoints() + " points";
     if (els["dive-end-best"]) {
-      els["dive-end-best"].textContent = newBest
+      const bestLine = newBest
         ? "New personal best — a full " + fmtM((totalPoints() - prevBest) * POINTS_PER_METRE) + " deeper than before!"
-        : "Personal best: " + fmtM(state.best * POINTS_PER_METRE);
+        : "Personal best: " + fmtM((endless ? state.bestEndless : state.best) * POINTS_PER_METRE);
+      els["dive-end-best"].textContent = endless ? bestLine + " · the shared board ranks classic dives only." : bestLine;
     }
     const verdict = depth >= 6500 ? "Abyssal. You think in trenches."
       : depth >= 4800 ? "Strong dive — well past the shelves."
         : depth >= 3000 ? "Solid mid-water. Worth another drop."
           : depth >= 1400 ? "Shore-ish. The crowd kept you floating."
             : "Surface swimming — try thinking like nobody else.";
-    if (els["dive-end-verdict"]) els["dive-end-verdict"].textContent = verdict;
+    if (els["dive-end-verdict"]) els["dive-end-verdict"].textContent = endless ? verdict + " · surfaced from endless waters." : verdict;
     if (els["dive-end-rows"]) els["dive-end-rows"].innerHTML = rows;
     try {
       const hist = JSON.parse(localStorage.getItem(LS_HISTORY) || "[]");
@@ -468,7 +515,7 @@
     show("dive-end");
     renderHistory();
     renderSpark();
-    if (window.LokiDiveBoard && typeof window.LokiDiveBoard.diveEnded === "function") {
+    if (state.mode !== "endless" && window.LokiDiveBoard && typeof window.LokiDiveBoard.diveEnded === "function") {
       window.LokiDiveBoard.diveEnded(totalPoints());
     }
     // motivation meta: streak, badges — all earned from this browser's own facts
@@ -479,6 +526,8 @@
       if (r.tier >= 5) awardBadge("zillion");
     });
     if (state.streak >= 5) awardBadge("streak-flame");
+    if (endless && state.rounds.length >= 15) awardBadge("survivor"); // endured the tightening waters
+    recordJournal();
     syncDerivedBadges(depth);
     els["dive-again-btn"].focus({ preventScroll: true });
     if (!challenge.done && totalPoints() >= challenge.target) {
@@ -540,7 +589,7 @@
     if (!state.visible || state.manualPaused) return;
     state.tLeft = Math.max(0, state.deadline - ts);
     if (els["dive-timer"]) {
-      const pct = Math.max(0, Math.min(100, (state.tLeft / ROUND_MS) * 100));
+      const pct = Math.max(0, Math.min(100, (state.tLeft / (state.roundMs || ROUND_MS)) * 100));
       els["dive-timer"].style.width = pct + "%";
       els["dive-timer"].classList.toggle("dive-low", state.tLeft < 6000);
     }
@@ -581,6 +630,60 @@
       : "Score " + challenge.target + "+ points in one dive today.";
   }
 
+  /* ---------- field journal & dive modes (life collection; answers never leave the browser) ---------- */
+  function loadJournal() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(LS_JOURNAL) || "{}");
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
+    } catch { /* unreadable storage — every water simply reads unchartered */ }
+    return {};
+  }
+  function recordJournal() {
+    try {
+      const journal = loadJournal();
+      state.rounds.forEach((r) => {
+        if (r.tier === null) return; // only found rounds are chartered; misses write nothing
+        const cur = journal[r.q];
+        const prevBest = cur && typeof cur.best === "number" ? cur.best : -1;
+        journal[r.q] = { best: Math.max(prevBest, r.tier), times: (cur && cur.times ? cur.times : 0) + 1 };
+      });
+      localStorage.setItem(LS_JOURNAL, JSON.stringify(journal));
+    } catch { /* journal is a keepsake, not a scoreboard — a blocked disk simply dims it */ }
+    const journal = loadJournal();
+    const met = Object.keys(journal).length;
+    if (met >= 30) awardBadge("naturalist");
+    if (met >= bank.prompts.length) awardBadge("cartographer");
+    renderJournal();
+  }
+  function renderJournal() {
+    const host = els["dive-journal-list"];
+    if (!host) return;
+    const journal = loadJournal();
+    // Met waters show the prompt and the personal tier found there — never the answer words.
+    // Unseen waters show nothing but a marker; the bank's answers are nobody's to print.
+    host.innerHTML = bank.prompts.map((p) => {
+      const entry = journal[p.q];
+      if (entry && typeof entry.best === "number" && entry.best >= 0 && bank.tiers[entry.best]) {
+        return `<div class="dive-journal-row"><span class="dive-journal-q">${esc(p.q)}</span>`
+          + `<span class="${tierClass(entry.best)}">${esc(bank.tiers[entry.best].name)} · ×${entry.times}</span></div>`;
+      }
+      return `<div class="dive-journal-row dive-journal-unseen"><span class="dive-journal-q">${esc(p.q)}</span>`
+        + `<span class="dive-journal-unknown">not chartered yet</span></div>`;
+    }).join("");
+    if (els["dive-journal-head"]) {
+      const met = Object.keys(journal).length;
+      els["dive-journal-head"].textContent = "Field journal — " + met + " of " + bank.prompts.length
+        + " waters chartered (your finds, this browser only)";
+    }
+  }
+  function pickMode(mode) {
+    state.mode = mode === "endless" ? "endless" : "classic";
+    try { localStorage.setItem(LS_MODE, state.mode); } catch { /* the choice simply resets next visit */ }
+    if (els["dive-mode-classic"]) els["dive-mode-classic"].setAttribute("aria-pressed", String(state.mode === "classic"));
+    if (els["dive-mode-endless"]) els["dive-mode-endless"].setAttribute("aria-pressed", String(state.mode === "endless"));
+    renderBest();
+  }
+
   /* ---------- dive history (start-screen trend) ---------- */
   function loadHistory() {
     try {
@@ -618,7 +721,10 @@
     { id: "abyssal",       icon: "🌊", name: "Abyssal",         how: "Take a single dive past 6,000 m." },
     { id: "regular",       icon: "⚓", name: "Regular",         how: "Finish 25 dives." },
     { id: "devotee",       icon: "📅", name: "Devotee",         how: "Clear 5 daily depth targets." },
-    { id: "broadcaster",   icon: "📻", name: "Broadcaster",     how: "Publish your best to the shared board." }
+    { id: "broadcaster",   icon: "📻", name: "Broadcaster",     how: "Publish your best to the shared board." },
+    { id: "survivor",      icon: "🛟", name: "Pressure Swimmer", how: "Endure 15 rounds in one endless dive." },
+    { id: "naturalist",    icon: "📖", name: "Field Naturalist", how: "Charter 30 different prompt waters in your journal." },
+    { id: "cartographer",  icon: "🗺️", name: "Chief Cartographer", how: "Charter every prompt in the bank." }
   ];
   function readBadges() {
     try {
@@ -750,7 +856,9 @@
       "dive-end-verdict", "dive-end-rows", "dive-end-extra", "dive-copy", "dive-start-btn", "dive-again-btn",
       "dive-skip", "dive-count", "dive-history", "dive-overlay", "dive-pause", "dive-challenge",
       "dive-submit", "dive-next", "dive-examples", "dive-score", "dive-combo", "dive-progress",
-      "dive-badges", "dive-streak", "dive-sky", "dive-spark"].forEach((id) => { els[id] = $(id); });
+      "dive-badges", "dive-streak", "dive-sky", "dive-spark",
+      "dive-mode-classic", "dive-mode-endless", "dive-surface-btn",
+      "dive-journal", "dive-journal-head", "dive-journal-list"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
 
     const promptsEl = els["dive-count"];
@@ -760,7 +868,16 @@
     }
 
     state.best = storage(LS_BEST, 0);
+    state.bestEndless = storage(LS_BEST_ENDLESS, 0);
     state.dives = storage(LS_DIVES, 0);
+    let savedMode = "classic";
+    try {
+      const rawMode = localStorage.getItem(LS_MODE);
+      if (rawMode === "endless") savedMode = "endless"; // string stored as string — numeric helpers never see it
+    } catch { /* storage blocked — classic is the landing mode */ }
+    state.mode = savedMode;
+    if (els["dive-mode-classic"]) els["dive-mode-classic"].setAttribute("aria-pressed", String(state.mode === "classic"));
+    if (els["dive-mode-endless"]) els["dive-mode-endless"].setAttribute("aria-pressed", String(state.mode === "endless"));
     loadChallenge();
     renderLegend();
     renderBest();
@@ -768,6 +885,7 @@
     renderHistory();
     renderBadges();
     renderStreak();
+    renderJournal();
     renderDepth();
     show("dive-start");
 
@@ -775,6 +893,15 @@
     if (els["dive-start-btn"]) els["dive-start-btn"].addEventListener("click", (ev) => { ev.preventDefault(); startRun(); });
     if (els["dive-again-btn"]) els["dive-again-btn"].addEventListener("click", (ev) => { ev.preventDefault(); startRun(); });
     if (els["dive-skip"]) els["dive-skip"].addEventListener("click", skipRound);
+    if (els["dive-mode-classic"]) els["dive-mode-classic"].addEventListener("click", () => { pickMode("classic"); });
+    if (els["dive-mode-endless"]) els["dive-mode-endless"].addEventListener("click", () => { pickMode("endless"); });
+    if (els["dive-surface-btn"]) els["dive-surface-btn"].addEventListener("click", () => {
+      if (state.mode === "endless" && (state.phase === "round" || state.phase === "between")) {
+        if (state.phase === "round") state.surfaced = true; // an unanswered round isn't scored; say so on the end card
+        state.accepted = true;
+        endRun();
+      }
+    });
     if (els["dive-copy"]) els["dive-copy"].addEventListener("click", copyResult);
     if (els["dive-form"]) els["dive-form"].addEventListener("submit", submit);
     els["dive-next"].addEventListener("click", () => { if (state.phase === "between") nextRound(); });
@@ -794,5 +921,7 @@
   window.LokiDive = { state, normalize, fold, findAnswer, damerauDistance, tick: loop,
     award: (id) => { try { return awardBadge(id); } catch { return false; } },
     badges: () => readBadges(),
+    mode: () => state.mode,
+    journal: () => loadJournal(),
     refreshSky: () => { try { refreshSky(); renderSky(); } catch { /* HUD never blocks play */ } } };
 })();
