@@ -10,7 +10,7 @@
 'use strict';
 (() => {
   const NAME_KEY = 'loki_dive_board_name'; // the name this browser publishes under
-  const state = { loaded: false, busy: false, mode: '', entries: [], sessionNickname: '' };
+  const state = { loaded: false, busy: false, mode: '', entries: [], note: '', refusal: false, sessionNickname: '' };
 
   const $ = (id) => document.getElementById(id);
   const viewActive = () => location.hash === '#game';
@@ -58,7 +58,8 @@
     if (kind) {
       kind.textContent = state.mode === 'shared' ? 'Shared board · project database · the same rows for everyone'
         : state.mode === 'server-local' ? 'Server board · kept on this Loki server · shared by every browser using it'
-          : 'No shared board on this deployment · your best dive stays in this browser';
+          : state.refusal ? 'Shared board not set up on this Loki yet · your best dive stays in this browser'
+            : 'No shared board on this deployment · your best dive stays in this browser';
     }
 
     if (note) {
@@ -112,12 +113,14 @@
       // reason is the honest answer and must reach the reader, not vanish
       state.mode = payload.mode || (response.ok ? (state.mode || 'unavailable') : 'unavailable');
       state.note = payload.note || payload.detail || '';
+      state.refusal = !response.ok;
       state.entries = Array.isArray(payload.entries) ? payload.entries : [];
       state.loaded = true;
     } catch (error) {
       state.mode = state.mode || 'unavailable';
       state.note = `The board could not be reached (${error.message || 'network'}).`;
       state.entries = [];
+      state.refusal = false;
     } finally {
       state.busy = false;
       render();

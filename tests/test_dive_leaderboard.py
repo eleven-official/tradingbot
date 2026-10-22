@@ -155,6 +155,7 @@ class TestWiring(unittest.TestCase):
         self.assertIn("trusts the name, not the person", board)
         self.assertIn("shared by every browser using it", board)  # the server-local banner names its storage
         self.assertIn("payload.detail", board)  # a 503 refusal explains itself on the page
+        self.assertIn("Shared board not set up on this Loki yet", board)  # missing store ~= "yet", not "never"
 
     def test_backup_carries_the_board_name(self):
         backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
