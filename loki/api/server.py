@@ -23,6 +23,7 @@ from loki.api import site_access
 from loki.api.ai_paper import router as ai_paper_router
 from loki.api.news_desk import router as news_desk_router
 from loki.api.fusion import router as fusion_router
+from loki.api.dive_board import router as dive_board_router
 from loki.api.broker_workspace import router as broker_workspace_router
 
 app = FastAPI(
@@ -48,6 +49,7 @@ app.include_router(trading_desk_router)
 from loki.api.news_desk import router as news_desk_router
 
 app.include_router(news_desk_router)
+app.include_router(dive_board_router)
 
 
 # Load the larger optional strategy engine only for terminal requests.

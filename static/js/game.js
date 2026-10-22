@@ -461,6 +461,9 @@
     renderDepth();
     show("dive-end");
     renderHistory();
+    if (window.LokiDiveBoard && typeof window.LokiDiveBoard.diveEnded === "function") {
+      window.LokiDiveBoard.diveEnded(totalPoints());
+    }
     els["dive-again-btn"].focus({ preventScroll: true });
     if (!challenge.done && totalPoints() >= challenge.target) {
       challenge.done = true;

@@ -376,3 +376,22 @@ button.tag:hover{color:var(--text);border-color:#5a7a63}
 .news-topic-chip[aria-pressed="true"]{background:#17251e;color:var(--green);border-color:#3c5d48}
 .news-new-flag{display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;background:#17251e;border:1px solid #3c5d48;color:var(--green);font-size:9px;letter-spacing:.8px;text-transform:uppercase;vertical-align:middle}
 .news-note{margin-top:12px}
+
+/* Dive leaderboard — one row per board name; the reader's own row is lit */
+.dive-board-list{list-style:none;margin:0;padding:0}
+.dive-board-row{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12px}
+.dive-board-row:last-child{border-bottom:0}
+.dive-board-rank{flex:0 0 30px;color:#8da191;font-weight:700;font-size:11px}
+.dive-board-row:nth-child(1) .dive-board-rank{color:var(--amber)}
+.dive-board-row:nth-child(2) .dive-board-rank{color:var(--green)}
+.dive-board-row:nth-child(3) .dive-board-rank{color:var(--green)}
+.dive-board-name{flex:1 1 auto;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dive-board-best{flex:0 0 auto;font-weight:700;color:var(--green)}
+.dive-board-dives,.dive-board-when{flex:0 0 auto;color:var(--muted);font-size:11px}
+.dive-board-mine{background:#17251e;border-left:3px solid var(--amber);padding-left:9px}
+.dive-board-empty{padding:12px 4px}
+.dive-publish{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:14px}
+.dive-publish label{display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--muted)}
+.dive-publish input{min-width:230px;min-height:41px;background:#101a14;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:9px 12px;font:inherit}
+.dive-publish input::placeholder{color:#6d8577}
+@media (max-width:480px){.dive-publish input{min-width:100%}}

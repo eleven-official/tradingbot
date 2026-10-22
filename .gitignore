@@ -10,6 +10,7 @@ test_fno_order.py
 
 # Persisted runtime state & local databases
 state/
+loki/data/
 ngrok
 *.db
 *.sqlite

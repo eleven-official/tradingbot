@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
   <meta name="description" content="Loki brings strategy research, structured agent reviews, paper portfolios, and scenario analysis into one evidence-led workspace.">
   <title>Loki · Trading intelligence</title>
-  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/desk.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script>
+  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/desk.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/dive_board.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to workspace</a>
@@ -298,7 +298,7 @@
             </div>
             <p class="caption" id="dive-count"></p>
             <p class="caption" id="dive-history"></p>
-            <p class="caption">Rarity tiers are assigned in our hand-written bank, not measured from other players. Valid answers outside the bank may not match. Inspired by krillion.io; unlimited replays, no account needed, and results stay in this browser.</p>
+            <p class="caption">Rarity tiers are assigned in our hand-written bank, not measured from other players. Valid answers outside the bank may not match. Inspired by krillion.io; unlimited replays, no account needed, and results stay in this browser unless you publish your best under a board name yourself.</p>
           </div>
           <div id="dive-play" class="dive-screen" hidden>
             <div class="dive-topbar"><span id="dive-round" class="tag">Round 1 of 7</span><div class="dive-tools"><span id="dive-clock" class="dive-clock" role="timer" aria-label="Time remaining">25s</span><button id="dive-pause" class="button secondary" type="button" aria-pressed="false">Pause</button></div></div>
@@ -327,6 +327,18 @@
             <div class="button-row"><button id="dive-again-btn" class="button primary" type="button">Dive again · unlimited →</button><button id="dive-copy" class="button secondary" type="button">Copy result</button></div>
           </div>
         </div>
+      </section>
+      <section class="panel dive-board-panel" id="dive-board" aria-label="Dive leaderboard">
+        <div class="section-title"><div><p class="eyebrow">LEADERBOARD / WHO DOVE DEEPEST</p><h2>Best scores, one per board name.</h2></div><button id="dive-board-refresh" class="button secondary" type="button">Refresh board ↻</button></div>
+        <p id="dive-board-kind" class="caption" role="status"></p>
+        <p id="dive-board-note" class="form-message" role="status"></p>
+        <ol id="dive-board-list" class="dive-board-list" aria-label="Best dive scores under each board name"></ol>
+        <form id="dive-publish-form" class="dive-publish" autocomplete="off">
+          <label>Board name<input id="dive-board-name" maxlength="24" placeholder="2–24 letters, numbers or dashes" aria-label="Board name to publish your best score under"></label>
+          <button class="button primary" type="submit">Publish my best →</button>
+        </form>
+        <p id="dive-board-just-finished" class="caption" role="status"></p>
+        <p id="dive-publish-note" class="caption"></p>
       </section>
     </section>
     <footer><span>Loki <span class="footer-sub">/ Trading intelligence</span></span><span>Evidence first. Costs included. No guaranteed returns.</span></footer>

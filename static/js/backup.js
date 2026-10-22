@@ -18,6 +18,8 @@
     "loki_council_history_v1",    // the day's council verdicts (this browser only)
 
     "loki_news_seen_v1",          // last-look stamp for the news desk's "new since your last look" flags
+
+    "loki_dive_board_name",       // the name this browser publishes dive scores under
     "loki_guest"
   ];
   const $ = (id) => document.getElementById(id);
