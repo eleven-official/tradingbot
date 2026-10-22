@@ -366,6 +366,22 @@ class DeploymentConfigTests(unittest.TestCase):
         backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
         self.assertIn("loki_news_seen_v1", backup)       # seen stamps survive backups
 
+    def test_backup_round_trip_and_first_run_honesty(self):
+        # The guest lane and the gate stay honest when a browser is brand new.
+        auth = (ROOT / "static" / "js" / "loki_auth.js").read_text(encoding="utf-8")
+        self.assertIn("window.location.href = '/login'", auth)  # no marker, no session → pick a lane
+        self.assertIn("guestMode", auth)
+        backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
+        # Import warns with the exact journal names, and names its automatic
+        # reload instead of surprising the person mid-read.
+        self.assertIn("This overwrites the current local journals", backup)
+        self.assertIn("reloads in two seconds to complete the swap", backup)
+        self.assertIn("(unknown)", backup)          # foreign keys are skipped, told honestly
+        self.assertIn("Restore cancelled", backup)  # declining writes nothing
+        palette = (ROOT / "static" / "js" / "palette.js").read_text(encoding="utf-8")
+        self.assertIn("nothing sends an order from here", (ROOT / "templates" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("openPalette", palette)
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance

@@ -71,8 +71,8 @@
           restored += 1;
         } catch { failures.push(key); }
       }
-      msg.textContent = `Restored ${restored} journals. Reload completes the swap.` + (failures.length ? ` Skipped: ${failures.join(", ")}.` : "");
-      setTimeout(() => window.location.reload(), 900);
+      msg.textContent = `Restored ${restored} journals. This page reloads in two seconds to complete the swap.` + (failures.length ? ` Skipped: ${failures.join(", ")}.` : "");
+      setTimeout(() => window.location.reload(), 2000);
     } catch (error) {
       msg.textContent = `Import failed: ${error.message}`;
     }
