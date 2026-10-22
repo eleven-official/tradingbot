@@ -88,6 +88,76 @@ class FusionCouncilTests(unittest.TestCase):
         self.assertFalse(report["proposal"]["executable"])
         self.assertTrue(any("explicitly disabled" in row["detail"] for row in report["risk_checks"]))
 
+    def test_news_context_binds_for_inspection_and_never_moves_a_gate(self):
+        bars = sample_bars()
+        news = {
+            "status": "ok",
+            "score": 0.35,
+            "headlines_read": 12,
+            "top": [
+                {"title": "record quarter beats estimates", "publisher": "Wire", "score": 0.6},
+                {"title": "supplier slowdown feared for fall", "publisher": "Wire", "score": -0.45},
+            ],
+            "method": "matched words carry fixed weights; the score is their clamped mean",
+        }
+        with_news = build_council_report(bars, news_evidence=news)
+        without = build_council_report(bars)
+        self.assertEqual(with_news["analysts"][1]["status"], "news_context")
+        self.assertEqual(without["analysts"][1]["status"], "missing_evidence")
+        packet = with_news["analysts"][1]["evidence"]["news"]
+        self.assertEqual(packet["score"], .35)
+        self.assertEqual(packet["headlines_read"], 12)
+        self.assertEqual(len(packet["top"]), 2)
+        lowered = " ".join(with_news["analysts"][1]["concerns"]).lower()
+        self.assertIn("no council gate consults news context", lowered)
+        # Bonds of the honest kind: the packet cannot change sizing, checks or verdict.
+        self.assertEqual(without["risk_checks"], with_news["risk_checks"])
+        self.assertEqual(
+            [row["status"] for row in without["analysts"] if row["role"] != "sentiment"],
+            [row["status"] for row in with_news["analysts"] if row["role"] != "sentiment"],
+        )
+        self.assertEqual(without["director"]["decision"], with_news["director"]["decision"])
+        json.dumps(with_news, allow_nan=False)
+
+    def test_news_packet_validation_leaves_no_side_channel(self):
+        base = {
+            "status": "ok",
+            "score": .2,
+            "headlines_read": 5,
+            "top": [{"title": "records a quarter of growth", "publisher": "Wire", "score": .3}],
+            "method": "matched words carry fixed weights",
+        }
+        bads = [
+            dict(base, score=1.5),
+            dict(base, headlines_read=0),
+            dict(base, headlines_read=51),
+            dict(base, method="short"),
+            dict(base, top=[]),
+            dict(base, top=[{"title": "records a quarter of growth", "publisher": "", "score": .3}] * 31),
+            dict(base, top=[{"title": "ab", "publisher": "", "score": .3}]),
+            dict(base, top=[{"title": "ok title here", "publisher": "", "score": 2}]),
+            dict(base, status="abstain"),
+        ]
+        for index, bad in enumerate(bads):
+            with self.subTest(index=index):
+                with self.assertRaises(ValueError):
+                    build_council_report(sample_bars(), news_evidence=bad)
+
+    def test_news_and_mirofish_cannot_share_the_sentiment_seat(self):
+        miro = {"engine": "bundled_mirofish_native", "symbol": "BTC/USDT", "report": {"status": "completed"}}
+        with self.assertRaises(ValueError):
+            build_council_report(
+                sample_bars(),
+                miro_research=miro,
+                news_evidence={
+                    "status": "ok",
+                    "score": 0,
+                    "headlines_read": 1,
+                    "top": [{"title": "one quiet headline", "publisher": "", "score": 0}],
+                    "method": "matched words carry fixed weights here",
+                },
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

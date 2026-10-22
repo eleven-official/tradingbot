@@ -160,6 +160,10 @@ class CouncilRequest(StrictModel):
         default=None, min_length=8, max_length=110, pattern=r"^report_[A-Za-z0-9_-]+$"
     )
     miro_reviewed: bool = False
+    news_evidence: dict | None = Field(
+        default=None,
+        description="Desk news agent JSON packet (bounded); council validates it strictly.",
+    )
 
 
 @router.post("/council")
@@ -183,6 +187,7 @@ def council(payload: CouncilRequest, request: Request, response: Response):
         config=payload.config,
         miro_research=native,
         miro_reviewed=payload.miro_reviewed,
+        news_evidence=payload.news_evidence,
     )
 
 

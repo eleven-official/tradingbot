@@ -321,7 +321,9 @@
 
   // ------------------------------------------------------------------
   // Second opinion: the council reviews the same instrument's public
-  // bars through its own deterministic reviewers. Independent read.
+  // bars through its own deterministic reviewers. The desk's news read
+  // rides along as a bounded JSON packet — inspection evidence, never
+  // a gate. Everything the reviewers weigh renders below, nothing hidden.
   // ------------------------------------------------------------------
   let councilBusy = false;
 
@@ -343,23 +345,74 @@
         message('#desk-council-message', evidence.error || evidence.note || 'The public bars answered nothing usable — the council declined to review on invented evidence.', true);
         return;
       }
-      const report = await request('/api/fusion/council', {
+      const news = newsPacket(evidence.news);
+      const payload = {
         bars: evidence.bars,
         symbol: evidence.symbol,
         config: { periods_per_year: evidence.periods_per_year },
-      });
+      };
+      if (news) payload.news_evidence = news; // JSON-only handoff; the council validates it strictly
+      const report = await request('/api/fusion/council', payload);
       const target = document.querySelector('#desk-council');
       target.replaceChildren();
       const director = report.director || {};
       const decision = element('div', null, 'council-decision' + (director.decision === 'paper_proposal' ? '' : ' wait'));
-      decision.append(element('p', 'DIRECTOR / ' + human(director.decision || '').toUpperCase(), 'eyebrow'), element('h3', director.decision === 'paper_proposal' ? 'The council would take this to a paper proposal.' : 'The council waits for a stronger case.'), element('p', director.summary || ''));
+      decision.append(
+        element('p', 'DIRECTOR / ' + human(director.decision || '').toUpperCase(), 'eyebrow'),
+        element('h3', director.decision === 'paper_proposal' ? 'The council would take this to a paper proposal.' : 'The council waits for a stronger case.'),
+        element('p', director.summary || '')
+      );
+      const blocked = Array.isArray(director.blocked_by) ? director.blocked_by.filter(Boolean) : [];
+      if (blocked.length) {
+        const chips = element('div', null, 'council-blocked');
+        blocked.forEach((name) => chips.append(badge(name, 'bad')));
+        decision.append(chips);
+      }
       target.append(decision);
-      const strip = element('div', null, 'metrics');
+      // The gate log: every named check the reviewers vote on, pass or fail.
+      const log = element('div', null, 'check-list');
+      (report.risk_checks || []).forEach((row) => log.append(checkRow(row.name, !!row.passed, row.detail)));
+      target.append(log);
+      // One card per reviewer: complete concerns plus inspectable evidence.
+      const grid = element('div', null, 'analyst-grid');
       (report.analysts || []).forEach((analyst) => {
-        strip.append(metricCard(analyst.title || human(analyst.role || ''), analyst.status || '—', (analyst.notes && analyst.notes[0]) || (analyst.summary || analyst.reason || 'reviewed on the live bars')));
+        const card = element('article', null, 'analyst-card');
+        const head = element('div', null, 'analyst-heading');
+        head.append(
+          element('h3', analyst.title || human(analyst.role || '')),
+          badge(analyst.status, analyst.status === 'ready' ? 'good' : analyst.status === 'blocked' ? 'bad' : null)
+        );
+        card.append(head, element('p', analyst.summary || ''));
+        if (Array.isArray(analyst.concerns) && analyst.concerns.length) card.append(bulletList(analyst.concerns));
+        if (analyst.evidence && Object.keys(analyst.evidence).length) {
+          card.append(detailsJSON(analyst.evidence, 'Inspect ' + human(analyst.role || 'reviewer') + ' evidence'));
+        }
+        grid.append(card);
       });
-      target.append(strip);
-      message('#desk-council-message', `${evidence.symbol}: council review complete using a fresh public-data snapshot (evidence as of ${report.as_of}). This may differ from an earlier desk run and does not satisfy the research-target gate.`);
+      // Keep the reviewer grid honest on narrow screens (summary + status).
+      grid.append(element('p', `${(report.analysts || []).filter((a) => a.status && a.status !== 'ready').map((a) => a.title || human(a.role)).join(', ') || 'Every reviewer'} report${(report.analysts || []).length === 1 ? 's' : ''} exactly as shown; the director weighed their words before deciding.`, 'council-disagree caption'));
+      target.append(grid);
+      // The inert sizing draft, only when every hard gate passed.
+      if (report.proposal) {
+        const p = report.proposal;
+        const draft = element('div', null, 'council-draft');
+        draft.append(
+          element('p', 'INERT SIZING DRAFT / ' + human(p.symbol).toUpperCase(), 'eyebrow'),
+          inlineMetrics([
+            ['Quantity', number(p.quantity, 6), 'reference units for review only'],
+            ['Entry reference', number(p.entry_reference)],
+            ['Stop reference', number(p.stop_reference)],
+            ['2R target reference', number(p.take_profit_reference)],
+            ['Cash required', number(p.cash_required)],
+            ['Planned loss at stop', number(p.planned_loss_at_stop)],
+            ['Reward / risk after costs', number(p.reward_risk_after_costs)],
+          ]),
+          element('p', p.note || 'Snapshot draft; all references must be refreshed before any paper decision.', 'caption')
+        );
+        target.append(draft);
+      }
+      target.append(element('p', `Evidence as of ${report.as_of} · ${human(report.mode)} · ${report.strategy_id} · no submission path exists from this report.`, 'caption'));
+      message('#desk-council-message', `${evidence.symbol}: council review complete on a fresh public-data snapshot (evidence as of ${report.as_of})${news ? ' · the desk news read is attached as bounded context; it can neither approve nor veto any check' : ''}. This may differ from an earlier desk run and does not satisfy the research-target gate.`);
     } catch (error) {
       message('#desk-council-message', error.message || 'The council did not answer; nothing was invented.', true);
     } finally {
@@ -376,6 +429,6 @@
 
   // Small debug handle for probes: what happened this session, nothing more.
   window.LokiDesk = {
-    state: () => ({ busy: deskBusy, armed: deskArmed, sessionOrders, currentSymbol: currentRun ? currentRun.symbol : null }),
+    state: () => ({ busy: deskBusy, councilBusy: councilBusy, armed: deskArmed, sessionOrders, currentSymbol: currentRun ? currentRun.symbol : null }),
   };
 })();

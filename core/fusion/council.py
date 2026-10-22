@@ -275,6 +275,72 @@ def _analyst(
     }
 
 
+def _signed_score(value: Any, name: str) -> float:
+    """A news mood or headline score: finite and within the published [-1, 1] band."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < -1.0
+        or value > 1.0
+    ):
+        raise ValueError(f"{name} must be a finite number within [-1, 1]")
+    return float(value)
+
+
+def _news_evidence(value: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Bind the desk news agent's read for inspection — never for gating.
+
+    The packet is the bounded JSON handoff the spec asks for: a clamped
+    score, the count of headlines read, headline rows with per-headline
+    scores and the method string. Anything else is an error, so no
+    side channel ever smuggles undocumented claims into the sentiment seat.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError("news_evidence must be the desk news agent's JSON packet")
+    if value.get("status") != "ok":
+        raise ValueError("news_evidence must be an ok packet; abstains stay abstains")
+    score = _signed_score(value.get("score"), "news_evidence score")
+    if not -1.0 <= score <= 1.0:
+        raise ValueError("news_evidence score must be within [-1, 1]")
+    headlines_read = value.get("headlines_read")
+    if (
+        isinstance(headlines_read, bool)
+        or not isinstance(headlines_read, int)
+        or not 1 <= headlines_read <= 50
+    ):
+        raise ValueError("news_evidence headlines_read must be an integer from 1 to 50")
+    method = value.get("method")
+    if not isinstance(method, str) or not 12 <= len(method.strip()) <= 300:
+        raise ValueError("news_evidence method must be a 12..300 character description")
+    top = value.get("top")
+    if not isinstance(top, list) or not 1 <= len(top) <= 30:
+        raise ValueError("news_evidence top must list 1..30 scored headlines")
+    rows: list[dict[str, Any]] = []
+    for row in top:
+        if not isinstance(row, Mapping):
+            raise ValueError("Each news_evidence headline must be a mapping")
+        title = row.get("title")
+        if not isinstance(title, str) or not 3 <= len(title.strip()) <= 200:
+            raise ValueError("Each news_evidence headline needs a 3..200 character title")
+        publisher = row.get("publisher", "")
+        if not isinstance(publisher, str) or len(publisher) > 80:
+            raise ValueError("news_evidence publisher must be at most 80 characters")
+        per_score = _signed_score(row.get("score"), "news_evidence headline score")
+        if not -1.0 <= per_score <= 1.0:
+            raise ValueError("news_evidence headline scores must be within [-1, 1]")
+        rows.append({"title": title, "publisher": publisher, "score": per_score})
+    return {
+        "status": "ok",
+        "score": score,
+        "headlines_read": headlines_read,
+        "top": rows,
+        "method": method.strip(),
+    }
+
+
 def build_council_report(
     data: Sequence[Mapping[str, Any]],
     *,
@@ -284,6 +350,7 @@ def build_council_report(
     config: Mapping[str, Any] | CouncilConfig | None = None,
     miro_research: Mapping[str, Any] | None = None,
     miro_reviewed: bool = False,
+    news_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Quant -> sentiment -> risk -> execution -> director on supplied evidence.
 
@@ -295,8 +362,13 @@ def build_council_report(
     quant = analyze_factors(data, symbol=symbol, periods_per_year=config.periods_per_year)
     snapshot = _portfolio(portfolio, config, symbol)
     performance = _performance(research, bars, symbol, config.min_win_rate)
+    news_packet = _news_evidence(news_evidence)
     if type(miro_reviewed) is not bool:
         raise ValueError("MiroFish scenario review must be an explicit boolean")
+    if miro_research is not None and news_packet is not None:
+        raise ValueError(
+            "The sentiment seat reads one bounded packet: pass MiroFish evidence or desk news context, not both"
+        )
     if miro_research is not None:
         if (
             not isinstance(miro_research, Mapping)
@@ -402,6 +474,41 @@ def build_council_report(
             "reference_timestamp": bars[-1].timestamp.isoformat(),
             "note": "Sizing is a snapshot draft; all references must be refreshed before any paper decision.",
         }
+    sentiment = (
+        _analyst(
+            "sentiment",
+            "news_context",
+            (
+                "Desk news context: clamped lexicon mean "
+                f"{news_packet['score']:+.2f} over {news_packet['headlines_read']} "
+                "public headlines; inspection evidence, never a gate."
+            ),
+            {
+                "sentiment": None,
+                "news_count": news_packet["headlines_read"],
+                "themes": [],
+                "critical_events": [],
+                "news": news_packet,
+            },
+            [
+                "The score is a fixed-word-weight mean over public headlines, not a calibrated probability of profit.",
+                "No council gate consults news context; it can neither approve nor veto a check.",
+                "Headlines are a point-in-time public feed scored in code, not verified research evidence.",
+            ],
+            symbol,
+        )
+        if news_packet is not None
+        else _analyst(
+            "sentiment",
+            "missing_evidence",
+            "No verified point-in-time news or social evidence was supplied.",
+            {"sentiment": None, "news_count": 0, "themes": [], "critical_events": []},
+            [
+                "No news, social sentiment or institutional score is invented or inferred from price."
+            ],
+            symbol,
+        )
+    )
     analysts = [
         _analyst(
             "quant",
@@ -411,16 +518,7 @@ def build_council_report(
             ["Condition agreement is a descriptive score, not a calibrated probability of profit."],
             symbol,
         ),
-        _analyst(
-            "sentiment",
-            "missing_evidence",
-            "No verified point-in-time news or social evidence was supplied.",
-            {"sentiment": None, "news_count": 0, "themes": [], "critical_events": []},
-            [
-                "No news, social sentiment or institutional score is invented or inferred from price."
-            ],
-            symbol,
-        ),
+        sentiment,
         _analyst(
             "risk",
             "blocked" if blocked else "ready",

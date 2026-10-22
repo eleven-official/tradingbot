@@ -444,6 +444,8 @@ class TestCouncilPanelWiring:
             "renderEvidenceStrip",
             "/api/desk/evidence",
             "live-evidence-run",
+            "newsPacket",  # the news read reduced to the council's bounded contract
+            "news_evidence",  # attached to the overview council call too
             "periods_per_year:liveEvidence.periods_per_year",
         ):
             assert needed in js, f"workspace.js is missing {needed}"
@@ -731,5 +733,78 @@ class TestDeskCouncilOpinionWiring:
             "/api/fusion/council",
             "desk-sweep-run",
             "desk-council-run",
+            "news_evidence",  # the bounded news handoff rides along with the bars
         ):
             assert needed in js, f"desk.js is missing {needed}"
+
+
+def _news_packet() -> dict:
+    """A valid desk news packet in the council's exact contract."""
+    return {
+        "status": "ok",
+        "score": 0.35,
+        "headlines_read": 12,
+        "top": [
+            {"title": "record quarter beats estimates", "publisher": "Wire", "score": 0.6},
+            {"title": "supplier slowdown feared for fall", "publisher": "Wire", "score": -0.45},
+        ],
+        "method": "matched words carry fixed weights; the score is their clamped mean",
+    }
+
+
+class TestCouncilNewsContext:
+    """The desk news read is inspection evidence for the sentiment seat — never a gate."""
+
+    def test_news_context_passes_through_and_binds_inspectable(self):
+        gate()
+        body = {
+            "bars": _fake_bars(61),
+            "symbol": "FAKE/USDT",
+            "config": {"periods_per_year": module.PERIODS_PER_YEAR_EQUITY},
+        }
+        plain = client.post("/api/fusion/council", json=body)
+        assert plain.status_code == 200
+        packet = _news_packet()
+        with_news = client.post("/api/fusion/council", json={**body, "news_evidence": packet})
+        assert with_news.status_code == 200
+        report = with_news.json()
+        assert report["analysts"][1]["status"] == "news_context"
+        news = report["analysts"][1]["evidence"]["news"]
+        assert news["score"] == packet["score"]
+        assert news["headlines_read"] == packet["headlines_read"]
+        assert news["top"] == packet["top"]
+        # The context cannot move a single gate: same checks, same decision.
+        assert report["risk_checks"] == plain.json()["risk_checks"]
+        assert report["director"]["decision"] == plain.json()["director"]["decision"]
+        lowered = " ".join(report["analysts"][1]["concerns"]).lower()
+        assert "no council gate consults news context" in lowered
+
+    def test_malformed_news_packet_is_a_human_422(self):
+        gate()
+        packet = dict(_news_packet(), score=1.5)
+        answer = client.post(
+            "/api/fusion/council",
+            json={
+                "bars": _fake_bars(61),
+                "symbol": "FAKE/USDT",
+                "config": {"periods_per_year": module.PERIODS_PER_YEAR_EQUITY},
+                "news_evidence": packet,
+            },
+        )
+        assert answer.status_code == 422
+        assert "news_evidence" in answer.json()["detail"]
+
+    def test_abstaining_news_never_becomes_context(self):
+        gate()
+        packet = dict(_news_packet(), status="stand_down")
+        answer = client.post(
+            "/api/fusion/council",
+            json={
+                "bars": _fake_bars(61),
+                "symbol": "FAKE/USDT",
+                "config": {"periods_per_year": module.PERIODS_PER_YEAR_EQUITY},
+                "news_evidence": packet,
+            },
+        )
+        assert answer.status_code == 422
+        assert "abstains stay abstains" in answer.json()["detail"]

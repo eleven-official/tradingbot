@@ -324,6 +324,22 @@
 #live-evidence-strip>.metrics{grid-column:1/-1}
 .desk-agent-head{align-items:flex-start}
 .desk-agent-head strong{overflow-wrap:anywhere}
+/* Desk second opinion: the council's full report, every part inspectable. */
+#desk-council>.caption{margin-top:16px;overflow-wrap:anywhere}
+#desk-council .check-list{margin-top:20px}
+#desk-council .analyst-grid{margin-top:16px}
+#desk-council .source-details{margin-top:12px}
+#desk-council .source-details summary{cursor:pointer;font-size:10px;letter-spacing:.6px;color:#9fb2c0}
+#desk-council .source-details pre{margin:10px 0 0;font-size:10px;line-height:1.6;overflow-x:auto;white-space:pre;max-height:300px;overflow-y:auto;border:1px solid var(--line);background:#0a1116;padding:12px;border-radius:6px}
+.council-blocked{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.council-draft{margin-top:20px;border:1px solid #405846;border-radius:10px;background:#15241b;padding:18px}
+.council-draft .eyebrow{margin-bottom:12px}
+.council-draft .caption{margin-top:12px;color:#c8c1ac}
+.desk-council .council-disagree{margin-top:12px}
+@media(max-width:760px){
+  .council-blocked{margin-top:10px}
+  .council-draft{padding:14px}
+}
 @media(max-width:760px){
   .page-heading{padding:28px 0 22px}
   .page-heading h1{font-size:34px;letter-spacing:-1px}
