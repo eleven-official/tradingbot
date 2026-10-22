@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from loki.version import __version__
 from core.copilot import LokiCopilot
@@ -401,3 +402,27 @@ async def favicon_png():
     if static_fav.exists():
         return FileResponse(static_fav)
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Honest 404s: people get a themed page, machines keep machine JSON.
+# ---------------------------------------------------------------------------
+@app.exception_handler(StarletteHTTPException)
+async def honest_http_exception(request: Request, exc: StarletteHTTPException):
+    if request.url.path.startswith("/api/") or "text/html" not in (
+        request.headers.get("accept") or ""
+    ):
+        # The original contract: machine-readable detail, real status codes.
+        return JSONResponse(
+            {"detail": exc.detail if exc.detail else "Not Found"},
+            status_code=exc.status_code,
+        )
+    if exc.status_code == 404:
+        page = templates.TemplateResponse(
+            request=request,
+            name="404.html",
+            context={"version": __version__},
+        )
+        page.status_code = 404
+        return page
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
