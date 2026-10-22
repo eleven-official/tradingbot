@@ -195,6 +195,8 @@
 
   window.addEventListener('hashchange', () => { if (viewActive()) refresh(); });
   if (viewActive() && !state.loaded) refresh();
+  // coming back to this tab is a fresh look: the board may have moved without us
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && viewActive()) refresh(); });
 
   // Expose the hooks the page calls; nothing else.
   window.LokiDiveBoard = {

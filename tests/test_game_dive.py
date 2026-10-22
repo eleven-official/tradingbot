@@ -93,6 +93,18 @@ class TestBankIntegrity:
     def test_questions_are_unique_and_varied(self):
         assert len(BANK_TEST.qs) == len(set(BANK_TEST.qs)), "a question repeats"
         domains = {q.split()[-2] if len(q.split()) > 2 else q for q in BANK_TEST.qs}
+
+    def test_fresh_domains_landed_with_the_sparkline_wave(self):
+        for question in ("Name a gemstone", "Name a mushroom", "Name a wind", "Name a type of boat"):
+            assert question in BANK_TEST.qs, f"a fresh domain is missing: {question}"
+        spark_src = (ROOT / "static" / "js" / "game.js").read_text(encoding="utf-8")
+        assert "renderSpark()" in spark_src  # end screen draws the browser's own trend
+        board_src = (ROOT / "static" / "js" / "dive_board.js").read_text(encoding="utf-8")
+        assert "visibilitychange" in board_src  # a returning tab re-fetches the board
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        assert 'id="dive-spark"' in html
+        css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        assert ".dive-spark svg" in css
         assert len({q.lower() for q in BANK_TEST.qs}) >= 45
 
 

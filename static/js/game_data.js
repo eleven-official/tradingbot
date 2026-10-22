@@ -701,6 +701,54 @@
         ["vali", 4], ["vidar", 4], ["gefjon", 4], ["lofn", 4],
         ["kvasir", 5], ["vili", 5], ["gullveig", 5], ["syn", 5], ["ve", 5]
       ]
+    },
+    {
+      q: "Name a gemstone",
+      rules: "Real minerals used as gems — jewellery-store staples sink less.",
+      a: [
+        ["diamond", 0], ["ruby", 0], ["emerald", 0], ["sapphire", 0],
+        ["amethyst", 1], ["topaz", 1], ["opal", 1], ["garnet", 1],
+        ["turquoise", 2], ["onyx", 2], ["peridot", 2], ["aquamarine", 2],
+        ["alexandrite", 3], ["tanzanite", 3], ["morganite", 3], ["spinel", 3],
+        ["moonstone", 4], ["labradorite", 4], ["malachite", 4], ["lapis lazuli", 4],
+        ["painite", 5], ["taaffeite", 5], ["benitoite", 5], ["grandidierite", 5]
+      ]
+    },
+    {
+      q: "Name a mushroom",
+      rules: "Real fungi — edible or famous, nothing imaginary.",
+      a: [
+        ["button mushroom", 0], ["portobello", 0],
+        ["shiitake", 1], ["oyster mushroom", 1], ["chestnut mushroom", 1],
+        ["enoki", 2], ["porcini", 2], ["chanterelle", 2],
+        ["morel", 3], ["king oyster", 3], ["maitake", 3],
+        ["truffle", 4], ["matsutake", 4], ["wood ear", 4],
+        ["beefsteak fungus", 5], ["veiled lady", 5], ["birch bolete", 5], ["saffron milk cap", 5]
+      ]
+    },
+    {
+      q: "Name a wind",
+      rules: "A named wind that belongs on real maps and in forecasts — global or local.",
+      a: [
+        ["monsoon", 0], ["trade winds", 0],
+        ["sirocco", 1], ["mistral", 1], ["chinook", 1], ["foehn", 1],
+        ["bora", 2], ["harmattan", 2], ["zephyr", 2], ["levanter", 2],
+        ["tramontana", 3], ["gregale", 3], ["papagayo", 3], ["elephanta", 3],
+        ["haboob", 4], ["williwaw", 4], ["pampero", 4], ["katabatic", 4],
+        ["brickfielder", 5], ["bayamo", 5], ["etesians", 5], ["lodos", 5]
+      ]
+    },
+    {
+      q: "Name a type of boat",
+      rules: "Real watercraft — anything a person has built to float on purpose.",
+      a: [
+        ["canoe", 0], ["kayak", 0], ["sailboat", 0], ["ferry", 0],
+        ["yacht", 1], ["dinghy", 1], ["gondola", 1], ["raft", 1],
+        ["catamaran", 2], ["schooner", 2], ["punt", 2], ["barge", 2],
+        ["sampan", 3], ["coracle", 3], ["felucca", 3], ["trireme", 3],
+        ["dhow", 4], ["longship", 4], ["trimaran", 4], ["lugger", 4],
+        ["umiak", 5], ["quffa", 5], ["prau", 5], ["wherry", 5]
+      ]
     }
   ];
   window.LokiDiveBank = { tiers, prompts };

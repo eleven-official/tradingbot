@@ -467,6 +467,7 @@
     renderDepth();
     show("dive-end");
     renderHistory();
+    renderSpark();
     if (window.LokiDiveBoard && typeof window.LokiDiveBoard.diveEnded === "function") {
       window.LokiDiveBoard.diveEnded(totalPoints());
     }
@@ -720,6 +721,28 @@
   }
 
 
+  /* ---------- end-screen depth sparkline (browser history only) ---------- */
+  function renderSpark() {
+    const node = els["dive-spark"];
+    if (!node) return;
+    const hist = loadHistory().slice(-10);
+    if (hist.length < 2) { node.hidden = true; node.replaceChildren(); return; } // a line needs two points
+    node.hidden = false;
+    const points = hist.map((h) => Math.max(0, Number(h.p) || 0));
+    const maxPt = Math.max(Math.max(...points), 1);
+    const step = 100 / (points.length - 1);
+    const yFor = (p) => (100 - (p / maxPt) * 92 - 4).toFixed(1);
+    const coords = points.map((p, i) => `${(i * step).toFixed(1)},${yFor(p)}`);
+    const dots = points.map((p, i) =>
+      `<circle cx="${(i * step).toFixed(1)}" cy="${yFor(p)}" r="2.2"><title>${Math.round(p * POINTS_PER_METRE)} m deep</title></circle>`);
+    node.innerHTML =
+      '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'
+        + `<polyline fill="none" stroke="currentColor" stroke-width="1.6" points="${coords.join(" ")}"/>`
+        + dots.join("")
+      + '</svg>'
+      + `<span class="dive-spark-label">Last ${points.length} dives — your browser's history, sent nowhere.</span>`;
+  }
+
   function init() {
     ["dive-start", "dive-play", "dive-end", "dive-legend", "dive-form", "dive-answer", "dive-feedback",
       "dive-timer", "dive-clock", "dive-round", "dive-prompt", "dive-rules", "dive-best", "dive-dives",
@@ -727,7 +750,7 @@
       "dive-end-verdict", "dive-end-rows", "dive-end-extra", "dive-copy", "dive-start-btn", "dive-again-btn",
       "dive-skip", "dive-count", "dive-history", "dive-overlay", "dive-pause", "dive-challenge",
       "dive-submit", "dive-next", "dive-examples", "dive-score", "dive-combo", "dive-progress",
-      "dive-badges", "dive-streak", "dive-sky"].forEach((id) => { els[id] = $(id); });
+      "dive-badges", "dive-streak", "dive-sky", "dive-spark"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
 
     const promptsEl = els["dive-count"];
