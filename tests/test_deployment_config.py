@@ -440,6 +440,19 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("the workspace works as a guest meanwhile", template)
         self.assertIn('id="guest-link"', template)  # the honest exit stays
 
+    def test_every_surface_brands_the_tab_with_the_loki_favicon(self):
+        # The favicon is a hand-built multi-size ICO (dark tile + green L);
+        # links carry the version so a deploy refreshes cached tab icons.
+        icon = (ROOT / "static" / "favicon.ico").read_bytes()
+        self.assertTrue(icon.startswith(b"\x00\x00\x01\x00"), "not an ICO header")
+        self.assertGreater(len(icon), 400, "icon implausibly small")
+        png = (ROOT / "static" / "favicon.png").read_bytes()
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"), "not a PNG header")
+        for name in ("index.html", "gate.html", "login.html"):
+            html = (ROOT / "templates" / name).read_text(encoding="utf-8")
+            self.assertIn('href="/favicon.ico?v={{ version }}"', html, name)
+            self.assertIn('href="/favicon.png?v={{ version }}"', html, name)
+
 
 
 if __name__ == "__main__":
