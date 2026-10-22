@@ -138,6 +138,7 @@
     if (best <= 0) { if (message) { message.textContent = 'Finish a dive before publishing — the board lists finished dives only.'; } return; }
     if (button) button.disabled = true;
     let verdict = '';
+    let rankLine = '';
     try {
       const response = await fetch('/api/dive/score', {
         method: 'POST',
@@ -151,16 +152,30 @@
         // the name is remembered only once the board accepted the publish,
         // and only in the form the server actually cleaned
         saveBoardName(payload.nickname || name);
-        verdict = `${payload.best ?? best} points stand under "${payload.nickname || name}" now (${payload.dives ?? '?'} dives on the board).`;
+        rankLine = `${payload.best ?? best} points stand under "${payload.nickname || name}" now.`;
+        // a successful publish earns the Broadcaster badge in the game strip
+        const game = window.LokiDive;
+        if (game && typeof game.award === 'function') { try { game.award('broadcaster'); } catch { /* decorative */ } }
       } else {
         verdict = typeof payload.detail === 'string' ? payload.detail : 'The board refused the publish — nothing was recorded.';
+        rankLine = '';
       }
     } catch (error) {
       verdict = `Publishing failed (${error.message || 'network'}) — nothing was recorded.`;
+      rankLine = '';
     } finally {
       if (button) button.disabled = false;
       await refresh();
-      // the final word lands after the refresh, so the board re-render can't clobber it
+      if (rankLine) {
+        // tell the diver exactly where the published row stands — facts from
+        // the fetched list, never invented
+        const mine = (boardName() || '').trim().toLowerCase();
+        let rank = 0;
+        state.entries.forEach((entry, index) => { if (mine && entry.nickname.toLowerCase() === mine) rank = index + 1; });
+        verdict = rank
+          ? `${rankLine} #${rank} of ${state.entries.length} on the board (${state.entries.reduce((n, e) => n + (Number(e.dives) || 0), 0)} dives in all).`
+          : `${rankLine} The board refresh hasn't caught up — press Refresh board ↻.`;
+      }
       if (message) message.textContent = verdict;
     }
   }
@@ -181,8 +196,25 @@
   window.addEventListener('hashchange', () => { if (viewActive()) refresh(); });
   if (viewActive() && !state.loaded) refresh();
 
-  // Expose the one hook the game calls; nothing else.
+  // Expose the hooks the page calls; nothing else.
   window.LokiDiveBoard = {
-    diveEnded: (points) => { try { whenDiveEnds(points); } catch { /* the board never blocks the game */ } }
+    diveEnded: (points) => { try { whenDiveEnds(points); } catch { /* the board never blocks the game */ } },
+    // what the game's chase-the-board HUD reads: the top row, the reader's own
+    // row, how many names stand on the board, and which mode is actually live
+    skyInfo: () => {
+      try {
+        const mine = (boardName() || '').trim().toLowerCase();
+        let mineBest = null;
+        state.entries.forEach((entry) => {
+          if (mine && entry.nickname.toLowerCase() === mine) mineBest = Math.round(Number(entry.best) || 0);
+        });
+        return {
+          top: state.entries.length ? Math.round(Number(state.entries[0].best) || 0) : 0,
+          mine: mineBest,
+          count: state.entries.length,
+          mode: state.mode === 'shared' || state.mode === 'server-local' ? state.mode : ''
+        };
+      } catch { return { top: 0, mine: null, count: 0, mode: '' }; }
+    }
   };
 })();

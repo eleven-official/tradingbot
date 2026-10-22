@@ -20,6 +20,9 @@
     "loki_news_seen_v1",          // last-look stamp for the news desk's "new since your last look" flags
 
     "loki_dive_board_name",       // the name this browser publishes dive scores under
+    "loki_dive_badges",           // which dive badges this browser has earned
+    "loki_dive_streak",           // consecutive dive days (browser clock)
+    "loki_dive_challenge_wins",   // lifetime count of cleared daily depth targets
     "loki_guest"
   ];
   const $ = (id) => document.getElementById(id);

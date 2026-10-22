@@ -29,6 +29,9 @@
   const LS_DIVES = "loki_dive_dives";
   const LS_RECENT = "loki_dive_recent";
   const LS_HISTORY = "loki_dive_history";
+  const LS_BADGES = "loki_dive_badges";   // earned milestone ids (this browser only)
+  const LS_STREAK = "loki_dive_streak";   // { last: 'YYYY-MM-DD', count } — consecutive dive days
+  const LS_CH_WINS = "loki_dive_challenge_wins"; // how many daily targets cleared, lifetime
   const HISTORY_LIMIT = 10;
 
   const state = {
@@ -213,6 +216,7 @@
         return `<span class="dive-step ${label}" aria-label="Round ${i + 1}: ${label}">${row ? (row.tier === null ? "−" : "✓") : i + 1}</span>`;
       }).join("");
     }
+    renderSky();
   }
   function totalPoints() { return state.points + state.bonus + state.streakBonus; }
   function renderBest() {
@@ -238,6 +242,8 @@
     state.dives += 1;
     saveStorage(LS_DIVES, state.dives);
     renderBest();
+    refreshSky();
+    renderSky();
     show("dive-play");
     nextRound();
     els["dive-play"].scrollIntoView({ block: "start" });
@@ -464,10 +470,24 @@
     if (window.LokiDiveBoard && typeof window.LokiDiveBoard.diveEnded === "function") {
       window.LokiDiveBoard.diveEnded(totalPoints());
     }
+    // motivation meta: streak, badges — all earned from this browser's own facts
+    bumpStreak();
+    state.rounds.forEach((r) => {
+      if (r.tier >= 3) awardBadge("rare-hunter");
+      if (r.tier >= 4) awardBadge("deep-cut");
+      if (r.tier >= 5) awardBadge("zillion");
+    });
+    if (state.streak >= 5) awardBadge("streak-flame");
+    syncDerivedBadges(depth);
     els["dive-again-btn"].focus({ preventScroll: true });
     if (!challenge.done && totalPoints() >= challenge.target) {
       challenge.done = true;
       try { localStorage.setItem(LS_CHALLENGE, JSON.stringify({ d: dayKey(), o: totalPoints() })); } catch { /* ignore */ }
+      try {
+        const wins = Math.min(100000, (parseInt(localStorage.getItem(LS_CH_WINS) || "0", 10) || 0) + 1);
+        localStorage.setItem(LS_CH_WINS, String(wins));
+        if (wins >= 5) awardBadge("devotee");
+      } catch { /* wins counter is decorative only */ }
       renderChallenge();
     }
     if (els["dive-copy"]) els["dive-copy"].textContent = "Copy result";
@@ -586,14 +606,128 @@
     node.textContent = "Recent dives: " + recent.join(" · ") + " m — best " + fmtM(best * POINTS_PER_METRE) + trend;
   }
 
-  /* ---------- init ---------- */
+  /* ---------- badges (earned in this browser, never sent anywhere) ---------- */
+  const BADGES = [
+    { id: "first-drop",    icon: "🪂", name: "First Drop",      how: "Finish your first dive." },
+    { id: "rare-hunter",   icon: "🎣", name: "Rare Hunter",     how: "Land a Rare (60) find or better in one dive." },
+    { id: "deep-cut",      icon: "✂️", name: "Deep Cut Club",   how: "Land a Deep Cut (85) answer." },
+    { id: "zillion",       icon: "🐆", name: "One in a Zillion", how: "Land a 100-point find. The rarest club." },
+    { id: "clean-sweep",   icon: "🧹", name: "Clean Sweep",     how: "Find every round in one dive." },
+    { id: "streak-flame",  icon: "🔥", name: "Streak Flame",    how: "Chain five finds without a miss or skip." },
+    { id: "abyssal",       icon: "🌊", name: "Abyssal",         how: "Take a single dive past 6,000 m." },
+    { id: "regular",       icon: "⚓", name: "Regular",         how: "Finish 25 dives." },
+    { id: "devotee",       icon: "📅", name: "Devotee",         how: "Clear 5 daily depth targets." },
+    { id: "broadcaster",   icon: "📻", name: "Broadcaster",     how: "Publish your best to the shared board." }
+  ];
+  function readBadges() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(LS_BADGES) || "[]");
+      return Array.isArray(raw) ? raw.filter((v) => typeof v === "string") : [];
+    } catch { return []; }
+  }
+  function saveBadges(ids) {
+    try { localStorage.setItem(LS_BADGES, JSON.stringify(ids.slice(0, BADGES.length))); } catch { /* storage refused */ }
+  }
+  function awardBadge(id) {
+    const owned = readBadges();
+    if (!BADGES.some((b) => b.id === id) || owned.includes(id)) return false;
+    owned.push(id);
+    saveBadges(owned);
+    renderBadges();
+    return true;
+  }
+  function renderBadges() {
+    const host = els["dive-badges"];
+    if (!host) return;
+    const owned = readBadges();
+    host.innerHTML = "<span class=\"dive-badges-title\">Badges — earned in this browser, sent nowhere:</span>"
+      + BADGES.map((b) => {
+        const won = owned.includes(b.id);
+        return `<span class="dive-badge ${won ? "dive-badge-won" : "dive-badge-locked"}" title="${esc(b.how)}">`
+          + `${b.icon} ${esc(b.name)}${won ? "" : " · not yet"}</span>`;
+      }).join("");
+  }
+  /* Milestones the counters can prove on their own (a stale badge can't lie). */
+  function syncDerivedBadges(depth) {
+    if (state.dives >= 1) awardBadge("first-drop");
+    if (state.dives >= 25) awardBadge("regular");
+    if (depth >= 6000) awardBadge("abyssal");
+    renderBadges();
+  }
+
+  /* ---------- dive-day streak (browser clock; a skipped day resets) ---------- */
+  function loadStreak() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(LS_STREAK) || "null");
+      if (raw && raw.last && raw.count >= 0) return { last: String(raw.last), count: Number(raw.count) || 0 };
+    } catch { /* unreadable — the streak simply starts over */ }
+    return { last: "", count: 0 };
+  }
+  function renderStreak() {
+    const node = els["dive-streak"];
+    if (!node) return;
+    const streak = loadStreak();
+    if (streak.count < 2) { node.hidden = true; node.textContent = ""; return; } // bragging needs two days
+    node.hidden = false;
+    node.textContent = "🔥 " + streak.count + "-day streak";
+    node.title = "Consecutive days with a finished dive (your browser's clock). Miss a day and it resets.";
+  }
+  function bumpStreak() {
+    const today = dayKey();
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const streak = loadStreak();
+    streak.count = streak.last === today ? streak.count : streak.last === yesterday ? streak.count + 1 : 1;
+    streak.last = today;
+    try { localStorage.setItem(LS_STREAK, JSON.stringify(streak)); } catch { /* streak lives only today — fine */ }
+    renderStreak();
+  }
+
+  /* ---------- chase-the-board HUD (info only; nothing auto-submits) ---------- */
+  const sky = { top: 0, mine: null, count: 0, live: false };
+  function refreshSky() {
+    const api = window.LokiDiveBoard;
+    if (api && typeof api.skyInfo === "function") {
+      try {
+        const info = api.skyInfo();
+        sky.top = Number(info && info.top) || 0;
+        sky.mine = info && typeof info.mine === "number" ? info.mine : null;
+        sky.count = Number(info && info.count) || 0;
+        sky.live = (info && info.mode === "shared") || (info && info.mode === "server-local") || false;
+        return;
+      } catch { /* board hiccup — the HUD still shows the personal line */ }
+    }
+    sky.live = false;
+  }
+  function renderSky() {
+    const node = els["dive-sky"];
+    if (!node) return;
+    const pts = totalPoints();
+    const mine = sky.mine === null ? state.best : Math.max(state.best, sky.mine);
+    const bits = [];
+    if (sky.live && sky.top > 0) {
+      bits.push(`🥇 board best ${fmtM(sky.top * POINTS_PER_METRE)} deep`);
+      if (sky.count && sky.count > 1) bits.push(`${sky.count} names on the board`);
+    } else if (!sky.live) {
+      bits.push("No board to chase — beat your own depth");
+    }
+    bits.push(`your best ${fmtM(mine * POINTS_PER_METRE)}`);
+    if (state.phase === "round" || state.phase === "between") {
+      if (mine > 0 && pts > mine) bits.pop();
+      if (mine > 0 && pts > mine) bits.push(`↗ past your best at ${fmtM(pts * POINTS_PER_METRE)}!`);
+      else if (mine > 0 && pts / mine >= 0.75) bits.push(`rising — ${fmtM(pts * POINTS_PER_METRE)} and climbing`);
+    }
+    node.textContent = bits.join(" · ");
+  }
+
+
   function init() {
     ["dive-start", "dive-play", "dive-end", "dive-legend", "dive-form", "dive-answer", "dive-feedback",
       "dive-timer", "dive-clock", "dive-round", "dive-prompt", "dive-rules", "dive-best", "dive-dives",
       "dive-depth-num", "dive-depthbar", "dive-end-depth", "dive-end-points", "dive-end-best",
       "dive-end-verdict", "dive-end-rows", "dive-end-extra", "dive-copy", "dive-start-btn", "dive-again-btn",
       "dive-skip", "dive-count", "dive-history", "dive-overlay", "dive-pause", "dive-challenge",
-      "dive-submit", "dive-next", "dive-examples", "dive-score", "dive-combo", "dive-progress"].forEach((id) => { els[id] = $(id); });
+      "dive-submit", "dive-next", "dive-examples", "dive-score", "dive-combo", "dive-progress",
+      "dive-badges", "dive-streak", "dive-sky"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
 
     const promptsEl = els["dive-count"];
@@ -609,6 +743,8 @@
     renderBest();
     renderChallenge();
     renderHistory();
+    renderBadges();
+    renderStreak();
     renderDepth();
     show("dive-start");
 
@@ -632,5 +768,8 @@
     init();
   }
   // Debugging + verification handle (exposes the pure matcher, not live answers).
-  window.LokiDive = { state, normalize, fold, findAnswer, damerauDistance, tick: loop };
+  window.LokiDive = { state, normalize, fold, findAnswer, damerauDistance, tick: loop,
+    award: (id) => { try { return awardBadge(id); } catch { return false; } },
+    badges: () => readBadges(),
+    refreshSky: () => { try { refreshSky(); renderSky(); } catch { /* HUD never blocks play */ } } };
 })();

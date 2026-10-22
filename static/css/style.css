@@ -395,3 +395,13 @@ button.tag:hover{color:var(--text);border-color:#5a7a63}
 .dive-publish input{min-width:230px;min-height:41px;background:#101a14;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:9px 12px;font:inherit}
 .dive-publish input::placeholder{color:#6d8577}
 @media (max-width:480px){.dive-publish input{min-width:100%}}
+
+/* Dive motivation meta: badges, day streak, chase-the-board HUD line */
+.dive-badges{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px;align-items:center}
+.dive-badges-title{font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-right:4px}
+.dive-badge{font-size:11px;padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.dive-badge-locked{opacity:.55}
+.dive-badge-won{border-color:var(--amber);color:var(--amber);font-weight:600}
+.dive-streak{color:var(--amber);font-weight:700}
+.dive-sky{font-size:11px;color:var(--muted);margin-left:auto;text-align:right}
+@media (max-width:640px){.dive-sky{margin-left:0;text-align:left;flex:1 1 100%}}

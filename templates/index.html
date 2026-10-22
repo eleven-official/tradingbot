@@ -295,14 +295,16 @@
               <span class="dive-stat" id="dive-best">No dive yet</span>
               <span class="dive-stat" id="dive-dives">Fresh waters</span>
               <span class="dive-stat dive-challenge" id="dive-challenge"></span>
+              <span class="dive-stat dive-streak" id="dive-streak" hidden></span>
             </div>
             <p class="caption" id="dive-count"></p>
             <p class="caption" id="dive-history"></p>
+            <div id="dive-badges" class="dive-badges" aria-label="Badges earned while diving"></div>
             <p class="caption">Rarity tiers are assigned in our hand-written bank, not measured from other players. Valid answers outside the bank may not match. Inspired by krillion.io; unlimited replays, no account needed, and results stay in this browser unless you publish your best under a board name yourself.</p>
           </div>
           <div id="dive-play" class="dive-screen" hidden>
             <div class="dive-topbar"><span id="dive-round" class="tag">Round 1 of 7</span><div class="dive-tools"><span id="dive-clock" class="dive-clock" role="timer" aria-label="Time remaining">25s</span><button id="dive-pause" class="button secondary" type="button" aria-pressed="false">Pause</button></div></div>
-            <div class="dive-hud"><strong id="dive-score">0 pts</strong><span id="dive-combo">Streak 0 / 3</span></div>
+            <div class="dive-hud"><strong id="dive-score">0 pts</strong><span id="dive-combo">Streak 0 / 3</span><span id="dive-sky" class="dive-sky" role="status"></span></div>
             <div id="dive-progress" class="dive-progress" aria-label="Seven-round progress"></div>
             <div class="dive-timerline"><div id="dive-timer" class="dive-timerfill"></div></div>
             <h3 id="dive-prompt" class="dive-prompt">…</h3>

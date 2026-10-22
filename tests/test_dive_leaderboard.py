@@ -160,6 +160,22 @@ class TestWiring(unittest.TestCase):
     def test_backup_carries_the_board_name(self):
         backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
         self.assertIn("loki_dive_board_name", backup)
+        for key in ("loki_dive_badges", "loki_dive_streak", "loki_dive_challenge_wins"):
+            self.assertIn(key, backup)  # the motivation meta travels with the browser backup
+
+    def test_game_motivation_meta_is_bounded_and_honest(self):
+        game = (ROOT / "static" / "js" / "game.js").read_text(encoding="utf-8")
+        self.assertIn('"loki_dive_badges"', game)
+        self.assertIn("earned in this browser, never sent anywhere", game)
+        self.assertIn("bumpStreak()", game)
+        self.assertIn("refreshSky()", game)
+        self.assertIn("skyInfo", (ROOT / "static" / "js" / "dive_board.js").read_text(encoding="utf-8"))
+
+    def test_template_carries_the_new_panels(self):
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        for marker in ('id="dive-badges"', 'id="dive-streak"', 'id="dive-sky"'):
+            self.assertIn(marker, html)
+        self.assertIn("dive-badge-won", (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8"))
 
     def test_schema_file_ships(self):
         sql = (ROOT / "supabase" / "schema_dive_scores.sql").read_text(encoding="utf-8")
