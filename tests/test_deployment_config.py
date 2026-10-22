@@ -312,6 +312,20 @@ class DeploymentConfigTests(unittest.TestCase):
         backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
         self.assertIn("loki_practice_stats_v1", backup)   # streak survives backups too
 
+    def test_practice_dataset_generator_is_honest_and_wired(self):
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="generate-practice"', html)
+        self.assertIn("Generate a practice dataset", html)
+        self.assertIn("seeded random walk", html)  # the honest caption names the mechanism
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("function generatePracticeDataset", workspace)
+        self.assertIn("0x6D2B79F5", workspace)  # seeded PRNG, deterministic per click
+        self.assertIn("PRACTICE/BTC", workspace)  # the label says what it is
+        self.assertIn("flight simulator", workspace)
+        # Synthetic practice never earns the data-import step credit.
+        self.assertIn("if(!practiceDataset)try{localStorage.setItem('loki_steps_data'", workspace)
+        self.assertIn("startsWith('synthetic-practice'))practiceDataset=true", workspace)
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance

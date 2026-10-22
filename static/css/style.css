@@ -351,6 +351,9 @@
 .council-history-detail{color:#9fb2c0;overflow-wrap:anywhere}
 .council-history-clear{margin-top:12px;min-height:32px;font-size:10px;padding:6px 12px;width:auto}
 @media(max-width:760px){.council-history-clear{width:100%}}
+/* Practice dataset generator: sits under the upload zone, full width like it. */
+.practice-generate{width:100%;margin-top:-6px}
+.practice-generate + .caption{margin-top:9px}
 @media(max-width:760px){
   .page-heading{padding:28px 0 22px}
   .page-heading h1{font-size:34px;letter-spacing:-1px}

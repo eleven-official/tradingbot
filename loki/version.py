@@ -1,6 +1,6 @@
 """Version information for Loki Trading Platform."""
 
-__version__ = "2.10.0"
+__version__ = "2.11.0"
 __version_info__ = tuple(int(i) for i in __version__.split("."))
 
 # Version metadata
