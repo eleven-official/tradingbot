@@ -346,6 +346,26 @@ class DeploymentConfigTests(unittest.TestCase):
         ai = (ROOT / "static" / "js" / "ai_trading.js").read_text(encoding="utf-8")
         self.assertIn("risk approved (${Number(risk.qty).toFixed(4)})", ai)
 
+    def test_news_desk_skim_layer_is_honest_and_wired(self):
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        news = html.split('id="news"')[1].split('id="agent-council"')[0]
+        self.assertIn('id="news-search"', news)          # in-browser text skim
+        self.assertIn('id="news-topics"', news)          # topic chip row
+        self.assertIn('id="news-count"', news)           # honest showing-X-of-Y line
+        self.assertIn('id="news-clear-filters"', news)   # one click back to everything
+        self.assertIn("click one to skim the desk down to that keyword", html)
+        desk = (ROOT / "static" / "js" / "news_view.js").read_text(encoding="utf-8")
+        self.assertIn("SEEN_KEY = 'loki_news_seen_v1'", desk)
+        self.assertIn("a skim of keyword matches, not analysis", desk)
+        self.assertIn("new since your last look", desk)  # badge names its own basis
+        self.assertIn("aria-pressed", desk)              # topic chips are honest toggles
+        self.assertIn("nothing was invented to fill the page", desk)
+        css = (ROOT / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        self.assertIn('.news-topic-chip[aria-pressed="true"]', css)
+        self.assertIn(".news-new-flag", css)
+        backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
+        self.assertIn("loki_news_seen_v1", backup)       # seen stamps survive backups
+
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance

@@ -16,6 +16,8 @@
     "loki_watchlist_v1",          // watchtower tracked instruments (this browser)
     "loki_pinned_report_v1",  // pinned research run for compare
     "loki_council_history_v1",    // the day's council verdicts (this browser only)
+
+    "loki_news_seen_v1",          // last-look stamp for the news desk's "new since your last look" flags
     "loki_guest"
   ];
   const $ = (id) => document.getElementById(id);

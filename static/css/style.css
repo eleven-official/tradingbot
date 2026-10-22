@@ -363,3 +363,16 @@
   .topbar-status{gap:8px}
   .floor-grid{grid-template-columns:1fr}
 }
+
+/* News desk skim layer — client-side filters only, always labeled as a skim */
+button.tag,.news-topic-chip{cursor:pointer;font:inherit}
+button.tag:hover{color:var(--text);border-color:#5a7a63}
+.news-filter-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 12px}
+#news-search{flex:1 1 220px;max-width:320px;min-height:41px;background:#101a14;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:9px 12px;font:inherit}
+#news-search::placeholder{color:#6d8577}
+.news-topic-row{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.news-topic-chip{padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:10px;letter-spacing:.4px}
+.news-topic-chip:hover{color:var(--text);border-color:#5a7a63}
+.news-topic-chip[aria-pressed="true"]{background:#17251e;color:var(--green);border-color:#3c5d48}
+.news-new-flag{display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;background:#17251e;border:1px solid #3c5d48;color:var(--green);font-size:9px;letter-spacing:.8px;text-transform:uppercase;vertical-align:middle}
+.news-note{margin-top:12px}
