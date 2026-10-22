@@ -284,7 +284,9 @@
         <div id="dive-legend" class="dive-legend" aria-label="Rarity tiers"></div>
         <div class="dive-stage">
           <div id="dive-start" class="dive-screen">
-            <p class="muted">Seven rounds a dive · twenty-five seconds each · one answer per round. The <strong>rarer</strong> your answer, the deeper you sink — from Plankton (+10 pts · surface) down to One in a Zillion (+100 pts · 1,000 m). A miss costs nothing; skip a stumper or keep typing until the clock runs out. Typos get forgiven — the engine fixes gentle spelling slips and says so.</p>
+            <div class="dive-launch"><span class="dive-sonar" aria-hidden="true">◎</span><div><p class="eyebrow">GO BEYOND THE OBVIOUS</p><h3>How deep does your imagination go?</h3><p class="muted">One prompt. One unexpected answer. Seven chances to go deeper.</p></div></div>
+            <div class="dive-how"><span><strong>01</strong> Read the prompt</span><span><strong>02</strong> Find a rare answer</span><span><strong>03</strong> Build your streak</span></div>
+            <p class="muted"><strong>7 rounds · 25 seconds each.</strong> Find a rare answer before time runs out. Keep trying after a miss, or skip and learn from examples. Typos get forgiven. Three finds in a row unlock a combo; all seven earn a clean-sweep bonus.</p>
             <div class="dive-start-row">
               <button id="dive-start-btn" class="button primary" type="button">Begin the dive →</button>
               <span class="dive-stat" id="dive-best">No dive yet</span>
@@ -293,19 +295,23 @@
             </div>
             <p class="caption" id="dive-count"></p>
             <p class="caption" id="dive-history"></p>
-            <p class="caption">Inspired by the daily game krillion.io — this one runs anytime, with unlimited replays, hand-written answer banks and no account needed. Your answers stay in your browser; no dive result is sent anywhere.</p>
+            <p class="caption">Rarity tiers are assigned in our hand-written bank, not measured from other players. Valid answers outside the bank may not match. Inspired by krillion.io; unlimited replays, no account needed, and results stay in this browser.</p>
           </div>
           <div id="dive-play" class="dive-screen" hidden>
-            <div class="dive-topbar"><span id="dive-round" class="tag">Round 1 of 7</span><span id="dive-clock" class="dive-clock">25s</span></div>
+            <div class="dive-topbar"><span id="dive-round" class="tag">Round 1 of 7</span><div class="dive-tools"><span id="dive-clock" class="dive-clock" role="timer" aria-label="Time remaining">25s</span><button id="dive-pause" class="button secondary" type="button" aria-pressed="false">Pause</button></div></div>
+            <div class="dive-hud"><strong id="dive-score">0 pts</strong><span id="dive-combo">Streak 0 / 3</span></div>
+            <div id="dive-progress" class="dive-progress" aria-label="Seven-round progress"></div>
             <div class="dive-timerline"><div id="dive-timer" class="dive-timerfill"></div></div>
             <h3 id="dive-prompt" class="dive-prompt">…</h3>
             <p id="dive-rules" class="caption"></p>
             <form id="dive-form" class="dive-form" autocomplete="off">
               <input id="dive-answer" type="text" maxlength="60" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off" placeholder="Type the answer almost nobody thinks of first…" aria-label="Your rare answer">
-              <button class="button primary" type="submit">Dive →</button>
+              <button id="dive-submit" class="button primary" type="submit">Submit answer →</button>
               <button id="dive-skip" class="button secondary dive-skip" type="button" title="Surrender this round to the current — it counts as a miss">Skip →</button>
             </form>
             <div id="dive-feedback" class="dive-feedback" role="status" aria-live="polite" hidden></div>
+            <p id="dive-examples" class="dive-examples" hidden></p>
+            <button id="dive-next" class="button primary dive-next" type="button" hidden>Next round →</button>
             <div class="dive-depthstrip"><span class="dive-depthtrack" aria-hidden="true"><span id="dive-depthbar" class="dive-depthfill"></span></span><small>Depth <strong id="dive-depth-num">0 m</strong></small></div>
             <div id="dive-overlay" class="dive-overlay" hidden>Dive paused — come back to this tab and the clock keeps its word.</div>
           </div>

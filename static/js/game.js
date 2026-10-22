@@ -38,33 +38,24 @@
     round: 0,
     points: 0,
     bonus: 0,
+    streak: 0,
+    streakBonus: 0,
+    manualPaused: false,
     fixed: 0, // spelling corrections this dive
     rounds: [], // {prompt, tier|null, points, answer, fixed}
     current: null,
     deadline: 0,
     tLeft: ROUND_MS,
     accepted: false,
-    pausedAgo: false,
-    flashTimer: 0,
     sectionEl: null,
     best: 0,
     dives: 0,
     visible: true,
     running: false,
-    rafId: 0,
-    nextTimer: 0
+    rafId: 0
   };
 
   /* ---------- helpers ---------- */
-  function flashResume() {
-    state.pausedAgo = false;
-    const node = els["dive-overlay"];
-    if (!node) return;
-    node.textContent = "⏸ Pause held — the clock kept its word. Full time resumes now.";
-    node.hidden = false;
-    window.clearTimeout(state.flashTimer);
-    state.flashTimer = window.setTimeout(() => { node.hidden = true; }, 1600);
-  }
   function $(id) { return document.getElementById(id); }
   function esc(text) {
     return String(text).replace(/[&<>"']/g, (c) => ({
@@ -180,8 +171,7 @@
     const fresh = all.filter((i) => !recent.includes(i));
     const pool = fresh.length >= ROUNDS_PER_DIVE ? fresh : all;
     const order = shuffle(pool);
-    pushRecent(recent.concat(order).slice(-(RECENT_LIMIT * 2)));
-    return order;
+    return order.slice(0, ROUNDS_PER_DIVE);
   }
   function tierClass(i) { return "dive-tier dive-tier-" + i; }
 
@@ -210,10 +200,19 @@
     )).join("");
   }
   function renderDepth() {
-    const depth = (state.points + state.bonus) * POINTS_PER_METRE;
+    const depth = totalPoints() * POINTS_PER_METRE;
     const pct = Math.max(0, Math.min(100, (depth / METER_MAX) * 100));
     if (els["dive-depth-num"]) els["dive-depth-num"].textContent = fmtM(depth);
-    if (els["dive-depthbar"]) els["dive-depthbar"].style.height = pct + "%";
+    if (els["dive-depthbar"]) els["dive-depthbar"].style.width = pct + "%";
+    if (els["dive-score"]) els["dive-score"].textContent = totalPoints() + " pts";
+    if (els["dive-combo"]) els["dive-combo"].textContent = state.streak >= HOT_STREAK ? "Streak ×" + state.streak + " · +5 per find" : "Streak " + state.streak + " / 3";
+    if (els["dive-progress"]) {
+      els["dive-progress"].innerHTML = Array.from({ length: ROUNDS_PER_DIVE }, (_, i) => {
+        const row = state.rounds[i];
+        const label = row ? (row.tier === null ? "missed" : "found") : i === state.round - 1 ? "current" : "upcoming";
+        return `<span class="dive-step ${label}" aria-label="Round ${i + 1}: ${label}">${row ? (row.tier === null ? "−" : "✓") : i + 1}</span>`;
+      }).join("");
+    }
   }
   function totalPoints() { return state.points + state.bonus + state.streakBonus; }
   function renderBest() {
@@ -223,6 +222,10 @@
 
   /* ---------- game flow ---------- */
   function startRun() {
+    state.manualPaused = false;
+    els["dive-overlay"].hidden = true;
+    els["dive-pause"].textContent = "Pause";
+    els["dive-pause"].setAttribute("aria-pressed", "false");
     state.order = freshOrder();
     state.cursor = 0;
     state.round = 0;
@@ -237,17 +240,27 @@
     renderBest();
     show("dive-play");
     nextRound();
+    els["dive-play"].scrollIntoView({ block: "start" });
   }
   function nextRound() {
-    window.clearTimeout(state.nextTimer);
     if (state.round >= ROUNDS_PER_DIVE || state.cursor >= state.order.length) { endRun(); return; }
     const promptIdx = state.order[state.cursor];
+    pushRecent(readRecent().concat(promptIdx));
     state.current = { prompt: bank.prompts[promptIdx], index: buildIndex(bank.prompts[promptIdx]) };
     state.cursor += 1;
     state.round += 1;
     state.accepted = false;
+    els["dive-next"].hidden = true;
+    els["dive-answer"].disabled = false;
+    els["dive-submit"].disabled = false;
+    els["dive-skip"].disabled = false;
+    els["dive-pause"].disabled = false;
+    els["dive-examples"].hidden = true;
     state.tLeft = ROUND_MS;
     state.deadline = performance.now() + ROUND_MS;
+    els["dive-clock"].textContent = "25s";
+    els["dive-timer"].style.width = "100%";
+    els["dive-timer"].classList.remove("dive-low");
 
     const p = state.current.prompt;
     if (els["dive-round"]) els["dive-round"].textContent = "Round " + state.round + " of " + ROUNDS_PER_DIVE;
@@ -272,7 +285,7 @@
     node.className = "dive-feedback" + (cls ? " " + cls : "");
   }
   const MISS_LINES = [
-    "Not on the bank's radar. The clock waits — try another shape of idea.",
+    "Not in this answer bank. Try another — the clock is still running.",
     "The bank doesn't know that one. Different angle?",
     "No match — the list stayed quiet. Something rarer, maybe.",
     "Not this time. The rarer names live further out.",
@@ -280,13 +293,14 @@
   ];
   function submit(ev) {
     if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+    if (state.manualPaused || !state.visible) return;
     if (state.phase === "between" && state.accepted) {
       // impatient divers can press Enter to surf to the next round immediately
-      window.clearTimeout(state.nextTimer);
       nextRound();
       return;
     }
     if (state.phase !== "round" || state.accepted) return;
+    if (performance.now() >= state.deadline) { timeUp(); return; }
     const raw = els["dive-answer"] ? els["dive-answer"].value : "";
     const key = normalize(raw);
     if (!key) {
@@ -311,11 +325,8 @@
       state.rounds.push({ q: state.current.prompt.q, tier: match.hit.tier, points: pts + combo, answer: shown, fixed: match.fixed });
       feedback("✓ " + shown + " — " + tier.name + "! +" + pts + " points · " + fmtM(pts * POINTS_PER_METRE)
         + (combo ? " 🔥 streak ×" + state.streak + " (+" + combo + ")" : ""), "good");
-      feedback("✓ " + shown + " — " + tier.name + "! +" + pts + " points · " + fmtM(pts * POINTS_PER_METRE), "good");
       renderDepth();
-      window.clearTimeout(state.nextTimer);
-      state.nextTimer = window.setTimeout(nextRound, 2600);
-      state.running = false; // clock stops between rounds
+      finishRound(false);
     } else {
       const line = MISS_LINES[Math.floor(Math.random() * MISS_LINES.length)];
       feedback(line, "warn");
@@ -323,15 +334,14 @@
     }
   }
   function skipRound() {
-    if (state.phase !== "round" || state.accepted) return;
+    if (state.phase !== "round" || state.accepted || state.manualPaused || !state.visible) return;
     state.accepted = true;
     state.running = false;
     state.streak = 0;
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
-    feedback("Let go — that one swims past. The next wave is coming.", "warn");
-    window.clearTimeout(state.nextTimer);
-    state.nextTimer = window.setTimeout(nextRound, 1300);
+    feedback("Round skipped. Discover a few answers below, then dive again.", "warn");
+    finishRound(true);
   }
   function timeUp() {
     if (state.phase !== "round") return;
@@ -340,12 +350,42 @@
     state.streak = 0;
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
-    feedback("Time's up for this round. The current moves on.", "warn");
-    window.clearTimeout(state.nextTimer);
-    state.nextTimer = window.setTimeout(nextRound, 1900);
+    feedback("Time's up. Here are a few answers to take into your next dive.", "warn");
+    finishRound(true);
+  }
+  function finishRound(showExamples) {
+    state.running = false;
+    els["dive-answer"].disabled = true;
+    els["dive-submit"].disabled = true;
+    els["dive-skip"].disabled = true;
+    els["dive-pause"].disabled = true;
+    els["dive-next"].hidden = false;
+    els["dive-next"].textContent = state.round === ROUNDS_PER_DIVE ? "See dive results →" : "Next round →";
+    if (showExamples) {
+      const samples = [0, 3, 5].map(t => state.current.prompt.a.find(a => a[1] === t)).filter(Boolean);
+      els["dive-examples"].textContent = "Bank examples: " + samples.map(a => a[0] + " · " + bank.tiers[a[1]].name).join(" / ");
+      els["dive-examples"].hidden = false;
+    }
+    renderDepth();
+    els["dive-next"].focus({ preventScroll: true });
+  }
+  function togglePause() {
+    if (state.phase !== "round") return;
+    const now = performance.now();
+    if (!state.manualPaused && now >= state.deadline) { timeUp(); return; }
+    if (!state.manualPaused) state.tLeft = Math.max(0, state.deadline - now);
+    state.manualPaused = !state.manualPaused;
+    state.deadline = now + state.tLeft;
+    els["dive-pause"].textContent = state.manualPaused ? "Resume" : "Pause";
+    els["dive-pause"].setAttribute("aria-pressed", String(state.manualPaused));
+    els["dive-overlay"].textContent = "Paused · your remaining time is saved. Press Resume when ready.";
+    els["dive-overlay"].hidden = !state.manualPaused;
+    els["dive-answer"].disabled = state.manualPaused;
+    els["dive-submit"].disabled = state.manualPaused;
+    els["dive-skip"].disabled = state.manualPaused;
+    if (!state.manualPaused) els["dive-answer"].focus({ preventScroll: true });
   }
   function endRun() {
-    window.clearTimeout(state.nextTimer);
     if (state.rafId) { window.cancelAnimationFrame(state.rafId); state.rafId = 0; }
     state.phase = "done";
     state.running = false;
@@ -420,6 +460,8 @@
     } catch { /* storage blocked — the trend line simply stays empty */ }
     renderDepth();
     show("dive-end");
+    renderHistory();
+    els["dive-again-btn"].focus({ preventScroll: true });
     if (!challenge.done && totalPoints() >= challenge.target) {
       challenge.done = true;
       try { localStorage.setItem(LS_CHALLENGE, JSON.stringify({ d: dayKey(), o: totalPoints() })); } catch { /* ignore */ }
@@ -470,15 +512,8 @@
     if (!state.running) return;
     const sec = state.sectionEl;
     const inView = !document.hidden && !!sec && sec.offsetParent !== null;
-    if (inView !== state.visible) {
-      if (!inView && state.running) state.pausedAgo = true;
-      state.visible = inView;
-      if (inView && state.pausedAgo) flashResume();
-    }
-    if (!state.visible) {
-      state.deadline = ts + state.tLeft; // freeze the clock while out of sight
-      return;
-    }
+    if (inView !== state.visible) updatePause();
+    if (!state.visible || state.manualPaused) return;
     state.tLeft = Math.max(0, state.deadline - ts);
     if (els["dive-timer"]) {
       const pct = Math.max(0, Math.min(100, (state.tLeft / ROUND_MS) * 100));
@@ -487,6 +522,14 @@
     }
     if (els["dive-clock"]) els["dive-clock"].textContent = Math.ceil(state.tLeft / 1000) + "s";
     if (state.tLeft <= 0) { state.running = false; timeUp(); }
+  }
+  function updatePause() {
+    const inView = !document.hidden && !!state.sectionEl && state.sectionEl.offsetParent !== null;
+    if (inView === state.visible) return;
+    const now = performance.now();
+    if (!inView && state.running && !state.manualPaused) state.tLeft = Math.max(0, state.deadline - now);
+    if (inView) state.deadline = now + state.tLeft;
+    state.visible = inView;
   }
 
   /* ---------- daily challenge ---------- */
@@ -546,7 +589,8 @@
       "dive-timer", "dive-clock", "dive-round", "dive-prompt", "dive-rules", "dive-best", "dive-dives",
       "dive-depth-num", "dive-depthbar", "dive-end-depth", "dive-end-points", "dive-end-best",
       "dive-end-verdict", "dive-end-rows", "dive-end-extra", "dive-copy", "dive-start-btn", "dive-again-btn",
-      "dive-skip", "dive-count", "dive-history", "dive-overlay", "dive-pause", "dive-challenge"].forEach((id) => { els[id] = $(id); });
+      "dive-skip", "dive-count", "dive-history", "dive-overlay", "dive-pause", "dive-challenge",
+      "dive-submit", "dive-next", "dive-examples", "dive-score", "dive-combo", "dive-progress"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
 
     const promptsEl = els["dive-count"];
@@ -571,16 +615,10 @@
     if (els["dive-skip"]) els["dive-skip"].addEventListener("click", skipRound);
     if (els["dive-copy"]) els["dive-copy"].addEventListener("click", copyResult);
     if (els["dive-form"]) els["dive-form"].addEventListener("submit", submit);
+    els["dive-next"].addEventListener("click", () => { if (state.phase === "between") nextRound(); });
+    els["dive-pause"].addEventListener("click", togglePause);
     state.sectionEl = els["dive-start"].closest(".workspace-view");
-    const updatePause = () => {
-      const sec = state.sectionEl;
-      const inView = !document.hidden && !!sec && sec.offsetParent !== null;
-      if (inView !== state.visible) {
-        if (!inView && state.running) state.pausedAgo = true;
-        state.visible = inView;
-        if (inView && state.pausedAgo) flashResume();
-      }
-    };
+    updatePause();
     document.addEventListener("visibilitychange", updatePause);
     window.addEventListener("hashchange", updatePause);
   }
