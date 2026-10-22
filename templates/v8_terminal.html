@@ -705,6 +705,8 @@ window.fetch = async (input, options={}) => {
     let portfolioLoading = false;
     let portfolioLoaded = false;
     let connectionLost = false;
+    let statusFailures = 0;   // consecutive failed engine polls; drives the retry backoff
+    let autoFailures = 0;     // consecutive failed autonomous-status polls
     let radarSignals = [];
     let radarRegimes = {};
     let radarFilter = 'ALL';
@@ -1266,7 +1268,7 @@ window.fetch = async (input, options={}) => {
     }
 
 
-    function setConnection(ok) {
+    function setConnection(ok, detail) {
       const dot = $('engine-dot');
       const text = $('nav-engine-status');
       const banner = $('offline-banner');
@@ -1282,6 +1284,11 @@ window.fetch = async (input, options={}) => {
         dot.classList.add('status-dot--off');
         text.textContent = 'ENGINE OFFLINE';
         banner.hidden = false;
+        // Name the real reason when the browser has no launcher token —
+        // "unreachable" would not be true; access is simply not granted here.
+        banner.textContent = detail && detail.indexOf('launcher') !== -1
+          ? '⚠ Engine API needs the local Loki launcher and its session token — this open browser tab cannot connect on its own. Polling continues, politely spaced, so a running launcher is picked up automatically.'
+          : '⚠ Engine API unreachable — reconnecting automatically. Trading actions are disabled until the connection returns.';
         if (!connectionLost) toast('Cannot reach the engine API — retrying automatically.', 'error');
         connectionLost = true;
       }
@@ -1466,11 +1473,16 @@ window.fetch = async (input, options={}) => {
         const sync = $('last-sync');
         if (sync) sync.textContent = 'synced ' + new Date().toLocaleTimeString();
         setLatency(performance.now() - startedAt);
+        statusFailures = 0;
         setConnection(true);
       } catch (e) {
-        console.error('Status fetch error:', e);
+        // Without the local launcher every poll fails by design; retry less
+        // often and only log the first failure plus every fifth, so the
+        // console stays readable and the engine API is not hammered.
+        statusFailures += 1;
+        if (statusFailures === 1 || statusFailures % 5 === 0) console.error('Status fetch error:', e);
         setLatency(NaN);
-        setConnection(false);
+        setConnection(false, String(e.message || e));
       }
     }
 
@@ -2246,7 +2258,8 @@ window.fetch = async (input, options={}) => {
           btn.style.color = '#c084fc';
         }
       } catch (e) {
-        console.error('Auto status error:', e);
+        autoFailures += 1;
+        if (autoFailures === 1 || autoFailures % 5 === 0) console.error('Auto status error:', e);
       }
     }
 
@@ -3584,10 +3597,19 @@ window.fetch = async (input, options={}) => {
       if (autoScanToggle.checked) setAutoScan(true);
     }
 
-    setInterval(() => {
-      updateStatus();
-      checkAutonomousStatus();
-    }, 10000);
+    (function statusLoop() {
+      // 10s when the engine answers; after three straight failures the retry
+      // settles at 30s so an absent launcher is noticed without hammering.
+      const delay = statusFailures >= 3 ? 30000 : 10000;
+      setTimeout(async () => {
+        try {
+          await updateStatus();
+          await checkAutonomousStatus();
+        } finally {
+          statusLoop();
+        }
+      }, delay);
+    })();
     setInterval(refreshRegimePill, 60000);
     setInterval(refreshDbStatus, 45000);
 

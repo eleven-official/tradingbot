@@ -413,7 +413,7 @@
           const action = (quant.action || 'HOLD').toUpperCase();
           let note = '';
           if (action !== 'HOLD') {
-            note = risk.approved ? ` · risk approved (${risk.qty})` : ` · risk declined: ${risk.reason || ''}`;
+            note = risk.approved ? ` · risk approved (${Number(risk.qty).toFixed(4)})` : ` · risk declined: ${risk.reason || ''}`;
           }
           logLine(
             `${symbol} @ ${Number(data.price).toFixed(2)} → ${action} · regime ${data.regime || '—'}${note}`,

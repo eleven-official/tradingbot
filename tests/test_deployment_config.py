@@ -320,11 +320,31 @@ class DeploymentConfigTests(unittest.TestCase):
         workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
         self.assertIn("function generatePracticeDataset", workspace)
         self.assertIn("0x6D2B79F5", workspace)  # seeded PRNG, deterministic per click
-        self.assertIn("PRACTICE/BTC", workspace)  # the label says what it is
+        self.assertIn("PRACTICE-BTC", workspace)  # the label says what it is, without implying a quote currency
         self.assertIn("flight simulator", workspace)
         # Synthetic practice never earns the data-import step credit.
         self.assertIn("if(!practiceDataset)try{localStorage.setItem('loki_steps_data'", workspace)
         self.assertIn("startsWith('synthetic-practice'))practiceDataset=true", workspace)
+
+    def test_council_review_hygiene_from_the_human_walkthrough(self):
+        # A wrong MiroFish id must be stopped with human guidance, never a raw
+        # pydantic error, and never shipped to the server unchecked.
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("not ready to travel with this review", workspace)
+        self.assertIn("/^report_[A-Za-z0-9_-]+$/.test(miroId)", workspace)
+        # 422 details lose their "body.field:" programmer prefix.
+        self.assertIn(".replace(/^body\\.([A-Za-z_]+): /", workspace)
+        self.assertIn("field: `", workspace)
+        # Portfolio captions state the ledger currency instead of mixing it
+        # with a converted display figure.
+        self.assertIn("Ledger cash US$", workspace)
+        self.assertIn("Initial capital US$", workspace)
+        # The duplicated file-label listener from the first walkthrough pass is gone.
+        self.assertNotIn("$('file-label').textContent=event.target.files[0]?.name", workspace)
+
+    def test_ai_trading_logs_round_quantities(self):
+        ai = (ROOT / "static" / "js" / "ai_trading.js").read_text(encoding="utf-8")
+        self.assertIn("risk approved (${Number(risk.qty).toFixed(4)})", ai)
 
     def test_gate_page_recovery_explanations_and_preview(self):
         source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
