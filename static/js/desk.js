@@ -240,6 +240,9 @@
     }
     const councilButton = document.querySelector('#desk-council-run');
     if (councilButton) councilButton.addEventListener('click', askCouncil);
+    const historyClear = document.querySelector('#desk-council-history-clear');
+    if (historyClear) historyClear.addEventListener('click', clearCouncilHistory);
+    renderCouncilHistory('#desk-council-history');
     updateOrderCount();
     document.querySelector('#desk-note').textContent =
       'Agents read public feeds (Yahoo Finance search & chart, Binance Spot) and compute in code; no language model and no order moves from the server. Abstain means the feed was unusable, never a guess.';
@@ -412,6 +415,8 @@
         target.append(draft);
       }
       target.append(element('p', `Evidence as of ${report.as_of} · ${human(report.mode)} · ${report.strategy_id} · no submission path exists from this report.`, 'caption'));
+      pushCouncilHistory({ symbol: evidence.symbol, decision: (director && director.decision) || 'wait', blocked: blocked.length, source: 'desk' });
+      renderCouncilHistory('#desk-council-history');
       message('#desk-council-message', `${evidence.symbol}: council review complete on a fresh public-data snapshot (evidence as of ${report.as_of})${news ? ' · the desk news read is attached as bounded context; it can neither approve nor veto any check' : ''}. This may differ from an earlier desk run and does not satisfy the research-target gate.`);
     } catch (error) {
       message('#desk-council-message', error.message || 'The council did not answer; nothing was invented.', true);

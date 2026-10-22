@@ -446,6 +446,7 @@ class TestCouncilPanelWiring:
             "live-evidence-run",
             "newsPacket",  # the news read reduced to the council's bounded contract
             "news_evidence",  # attached to the overview council call too
+            "council-history-clear",
             "periods_per_year:liveEvidence.periods_per_year",
         ):
             assert needed in js, f"workspace.js is missing {needed}"
@@ -713,6 +714,8 @@ class TestDeskCouncilOpinionWiring:
             "desk-council-run",
             "desk-council-message",
             "desk-council",
+            "desk-council-history",       # the day's verdicts, kept in this browser
+            "desk-council-history-clear",
             "desk-sweep-form",
             "desk-sweep-symbols",
             "desk-sweep-run",
@@ -734,8 +737,20 @@ class TestDeskCouncilOpinionWiring:
             "desk-sweep-run",
             "desk-council-run",
             "news_evidence",  # the bounded news handoff rides along with the bars
+            "pushCouncilHistory",  # verdicts land in the local history strip
+            "renderCouncilHistory",
+            "clearCouncilHistory",
         ):
             assert needed in js, f"desk.js is missing {needed}"
+
+    def test_council_history_rides_in_backups_and_the_overview(self):
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        assert html.index("council-history-clear") < html.index('id="game"')
+        backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
+        assert "loki_council_history_v1" in backup  # history survives reloads and rides in backups
+        workspace = (ROOT / "static" / "js" / "workspace.js").read_text(encoding="utf-8")
+        for needed in ("pushCouncilHistory", "renderCouncilHistory", "loki_council_history_v1"):
+            assert needed in workspace, f"workspace.js is missing {needed}"
 
 
 def _news_packet() -> dict:

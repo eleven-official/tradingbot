@@ -339,7 +339,18 @@
 @media(max-width:760px){
   .council-blocked{margin-top:10px}
   .council-draft{padding:14px}
+  .council-history-row{flex-wrap:wrap}
 }
+/* Council review history: the day's verdicts, listed in one compact strip. */
+.council-history-box{margin-top:22px;border-top:1px solid var(--line);padding-top:16px}
+.council-history-box .eyebrow{margin-bottom:10px}
+.council-history{margin:0;padding:0;display:grid;gap:7px;list-style:none}
+.council-history-row{display:flex;align-items:baseline;gap:12px;font-size:11.5px;color:var(--muted);padding:9px 12px;border:1px solid var(--line);border-radius:7px;background:#0d161d}
+.council-history-at{flex:0 0 auto;color:#8296a4;font-variant-numeric:tabular-nums}
+.council-history-symbol{color:var(--text);font-weight:500;white-space:nowrap;overflow-wrap:anywhere}
+.council-history-detail{color:#9fb2c0;overflow-wrap:anywhere}
+.council-history-clear{margin-top:12px;min-height:32px;font-size:10px;padding:6px 12px;width:auto}
+@media(max-width:760px){.council-history-clear{width:100%}}
 @media(max-width:760px){
   .page-heading{padding:28px 0 22px}
   .page-heading h1{font-size:34px;letter-spacing:-1px}

@@ -15,6 +15,7 @@
     "loki_practice_stats_v1",     // drills-per-day habit strip on the Bored? page
     "loki_watchlist_v1",          // watchtower tracked instruments (this browser)
     "loki_pinned_report_v1",  // pinned research run for compare
+    "loki_council_history_v1",    // the day's council verdicts (this browser only)
     "loki_guest"
   ];
   const $ = (id) => document.getElementById(id);
