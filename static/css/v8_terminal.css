@@ -105,8 +105,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 900;
+  font-family: var(--font-mono);
+  font-weight: 700;
   font-size: 20px;
+  line-height: 1;
+  color: #eef6ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   box-shadow: 0 0 18px rgba(6, 182, 212, 0.35);
 }
 
@@ -2745,4 +2749,72 @@ body.density-compact .watchlist-bar { padding-top: 10px; padding-bottom: 10px; }
   .perf-strip { gap: 8px; padding: 12px; }
   .perf-value { font-size: 13.5px; }
   .order-ticket-extras { gap: 10px; }
+}
+
+/* ==========================================================================
+   2.17.2 — notice strip + surface polish
+   ========================================================================== */
+
+/* honesty strip above the header: themed glass instead of an inline blob */
+.notice-strip {
+  padding: 10px 24px;
+  background: linear-gradient(180deg, rgba(13, 20, 36, 0.92), rgba(11, 18, 32, 0.96));
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-align: center;
+  letter-spacing: 0.1px;
+}
+
+.notice-strip a {
+  color: var(--accent-cyan);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.notice-strip a:hover,
+.notice-strip a:focus-visible {
+  text-decoration: underline;
+}
+
+/* selection + focus + bars match the theme */
+::selection {
+  background: rgba(34, 211, 238, 0.28);
+  color: #eef6ff;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (max-width: 720px) {
+  .notice-strip {
+    text-align: left;
+    font-size: 12px;
+    padding: 10px 14px;
+  }
 }

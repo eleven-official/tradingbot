@@ -42,3 +42,24 @@ def test_terminal_assets_and_engine_route_exist():
     engine = (ROOT / "loki" / "api" / "terminal_v8.py").read_text(encoding="utf-8")
     assert '@app.post("/api/bot/autonomous")' in engine
     assert '@app.get("/api/bot/autonomous")' in engine
+
+
+def test_notice_strip_is_themed_prose_not_an_inline_blob():
+    html = source()
+    # the honesty strip carries real classes and the exact same copy
+    assert '<div class="notice-strip">' in html
+    assert "Advanced paper engine" in html
+    assert "a 70% trade win rate is unproven" in html
+    assert 'style="padding:12px 24px' not in html  # no glued-on styling
+    css = (ROOT / "static" / "css" / "v8_terminal.css").read_text(encoding="utf-8")
+    assert ".notice-strip {" in css
+    assert "var(--text-muted)" in css
+
+
+def test_brand_tile_is_the_loki_letter_and_assets_are_versioned():
+    html = source()
+    assert 'class="brand-logo" aria-hidden="true">L<' in html
+    assert 'href="/favicon.ico?v={{ version }}"' in html
+    assert 'href="/static/css/v8_terminal.css?v={{ version }}"' in html
+    css = (ROOT / "static" / "css" / "v8_terminal.css").read_text(encoding="utf-8")
+    assert "font-family: var(--font-mono)" in css.split(".brand-logo {", 1)[1][:400]

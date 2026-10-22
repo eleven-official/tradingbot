@@ -6,12 +6,12 @@
   <meta name="description" content="Loki Quantum Terminal — autonomous multi-agent algorithmic trading command center." />
   <meta name="color-scheme" content="dark" />
   <title>Loki Quantum Trading Terminal</title>
-  <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="apple-touch-icon" href="/favicon.png">
+  <link rel="icon" href="/favicon.ico?v={{ version }}" sizes="any">
+  <link rel="apple-touch-icon" href="/favicon.png?v={{ version }}">
   <meta name="theme-color" content="#060a12">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="stylesheet" href="/static/css/v8_terminal.css">
+  <link rel="stylesheet" href="/static/css/v8_terminal.css?v={{ version }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -38,14 +38,14 @@ window.fetch = async (input, options={}) => {
 </script>
 </head>
 <body>
-<div style="padding:12px 24px;background:#172437;color:#dce9ff;font:13px sans-serif">Advanced paper engine · Independent local paper balance. Historical results are research evidence; a 70% trade win rate is unproven. <a style="color:#8bdad4" href="/#overview" target="_top">Return to Loki workspace ↗</a></div>
+<div class="notice-strip">Advanced paper engine · Independent local paper balance. Historical results are research evidence; a 70% trade win rate is unproven. <a href="/#overview" target="_top">Return to Loki workspace ↗</a></div>
 
   <a class="skip-link" href="#app-main">Skip to main content</a>
 
   <!-- Top Navigation Header -->
   <header class="top-nav">
     <div class="brand">
-      <div class="brand-logo" aria-hidden="true">⚡</div>
+      <div class="brand-logo" aria-hidden="true">L</div>
       <div>
         <div class="brand-line">
           <span class="brand-title">LOKI QUANTUM TERMINAL</span>
