@@ -45,19 +45,55 @@
     .peek-card { border: 1px solid rgba(139, 218, 212, .16); background: rgba(9, 17, 28, .6); border-radius: 12px; padding: 10px 12px; font-size: 11.5px; line-height: 1.5; color: #8ba0b2; display: grid; gap: 3px; }
     .peek-card b { color: #b8f0d8; font-size: 12px; }
     .terms-box { display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 18px; padding: 12px 14px; border: 1px dashed rgba(139, 218, 212, .3); border-radius: 12px; background: rgba(9, 17, 28, .5); cursor: pointer; }
-    .terms-box input { width: 18px; height: 18px; accent-color: #8bdad4; margin-top: 1px; cursor: pointer; flex: none; }
+    .terms-box input { width: 18px; height: 18px; padding: 0; accent-color: #8bdad4; margin-top: 3px; cursor: pointer; flex: none; }
     .terms-box span { font-size: 12.5px; line-height: 1.6; color: #b3c4d4; }
     .terms-box a { color: #8bdad4; font-weight: 600; }
     .terms-box.unchecked { border-color: rgba(255, 157, 120, .55); }
-    @media (max-width: 480px) { .card { padding: 30px 22px 26px; } .peek { grid-template-columns: 1fr; } }
+    body { background: radial-gradient(ellipse at 12% 20%, #123438 0, transparent 48%), radial-gradient(ellipse at 95% 90%, #17243e 0, transparent 45%), #060a12; }
+    .entry-layout { width: min(1160px, 100%); display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: clamp(30px, 6vw, 88px); padding: 40px 0; }
+    .intro h2 { font-size: clamp(40px, 5vw, 66px); letter-spacing: -.055em; line-height: 1.05; margin: 24px 0; font-weight: 800; }
+    .intro h2 span { color: #baf0d8; }
+    .intro > p { max-width: 440px; color: #a9bdcd; line-height: 1.8; font-size: 16px; }
+    .mode-badge { display: inline-flex; align-items: center; gap: 9px; border: 1px solid #31564c; border-radius: 100px; padding: 8px 12px; font-size: 11px; letter-spacing: .12em; color: #baf0d8; }
+    .mode-badge::before { content: ''; width: 6px; height: 6px; background: #baf0d8; border-radius: 50%; }
+    .intro .peek { margin: 30px 0; gap: 12px; }
+    .intro .peek-card { padding: 18px; border-style: solid; background: #0b1721a8; }
+    .intro .peek-card b { font-size: 13px; }
+    .workspace-preview { margin-top: 22px; padding-top: 18px; border-top: 1px solid #29404d; color: #baf0d8; font-size: 13px; }
+    summary { cursor: pointer; }
+    summary:focus-visible { outline: 2px solid #baf0d8; outline-offset: 4px; }
+    .entry-foot { font-size: 12px; color: #9fb0c2; }
+    .entry-foot a { color: #baf0d8; text-underline-offset: 4px; }
+    .card { width: 100%; border-radius: 24px; border-top-color: #50796e; background: linear-gradient(150deg, #152331, #0b121e); }
+    .terms-box { border-style: solid; transition: background .2s, border-color .2s; }
+    .terms-box:has(input:checked) { background: #12352b; border-color: #568977; }
+    button.go { min-height: 50px; box-shadow: 0 8px 24px #0003; }
+    :is(button, a, input):focus-visible { outline: 2px solid #baf0d8; outline-offset: 4px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+    @media (max-width: 800px) { .entry-layout { grid-template-columns: 1fr; max-width: 540px; padding: 12px 0; } .intro h2 { font-size: 44px; } .intro .peek { display: none; } }
+    @media (max-width: 480px) { body { padding: 18px; } .card { padding: 26px 22px; } .peek { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
+  <main class="entry-layout">
+  <section class="intro" aria-label="Welcome to Loki">
+    <div class="brand-row"><span class="mark" aria-hidden="true">L</span><b>LOKI</b></div>
+    <span class="mode-badge">PAPER TRADING · REAL CURIOSITY</span>
+    <h2>Build conviction.<br><span>Before you trade.</span></h2>
+    <p>A quieter place to research markets, challenge ideas and practise your strategy. Evidence first. No guaranteed returns.</p>
+    <div class="peek">
+      <div class="peek-card"><b>01 / Research</b><span>Explore price history and put ideas through the factor labs.</span></div>
+      <div class="peek-card"><b>02 / Challenge</b><span>Compare the quant, risk and execution perspectives.</span></div>
+      <div class="peek-card"><b>03 / Practise</b><span>Explore simulated trades without moving real money.</span></div>
+      <div class="peek-card"><b>04 / Take a dive</b><span>A rare-answer game for the moments between scans.</span></div>
+    </div>
+    <div class="entry-foot">Research workspace · <a href="/terms">Terms of Use</a> · v{{ version }}</div>
+  </section>
   <div class="card" id="card">
     <div class="brand-row"><span class="mark">L</span><b>LOKI</b></div>
     <p class="eyebrow">PRIVATE WORKSPACE</p>
     <h1>Enter the access code.</h1>
-    <p class="muted">The code is the door key for this browser — it is not a trading login and touches no account. Everything inside runs in strict paper mode, so no real money can move. Loki keeps only what the workspace needs: your nickname, any price files or notes you add, and a private cookie on your device. Paper trades and game scores live in your own browser only. Nothing is sold, shared or emailed. Before the door opens you accept the <a href="/terms" target="_blank" rel="noopener" style="color:#8bdad4;font-weight:600">Terms of Use</a> — plain and short: research only, nothing here is advice, and no profits are promised.</p>
+    <p class="muted">Your invitation to the research workspace. Enter the code, read the terms and tick your agreement. Everything runs in paper mode — no profits are promised.</p>
     <form id="gate-form" autocomplete="off" novalidate>
       <label for="code">Access code</label>
       <div class="code-wrap">
@@ -74,7 +110,7 @@
     <div id="msg" role="status" aria-live="polite"></div>
     <button type="button" class="help-link" id="need-help" aria-expanded="false" aria-controls="help-block">Need help getting in?</button>
     <div class="help-block" id="help-block" hidden>
-      <b>Three fixes that usually do it:</b>
+      <b>Help getting through the door:</b>
       <ul>
         <li><b>Read the code aloud.</b> Spacing, caps and punctuation are forgiven — "flat head" matches "flat-head". The workspace owner has the current words.</li>
         <li><b>Temporarily locked out?</b> Ten wrong tries earn a five-minute break; the timer clears itself, nothing to reset.</li>
@@ -83,14 +119,15 @@
       </ul>
     </div>
     <p class="hint">Spacing, caps and punctuation don't matter — Loki reads the words.<br><b>This device remembers access for 30 days</b>, in a private cookie that exists only in this browser. On a shared computer, <button type="button" class="linklike" id="forget-device">don't remember this device</button> erases it when you're done.</p>
-    <div class="peek" role="list" aria-label="A peek at the workspace">
+    <details class="workspace-preview"><summary>Explore what's inside</summary><div class="peek" role="list" aria-label="A peek at the workspace">
       <div class="peek-card" role="listitem"><b>🔎 Market research</b><span>Import price history, run the factor labs, see honest out-of-sample results.</span></div>
       <div class="peek-card" role="listitem"><b>⚖️ Agent council</b><span>Quant, risk &amp; execution reviewers argue every idea before it passes.</span></div>
       <div class="peek-card" role="listitem"><b>🤖 Paper AI trading</b><span>Loki reasons and trades a paper account every 20 seconds — zero real money.</span></div>
       <div class="peek-card" role="listitem"><b>🎮 The Loki Dive</b><span>A rare-answer depth game with unlimited dives, for whenever scans run long.</span></div>
     </div>
-    <p class="hint teaser">Inside: market research, agent council reviews and paper AI trading — plus <strong>🎮 The Loki Dive</strong>. Bored while scans run? It lives in the Bored? tab.</p>
+    <p class="hint teaser">Inside: market research, agent council reviews and paper AI trading — plus <strong>🎮 The Loki Dive</strong>. Bored while scans run? It lives in the Bored? tab.</p></details>
   </div>
+  </main>
   <script>
     const formEl = document.getElementById('gate-form');
     const msgEl = document.getElementById('msg');
@@ -102,6 +139,7 @@
       const hidden = codeEl.type === 'password';
       codeEl.type = hidden ? 'text' : 'password';
       event.target.textContent = hidden ? 'HIDE' : 'SHOW';
+      event.target.setAttribute('aria-label', hidden ? 'Hide the code' : 'Show the code');
       codeEl.focus();
     });
 
@@ -113,12 +151,14 @@
       if (!termsEl.checked) {
         setMsg('Tick the terms box first — the door does not open without the agreement.');
         termsBox.classList.add('unchecked');
+        termsEl.focus();
         btn.disabled = false;
         return;
       }
       termsBox.classList.remove('unchecked');
       if (!codeEl.value.trim()) {
         setMsg('Type the access code first — the field is above the tick.');
+        codeEl.focus();
         btn.disabled = false;
         return;
       }
@@ -180,7 +220,8 @@
           const res = await fetch('/api/gate/forget', { method: 'POST' });
           if (!res.ok) throw new Error('eraser unavailable');
         } catch (err) {
-          // the server did the erasing for us; without it there is nothing to erase
+          setMsg('Could not erase access — check your connection and try again.');
+          return;
         }
         document.cookie = 'loki_gate=; Max-Age=0; path=/';
         document.cookie = 'loki_terms=; Max-Age=0; path=/';

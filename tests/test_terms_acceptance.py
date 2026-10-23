@@ -45,6 +45,15 @@ def test_the_gate_refuses_a_body_without_a_tick_and_never_charges_the_timer(monk
     assert "not the code" in wrong_code.json()["detail"]
 
 
+def test_non_object_gate_payloads_are_bad_requests(monkeypatch):
+    _page_lockdown(monkeypatch)
+    for body in ([], ["code"], "flathead", 42, True):
+        response = client.post("/api/gate", json=body)
+        assert response.status_code == 400
+        assert "object" in response.json()["detail"]
+    assert not site_access._GATE_ATTEMPTS.get("testclient")
+
+
 def test_a_ticked_correct_code_opens_with_both_cookies(monkeypatch):
     _page_lockdown(monkeypatch)
     opened = client.post("/api/gate", json={"code": "flaTHEAD", "accepted_terms": True})

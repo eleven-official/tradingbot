@@ -203,7 +203,8 @@ async def access_gate_submit(request: Request):
         body = await request.json()
     except ValueError:
         body = {}
-    body = body or {}
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Send an object with the access code and terms acceptance.")
     # The tick comes before the code matters. Refusing an unticked consent is
     # not a code failure, so it must never feed the anti-brute-force timer.
     if body.get("accepted_terms") is not True:

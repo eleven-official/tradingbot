@@ -26,6 +26,17 @@
     .key h2 { color: #baf0d8; }
     .foot { margin-top: 26px; color: #7f93a8; font-size: 12px; }
     .foot a { color: #8bdad4; }
+    body { background: radial-gradient(ellipse at 0 0, #153337, transparent 55%), #060a12; }
+    .wrap { width: min(860px, 100%); }
+    h1 { font-size: clamp(36px, 7vw, 60px); letter-spacing: -.045em; }
+    .card { border-radius: 20px; padding: 24px 30px; }
+    .card h2 { margin-top: 0; }
+    .card p, .card li { font-size: 15px; line-height: 1.85; }
+    .key { background: linear-gradient(120deg, #17382f, #101e29); }
+    .terms-nav { display: flex; gap: 10px; flex-wrap: wrap; margin: 24px 0; }
+    .terms-nav a { color: #baf0d8; padding: 10px 16px; background: #142732; border: 1px solid #31564c; border-radius: 100px; font-size: 13px; text-decoration: none; }
+    a:focus-visible { outline: 2px solid #baf0d8; outline-offset: 4px; }
+    @media (max-width: 480px) { body { padding: 24px 16px; } .card { padding: 22px; } }
   </style>
 </head>
 <body>
@@ -36,12 +47,13 @@
     <p class="version">Version {{ terms_version }} · Updated {{ terms_updated }} · You tick your agreement at the gate; this page holds the words you ticked.</p>
     <p class="muted">By ticking the box at the gate you confirm you have read these terms, understand them, and agree to use Loki under them. If you do not agree, do not enter.</p>
 
+    <nav class="terms-nav" aria-label="Terms navigation"><a href="/gate">Back to entry</a><a href="#risk">Profit disclaimer</a><a href="#liability">Liability</a></nav>
     <div class="card">
       <h2>1. What Loki is</h2>
       <p>Loki is a self-service research and paper-trading workspace. Everything inside runs in <strong>strict paper mode</strong> on this site: simulated orders, simulated accounts, no execution of real trades through this website, and no movement of your real money.</p>
     </div>
 
-    <div class="card key">
+    <div class="card key" id="risk">
       <h2>2. Not advice · No profits promised</h2>
       <p><strong>No profits are promised. Nothing on Loki is financial, investment, tax or legal advice, and nothing here is a promise, forecast, or guarantee that you will make money.</strong> Markets are uncertain, most trading attempts lose money, and any idea, scan, backtest, score, or AI commentary shown here can be wrong, incomplete, late, or unavailable. If you use these tools and do not make money — or lose money acting on something you chose to act on elsewhere, under your own credentials, your own judgement remains yours — <strong>that outcome is yours to own, not Loki's</strong>.</p>
     </div>
@@ -52,7 +64,7 @@
     </div>
 
     <div class="card">
-      <h2>4. Limitation of liability</h2>
+      <h2 id="liability">4. Limitation of liability</h2>
       <p><strong>To the maximum extent permitted by applicable law</strong>, the operator of Loki is not liable to you for any loss connected with using this site — including trading losses or profits not earned, lost opportunity, lost or corrupted data, service outages, or decisions you make about your money based on anything you read here. Where liability cannot legally be excluded, it is limited to the least amount the law allows. Nothing in these terms attempts to limit liability that cannot be limited by law.</p>
     </div>
 
