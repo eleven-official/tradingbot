@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#060a12">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loki · Terms of Use</title>
+  <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}">
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { min-height: 100vh; background: #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 40px 20px 60px; }
+    .wrap { width: min(760px, 100%); margin: 0 auto; }
+    .mark-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 30px; }
+    .mark { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 1px solid rgba(139, 218, 212, .45); border-radius: 11px; font-weight: 800; color: #8bdad4; font-size: 18px; }
+    .mark-row b { font-size: 20px; letter-spacing: .04em; } .mark-row span { color: #7f93a8; font-size: 12px; }
+    .eyebrow { color: #8bdad4; letter-spacing: .16em; font-size: 11px; font-weight: 600; margin-bottom: 8px; }
+    h1 { font-size: 32px; line-height: 1.15; margin-bottom: 10px; } h1 em { color: #b8f0d8; font-style: normal; }
+    .version { color: #7f93a8; font-size: 12.5px; margin-bottom: 26px; }
+    p.muted { color: #9fb0c2; font-size: 14.5px; line-height: 1.7; margin-bottom: 14px; }
+    h2 { font-size: 17px; color: #d9f4ea; margin: 26px 0 10px; }
+    p, li { color: #9fb0c2; font-size: 13.5px; line-height: 1.75; }
+    ul { padding-left: 20px; margin-bottom: 12px; }
+    li { margin-bottom: 7px; }
+    strong { color: #c9e9dd; font-weight: 600; }
+    .card { background: rgba(14, 22, 36, .82); border: 1px solid rgba(139, 218, 212, .18); border-radius: 16px; padding: 26px 28px; margin: 0 0 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
+    .key { border: 1px solid rgba(138, 218, 212, .35); border-left-width: 4px; }
+    .key h2 { color: #baf0d8; }
+    .foot { margin-top: 26px; color: #7f93a8; font-size: 12px; }
+    .foot a { color: #8bdad4; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="mark-row"><span class="mark" aria-hidden="true">L</span><b>LOKI</b><span>TERMS OF USE</span></div>
+    <p class="eyebrow">THE AGREEMENT, IN PLAIN WORDS</p>
+    <h1>Terms of <em>Use</em></h1>
+    <p class="version">Version {{ terms_version }} · Updated {{ terms_updated }} · You tick your agreement at the gate; this page holds the words you ticked.</p>
+    <p class="muted">By ticking the box at the gate you confirm you have read these terms, understand them, and agree to use Loki under them. If you do not agree, do not enter.</p>
+
+    <div class="card">
+      <h2>1. What Loki is</h2>
+      <p>Loki is a self-service research and paper-trading workspace. Everything inside runs in <strong>strict paper mode</strong> on this site: simulated orders, simulated accounts, no execution of real trades through this website, and no movement of your real money.</p>
+    </div>
+
+    <div class="card key">
+      <h2>2. Not advice · No profits promised</h2>
+      <p><strong>No profits are promised. Nothing on Loki is financial, investment, tax or legal advice, and nothing here is a promise, forecast, or guarantee that you will make money.</strong> Markets are uncertain, most trading attempts lose money, and any idea, scan, backtest, score, or AI commentary shown here can be wrong, incomplete, late, or unavailable. If you use these tools and do not make money — or lose money acting on something you chose to act on elsewhere, under your own credentials, your own judgement remains yours — <strong>that outcome is yours to own, not Loki's</strong>.</p>
+    </div>
+
+    <div class="card">
+      <h2>3. Your account and your data</h2>
+      <p>Your nickname, references, email/password for sign-in, notes and price files, plus your paper trades and game scores, are kept to run the workspace. Paper trades and game scores live in your browser only; the shared public parts are clearly labeled. Nothing about you is sold, shared or emailed. The books behind the fee model (see <a href="/revenue" style="color:#8bdad4">/revenue</a>) are private operator records — visitors' numbers never appear there.</p>
+    </div>
+
+    <div class="card">
+      <h2>4. Limitation of liability</h2>
+      <p><strong>To the maximum extent permitted by applicable law</strong>, the operator of Loki is not liable to you for any loss connected with using this site — including trading losses or profits not earned, lost opportunity, lost or corrupted data, service outages, or decisions you make about your money based on anything you read here. Where liability cannot legally be excluded, it is limited to the least amount the law allows. Nothing in these terms attempts to limit liability that cannot be limited by law.</p>
+    </div>
+
+    <div class="card">
+      <h2>5. Acceptable use</h2>
+      <ul>
+        <li><strong>Paper is paper.</strong> This site places no real orders. Any broker connection inside Loki is read-only research plumbing configured by the operator; you trade with your broker through your own agreements, not through Loki.</li>
+        <li>Do not attempt to break the gate, scrape other people's data, or use Loki to harm others.</li>
+        <li>The fee model, when a subject is real, runs on the public page <a href="/revenue" style="color:#8bdad4">/revenue</a>: 30% of recorded profits, computed only from events the operator actually records.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>6. Changes and contact</h2>
+      <p>These terms carry a version number. When they change, every browser is asked to tick again at the gate once — the old tick does not carry over. Questions go to the operator of this deployment.</p>
+    </div>
+
+    <p class="foot">Loki {{ version }} · <a href="/">Back to the workspace</a> · <a href="/revenue">Revenue model</a></p>
+  </div>
+</body>
+</html>

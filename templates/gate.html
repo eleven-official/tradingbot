@@ -44,6 +44,11 @@
     .peek { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
     .peek-card { border: 1px solid rgba(139, 218, 212, .16); background: rgba(9, 17, 28, .6); border-radius: 12px; padding: 10px 12px; font-size: 11.5px; line-height: 1.5; color: #8ba0b2; display: grid; gap: 3px; }
     .peek-card b { color: #b8f0d8; font-size: 12px; }
+    .terms-box { display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 18px; padding: 12px 14px; border: 1px dashed rgba(139, 218, 212, .3); border-radius: 12px; background: rgba(9, 17, 28, .5); cursor: pointer; }
+    .terms-box input { width: 18px; height: 18px; accent-color: #8bdad4; margin-top: 1px; cursor: pointer; flex: none; }
+    .terms-box span { font-size: 12.5px; line-height: 1.6; color: #b3c4d4; }
+    .terms-box a { color: #8bdad4; font-weight: 600; }
+    .terms-box.unchecked { border-color: rgba(255, 157, 120, .55); }
     @media (max-width: 480px) { .card { padding: 30px 22px 26px; } .peek { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -52,14 +57,18 @@
     <div class="brand-row"><span class="mark">L</span><b>LOKI</b></div>
     <p class="eyebrow">PRIVATE WORKSPACE</p>
     <h1>Enter the access code.</h1>
-    <p class="muted">The code is the door key for this browser — it is not a trading login and touches no account. Everything inside runs in strict paper mode, so no real money can move. Loki keeps only what the workspace needs: your nickname, any price files or notes you add, and a private cookie on your device. Paper trades and game scores live in your own browser only. Nothing is sold, shared or emailed.</p>
-    <form id="gate-form" autocomplete="off">
+    <p class="muted">The code is the door key for this browser — it is not a trading login and touches no account. Everything inside runs in strict paper mode, so no real money can move. Loki keeps only what the workspace needs: your nickname, any price files or notes you add, and a private cookie on your device. Paper trades and game scores live in your own browser only. Nothing is sold, shared or emailed. Before the door opens you accept the <a href="/terms" target="_blank" rel="noopener" style="color:#8bdad4;font-weight:600">Terms of Use</a> — plain and short: research only, nothing here is advice, and no profits are promised.</p>
+    <form id="gate-form" autocomplete="off" novalidate>
       <label for="code">Access code</label>
       <div class="code-wrap">
         <input id="code" name="code" type="password" inputmode="text" autofocus required
                placeholder="type the code" autocapitalize="none" autocorrect="off" spellcheck="false" />
         <button type="button" class="show-btn" id="show-toggle" aria-label="Show the code">SHOW</button>
       </div>
+      <label class="terms-box" id="terms-box" for="terms-ok">
+        <input id="terms-ok" name="accepted_terms" type="checkbox" required />
+        <span>I have read the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a> and accept them, especially this: <b>nothing here is financial advice and no profits are promised — I use Loki at my own risk.</b></span>
+      </label>
       <button class="go" id="go" type="submit">Open Loki ↗</button>
     </form>
     <div id="msg" role="status" aria-live="polite"></div>
@@ -70,6 +79,7 @@
         <li><b>Read the code aloud.</b> Spacing, caps and punctuation are forgiven — "flat head" matches "flat-head". The workspace owner has the current words.</li>
         <li><b>Temporarily locked out?</b> Ten wrong tries earn a five-minute break; the timer clears itself, nothing to reset.</li>
         <li><b>Expired access?</b> A device stays unlocked for 30 days, then Loki asks for the code once more. Enter it and you are good for another 30.</li>
+        <li><b>The terms box?</b> It sits under the code — open <b>/terms</b> once, read, tick. The door stays shut without it.</li>
       </ul>
     </div>
     <p class="hint">Spacing, caps and punctuation don't matter — Loki reads the words.<br><b>This device remembers access for 30 days</b>, in a private cookie that exists only in this browser. On a shared computer, <button type="button" class="linklike" id="forget-device">don't remember this device</button> erases it when you're done.</p>
@@ -98,19 +108,40 @@
     formEl.addEventListener('submit', async (event) => {
       event.preventDefault();
       const btn = document.getElementById('go');
+      const termsEl = document.getElementById('terms-ok');
+      const termsBox = document.getElementById('terms-box');
+      if (!termsEl.checked) {
+        setMsg('Tick the terms box first — the door does not open without the agreement.');
+        termsBox.classList.add('unchecked');
+        btn.disabled = false;
+        return;
+      }
+      termsBox.classList.remove('unchecked');
+      if (!codeEl.value.trim()) {
+        setMsg('Type the access code first — the field is above the tick.');
+        btn.disabled = false;
+        return;
+      }
       btn.disabled = true;
       setMsg('Checking…');
       try {
         const res = await fetch('/api/gate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: codeEl.value })
+          body: JSON.stringify({ code: codeEl.value, accepted_terms: termsEl.checked })
         });
         if (res.status === 403) {
-          setMsg('That is not the code — the words themselves need to match (spacing, caps and punctuation are forgiven). "Need help getting in?" below has the usual fixes.');
-          cardEl.classList.remove('shake');
-          void cardEl.offsetWidth; // restart the animation
-          cardEl.classList.add('shake');
+          let detail = '';
+          try { detail = ((await res.json()) || {}).detail || ''; } catch (err) { detail = ''; }
+          if (detail.indexOf('terms') >= 0) {
+            setMsg(detail);
+            termsBox.classList.add('unchecked');
+          } else {
+            setMsg('That is not the code — the words themselves need to match (spacing, caps and punctuation are forgiven). "Need help getting in?" below has the usual fixes.');
+            cardEl.classList.remove('shake');
+            void cardEl.offsetWidth; // restart the animation
+            cardEl.classList.add('shake');
+          }
           btn.disabled = false;
           return;
         }
@@ -152,6 +183,7 @@
           // the server did the erasing for us; without it there is nothing to erase
         }
         document.cookie = 'loki_gate=; Max-Age=0; path=/';
+        document.cookie = 'loki_terms=; Max-Age=0; path=/';
         setMsg('Erased. If this browser was unlocked, the very next page load shows this gate again.', true);
       });
     }

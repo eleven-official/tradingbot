@@ -21,7 +21,7 @@ client = TestClient(app)
 
 
 def gate():
-    opened = client.post("/api/gate", json={"code": "flathead"})
+    opened = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True})
     assert opened.status_code == 200
 
 

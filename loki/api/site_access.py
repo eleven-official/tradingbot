@@ -35,9 +35,16 @@ logger = logging.getLogger(__name__)
 
 GATE_COOKIE = "loki_gate"
 SESSION_COOKIE = "loki_session"
+TERMS_COOKIE = "loki_terms"
 GATE_MAX_AGE = 30 * 24 * 3600
 SESSION_MAX_AGE = 14 * 24 * 3600
 _DEFAULT_CODE = "flathead"
+
+# The Terms of Use a visitor ticks before the door opens. Version stamps every
+# acceptance cookie: bump TERMS_VERSION whenever the document changes, and every
+# browser re-gates once to accept the new words.
+TERMS_VERSION = 1
+TERMS_UPDATED = "2026-10-23"
 
 _COOKIE_SALT = b"loki-site-access-v1"
 
@@ -158,6 +165,37 @@ def verify_gate_cookie_value(value: Optional[str]) -> bool:
         return float(payload) >= time.time()
     except ValueError:
         return False
+
+
+def issue_terms_cookie_value() -> str:
+    """A signed acceptance record: which terms version, accepted when.
+
+    The payload is plain digits (``version.timestamp``) — cookie jars along the
+    way wrap fancy characters in extra quotes, and a signature checked over a
+    mis-quoted blob would silently fail. Dots and digits survive every jar.
+    """
+    payload = f"{TERMS_VERSION}.{int(time.time())}"
+    return f"{payload}.{_sign(payload)}"
+
+
+def read_terms_cookie_value(value: Optional[str]) -> int:
+    """The accepted terms version, or 0 when nothing valid was accepted."""
+    if not value:
+        return 0
+    cleaned = value.strip().strip('"')  # some cookie jars quote values defensively
+    if "." not in cleaned:
+        return 0
+    payload, signature = cleaned.rsplit(".", 1)
+    if not _sign(payload) == signature:
+        return 0
+    parts = payload.split(".")
+    if len(parts) != 2:
+        return 0
+    try:
+        version = int(parts[0])
+    except ValueError:
+        return 0
+    return version if version > 0 else 0
 
 
 def issue_session_cookie_value(uid: str, email: str, nickname: str) -> str:

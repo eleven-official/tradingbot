@@ -138,19 +138,56 @@ async def site_access_gate(request: Request, call_next):
     needs_gate = low == "/login" or low in _GATED_PAGES
     if not needs_gate:
         return await call_next(request)
-    if site_access.verify_gate_cookie_value(request.cookies.get(site_access.GATE_COOKIE)):
+    has_gate = site_access.verify_gate_cookie_value(
+        request.cookies.get(site_access.GATE_COOKIE)
+    )
+    has_terms = (
+        site_access.read_terms_cookie_value(
+            request.cookies.get(site_access.TERMS_COOKIE)
+        )
+        >= site_access.TERMS_VERSION
+    )
+    if has_gate and has_terms:
         return await call_next(request)
     if request.method == "GET":
         return RedirectResponse("/gate", status_code=303)
-    return JSONResponse({"detail": "Enter the access code first."}, status_code=403)
+    return JSONResponse(
+        {"detail": "Enter the access code and tick the terms first."},
+        status_code=403,
+    )
 
 
 @app.get("/gate", response_class=HTMLResponse, include_in_schema=False)
 async def access_gate_page(request: Request):
-    if site_access.verify_gate_cookie_value(request.cookies.get(site_access.GATE_COOKIE)):
+    has_gate = site_access.verify_gate_cookie_value(
+        request.cookies.get(site_access.GATE_COOKIE)
+    )
+    has_terms = (
+        site_access.read_terms_cookie_value(
+            request.cookies.get(site_access.TERMS_COOKIE)
+        )
+        >= site_access.TERMS_VERSION
+    )
+    if has_gate and has_terms:
         return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse(
-        request=request, name="gate.html", context={"version": __version__}
+        request=request,
+        name="gate.html",
+        context={"version": __version__, "terms_version": site_access.TERMS_VERSION},
+    )
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page(request: Request):
+    """The public Terms of Use a visitor must tick at the gate — readable before any acceptance."""
+    return templates.TemplateResponse(
+        request=request,
+        name="terms.html",
+        context={
+            "version": __version__,
+            "terms_version": site_access.TERMS_VERSION,
+            "terms_updated": site_access.TERMS_UPDATED,
+        },
     )
 
 
@@ -166,7 +203,15 @@ async def access_gate_submit(request: Request):
         body = await request.json()
     except ValueError:
         body = {}
-    if not site_access.code_matches(str((body or {}).get("code") or "")):
+    body = body or {}
+    # The tick comes before the code matters. Refusing an unticked consent is
+    # not a code failure, so it must never feed the anti-brute-force timer.
+    if body.get("accepted_terms") is not True:
+        raise HTTPException(
+            status_code=403,
+            detail="Tick the terms box — that is the agreement, not a formality.",
+        )
+    if not site_access.code_matches(str(body.get("code") or "")):
         site_access.record_gate_failure(client_ip)
         raise HTTPException(status_code=403, detail="That is not the code.")
     site_access.clear_gate_failures(client_ip)
@@ -179,6 +224,14 @@ async def access_gate_submit(request: Request):
         samesite="lax",
         secure=bool(os.environ.get("VERCEL")),
     )
+    response.set_cookie(
+        site_access.TERMS_COOKIE,
+        site_access.issue_terms_cookie_value(),
+        max_age=site_access.GATE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=bool(os.environ.get("VERCEL")),
+    )
     return response
 
 
@@ -186,6 +239,7 @@ async def access_gate_submit(request: Request):
 async def gate_forget(response: Response):
     """Shared-computer eraser: makes this browser un-remember site access."""
     response.delete_cookie(site_access.GATE_COOKIE, path="/")
+    response.delete_cookie(site_access.TERMS_COOKIE, path="/")
     return {"ok": True, "forgotten": True}
 
 
