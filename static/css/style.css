@@ -427,3 +427,15 @@ button.tag:hover{color:var(--text);border-color:#5a7a63}
 .dive-journal-unknown{font-style:italic;color:var(--muted);white-space:nowrap}
 @media (max-width:640px){.dive-journal-row{flex-direction:column;gap:3px}.dive-journal-unknown{white-space:normal}}
 
+/* --- Loki Dive 2.20.0: arcade juice (additive) --- */
+@keyframes dive-pop{0%{transform:scale(.92);opacity:.35}55%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}
+.dive-feedback.good{animation:dive-pop .25s ease-out}
+.dive-feedback.info{color:#9fc1d0;border-color:#2b4a54;background:#0f2028}
+.dive-sound,.dive-sonar{font-size:12px;padding:8px 12px}
+.dive-surface{font-size:12px}
+@keyframes dive-bump{0%{transform:scale(1)}35%{transform:scale(1.14)}100%{transform:scale(1)}}
+.dive-score{display:inline-block;transform-origin:left center}
+.dive-score.dive-bump{animation:dive-bump .34s ease-out}
+@media (prefers-reduced-motion:reduce){.dive-feedback.good,.dive-score.dive-bump{animation:none}}
+
+

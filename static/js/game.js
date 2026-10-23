@@ -29,6 +29,7 @@
   const LS_BEST_ENDLESS = "loki_dive_best_endless"; // endless best, this browser only
   const LS_MODE = "loki_dive_mode";       // last mode picked, restored on arrival
   const LS_JOURNAL = "loki_dive_journal"; // per-prompt personal bests, never published
+  const LS_SOUND = "loki_dive_sound";     // 1/0 through the numeric helpers; blips are a taste
 
   const els = {};
   const LS_BEST = "loki_dive_best";
@@ -56,6 +57,7 @@
     roundMs: ROUND_MS,
     bestEndless: 0,  // endless personal best, kept locally
     surfaced: false, // endless: true when the diver chose to surface mid-round
+    sonarUsed: false, // one ping per dive, classic or endless alike
     rounds: [], // {prompt, tier|null, points, answer, fixed}
     current: null,
     deadline: 0,
@@ -159,6 +161,58 @@
   function saveStorage(key, value) {
     try { window.localStorage.setItem(key, String(value)); } catch { /* private mode */ }
   }
+
+  /* ---------- tiny synth blips (no assets, no network; a toggle lives in the tools row) ---------- */
+  let audioCtx = null;
+  function soundOn() {
+    try { return Number(storage(LS_SOUND, 1)) !== 0; } catch { return true; } // default: sound leads the dive
+  }
+  function playTone(freq, ms, type, vol) {
+    if (!soundOn()) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type || "sine";
+      osc.frequency.value = freq;
+      const started = audioCtx.currentTime;
+      gain.gain.setValueAtTime(vol || 0.04, started);
+      gain.gain.exponentialRampToValueAtTime(0.0001, started + ms / 1000); // quick release, no click
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(started);
+      osc.stop(started + ms / 1000);
+    } catch { /* audio blocked — the dive rolls on silently */ }
+  }
+  function playFind() {
+    playTone(660, 0.14);
+    window.setTimeout(() => playTone(880, 0.16), 90);
+  }
+  function playMiss() { playTone(170, 0.22, "triangle", 0.05); }
+  function playPing() { playTone(1040, 0.09, "sine", 0.05); }
+  function playEnd() {
+    playTone(494, 0.16);
+    window.setTimeout(() => playTone(659, 0.22), 130);
+    window.setTimeout(() => playTone(784, 0.3), 280);
+  }
+  function toggleSound() {
+    const next = soundOn() ? 0 : 1;
+    saveStorage(LS_SOUND, next);
+    if (els["dive-sound-btn"]) {
+      els["dive-sound-btn"].setAttribute("aria-pressed", String(next === 1));
+      els["dive-sound-btn"].textContent = next === 1 ? "Sound on" : "Sound off";
+    }
+    if (next) playTone(660, 0.1); // audible confirmation the toggle took
+  }
+  function bumpScore() {
+    const node = els["dive-score"];
+    if (!node) return;
+    node.classList.remove("dive-bump");
+    void node.offsetWidth; // restart the animation on consecutive finds
+    node.classList.add("dive-bump");
+    window.setTimeout(() => { node.classList.remove("dive-bump"); }, 340);
+  }
   function readRecent() {
     try {
       const raw = JSON.parse(window.localStorage.getItem(LS_RECENT) || "[]");
@@ -257,8 +311,10 @@
     saveStorage(LS_DIVES, state.dives);
     state.misses = 0;
     state.surfaced = false;
+    state.sonarUsed = false;
     state.roundMs = ROUND_MS;
     if (els["dive-surface-btn"]) els["dive-surface-btn"].hidden = state.mode !== "endless";
+    if (els["dive-sonar-btn"]) els["dive-sonar-btn"].disabled = false; // one fresh ping per dive
     renderBest();
     refreshSky();
     renderSky();
@@ -307,6 +363,9 @@
     if (els["dive-rules"]) els["dive-rules"].textContent = p.rules || "";
     if (els["dive-answer"]) els["dive-answer"].value = "";
     feedback("", "");
+    if (state.mode === "endless" && state.round > 1 && state.round % 5 === 0) {
+      feedback("Round " + state.round + " — past the crowd. The trench lights up.", "info");
+    }
     show("dive-play");
     renderDepth();
     if (state.visible) {
@@ -362,15 +421,35 @@
       const shown = match.fixed ? `${match.hit.answer} (spelling forgiven)` : match.hit.answer;
       if (match.fixed) state.fixed += 1;
       state.rounds.push({ q: state.current.prompt.q, tier: match.hit.tier, points: pts + combo, answer: shown, fixed: match.fixed });
+      playFind();
+      bumpScore();
       feedback("✓ " + shown + " — " + tier.name + "! +" + pts + " points · " + fmtM(pts * POINTS_PER_METRE)
         + (combo ? " 🔥 streak ×" + state.streak + " (+" + combo + ")" : ""), "good");
       renderDepth();
       finishRound(false);
     } else {
+      const deepest = state.current.prompt.a.reduce((mx, a) => Math.max(mx, a[1]), 0);
+      const shelf = bank.tiers[deepest];
       const line = MISS_LINES[Math.floor(Math.random() * MISS_LINES.length)];
-      feedback(line, "warn");
+      /* the line teaches the ladder honestly: the deepest shelf's real value from the bank */
+      feedback(line + " The deepest shelf here pays " + shelf.points + " pts (" + shelf.name + ").", "warn");
+      playMiss();
       if (els["dive-answer"]) { els["dive-answer"].select(); }
     }
+  }
+  function runSonar() {
+    if (state.phase !== "round" || state.accepted || state.sonarUsed) return;
+    const ranked = state.current.prompt.a.slice().sort((x, y) => y[1] - x[1]);
+    const deepest = ranked[0];
+    if (!deepest) return;
+    state.sonarUsed = true;
+    if (els["dive-sonar-btn"]) els["dive-sonar-btn"].disabled = true;
+    const words = deepest[0].trim().split(/\s+/).length;
+    const letters = deepest[0].replace(/\s/g, "").length;
+    const letter = deepest[0].charAt(0).toUpperCase(); // shape only — the sonar never names the answer
+    playPing();
+    feedback("Sonar: the deepest find here is " + words + " word" + (words === 1 ? "" : "s")
+      + " · " + letters + " letters · starts with \"" + letter + "\". One ping per dive.", "info");
   }
   function skipRound() {
     if (state.phase !== "round" || state.accepted || state.manualPaused || !state.visible) return;
@@ -380,6 +459,7 @@
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
     if (state.mode === "endless") state.misses += 1;
+    playMiss();
     feedback("Round skipped. Discover a few answers below, then dive again.", "warn");
     finishRound(true);
   }
@@ -394,6 +474,7 @@
     feedback(state.mode === "endless" && state.misses >= MISS_LIMIT
       ? "Time's up — pressure " + state.misses + "/" + MISS_LIMIT + " ends the endless dive."
       : "Time's up. Here are a few answers to take into your next dive.", "warn");
+    playMiss();
     finishRound(true);
   }
   function finishRound(showExamples) {
@@ -435,6 +516,7 @@
     if (state.rafId) { window.cancelAnimationFrame(state.rafId); state.rafId = 0; }
     state.phase = "done";
     state.running = false;
+    playEnd();
     const foundAll = state.mode !== "endless" && state.rounds.length === ROUNDS_PER_DIVE && state.rounds.every((r) => r.tier !== null);
     if (foundAll && state.points > 0) {
       state.bonus = CLEAN_SWEEP_BONUS;
@@ -858,6 +940,7 @@
       "dive-submit", "dive-next", "dive-examples", "dive-score", "dive-combo", "dive-progress",
       "dive-badges", "dive-streak", "dive-sky", "dive-spark",
       "dive-mode-classic", "dive-mode-endless", "dive-surface-btn",
+      "dive-sonar-btn", "dive-sound-btn",
       "dive-journal", "dive-journal-head", "dive-journal-list"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
 
@@ -902,6 +985,13 @@
         endRun();
       }
     });
+    if (els["dive-sonar-btn"]) els["dive-sonar-btn"].addEventListener("click", runSonar);
+    if (els["dive-sound-btn"]) {
+      els["dive-sound-btn"].addEventListener("click", toggleSound);
+      const on = soundOn();
+      els["dive-sound-btn"].setAttribute("aria-pressed", String(on));
+      els["dive-sound-btn"].textContent = on ? "Sound on" : "Sound off"; // honest state before the first blip
+    }
     if (els["dive-copy"]) els["dive-copy"].addEventListener("click", copyResult);
     if (els["dive-form"]) els["dive-form"].addEventListener("submit", submit);
     els["dive-next"].addEventListener("click", () => { if (state.phase === "between") nextRound(); });
