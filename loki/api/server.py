@@ -25,6 +25,7 @@ from loki.api.ai_paper import router as ai_paper_router
 from loki.api.news_desk import router as news_desk_router
 from loki.api.fusion import router as fusion_router
 from loki.api.dive_board import router as dive_board_router
+from loki.api.revenue import router as revenue_router
 from loki.api.broker_workspace import router as broker_workspace_router
 
 app = FastAPI(
@@ -51,6 +52,7 @@ from loki.api.news_desk import router as news_desk_router
 
 app.include_router(news_desk_router)
 app.include_router(dive_board_router)
+app.include_router(revenue_router)
 
 
 # Load the larger optional strategy engine only for terminal requests.
@@ -333,6 +335,22 @@ async def login_page(request: Request):
     return templates.TemplateResponse(
         request=request, name="login.html", context={"version": __version__}
     )
+
+
+@app.get("/revenue", response_class=HTMLResponse)
+async def revenue_page(request: Request):
+    """Public explainer for the 30% profit-share model; figures stay behind the operator key."""
+    from loki.api.revenue import HOUSE_CUT_BPS, ledger_mode, _mode_note
+
+    mode = ledger_mode()
+    context = {
+        "request": request,
+        "version": __version__,
+        "house_cut_bps": HOUSE_CUT_BPS,
+        "ledger_mode": mode,
+        "ledger_note": _mode_note(mode),
+    }
+    return templates.TemplateResponse(request=request, name="revenue.html", context=context)
 
 
 class ResearchRequest(BaseModel):

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#060a12">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loki · Revenue</title>
+  <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}">
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { min-height: 100vh; background: #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 40px 20px 60px; }
+    .wrap { width: min(760px, 100%); margin: 0 auto; }
+    .mark-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 30px; }
+    .mark { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 1px solid rgba(139, 218, 212, .45); border-radius: 11px; font-weight: 800; color: #8bdad4; font-size: 18px; }
+    .mark-row b { font-size: 20px; letter-spacing: .04em; } .mark-row span { color: #7f93a8; font-size: 12px; }
+    .eyebrow { color: #8bdad4; letter-spacing: .16em; font-size: 11px; font-weight: 600; margin-bottom: 8px; }
+    h1 { font-size: 32px; line-height: 1.15; margin-bottom: 12px; } h1 em { color: #b8f0d8; font-style: normal; }
+    p.muted { color: #9fb0c2; font-size: 14.5px; line-height: 1.65; margin-bottom: 14px; }
+    p.muted strong { color: #c9e9dd; font-weight: 600; }
+    .card { background: rgba(14, 22, 36, .82); border: 1px solid rgba(139, 218, 212, .18); border-radius: 16px; padding: 26px 28px; margin: 0 0 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
+    .card h2 { font-size: 16px; margin-bottom: 10px; color: #d9f4ea; }
+    .card p { color: #9fb0c2; font-size: 13.5px; line-height: 1.65; margin-bottom: 8px; }
+    .card p:last-child { margin-bottom: 0; }
+    .card p strong { color: #c9e9dd; }
+    .fee-band { display: flex; align-items: center; gap: 18px; margin: 6px 0 14px; }
+    .fee-band .pct { font-size: 44px; font-weight: 800; color: #baf0d8; letter-spacing: -.02em; }
+    .fee-band .pct small { font-size: 14px; font-weight: 600; color: #8bdad4; display: block; letter-spacing: .08em; margin-top: 2px; }
+    .fee-band .side { color: #9fb0c2; font-size: 13px; line-height: 1.6; }
+    .pill { display: inline-block; border: 1px solid rgba(139, 218, 212, .3); color: #8bdad4; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .08em; padding: 5px 11px; }
+    .draft-band { border: 1px dashed rgba(255, 157, 120, .45); color: #ffc9b3; border-radius: 12px; padding: 12px 16px; font-size: 12.5px; line-height: 1.65; margin-top: 10px; }
+    .draft-band b { color: #ffe2d2; }
+    dl.books { margin: 12px 0 0; color: #9fb0c2; font-size: 13px; line-height: 1.7; }
+    dl.books dt { color: #c9e9dd; font-weight: 600; display: inline; }
+    dl.books dd { display: inline; margin-left: 6px; margin-bottom: 6px; }
+    dl.books div { margin-bottom: 8px; }
+    .foot { margin-top: 26px; color: #7f93a8; font-size: 12px; }
+    .foot a { color: #8bdad4; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="mark-row"><span class="mark" aria-hidden="true">L</span><b>LOKI</b><span>REVENUE · HOW THE HOUSE IS PAID</span></div>
+    <p class="eyebrow">PROFIT-SHARE, STATED PLAINLY</p>
+    <h1>The house keeps <em>30%</em> of recorded profits.</h1>
+    <p class="muted">Loki bills a share of real, recorded profits — not of forecasts, not of paper gains, and never of anything a visitor plays with. This page explains the model. The figures themselves stay on the operator's side of the wall: money data answers only to the operator's key, so nothing about your use of Loki is posted here.</p>
+
+    <div class="card">
+      <h2>The fee model</h2>
+      <div class="fee-band">
+        <div class="pct">30% <small>OF RECORDED PROFITS</small></div>
+        <div class="side">Computed server-side, per recorded event, with exact decimal math — {{ house_cut_bps }} basis points of the gross figure, rounded half-up to the cent. Losses and corrections are recorded the same way, and pull the books down.</div>
+      </div>
+      <p><strong>What counts as “profit”:</strong> only an event an operator has actually recorded here, per month, per subject, with its provenance attached. Nothing is estimated, nothing is aggregated, nothing is backfilled from market moves.</p>
+      <p><strong>What never happens automatically:</strong> nothing is auto-charged, no card is touched, no visitor's game points are money. This page is a ledger of a business arrangement, not a paywall.</p>
+    </div>
+
+    <div class="card">
+      <h2>Where the books live</h2>
+      <p><span class="pill">{{ ledger_mode|upper }}</span></p>
+      <p>{{ ledger_note }}</p>
+      <dl class="books">
+        <div><dt>Shared</dt><dd>a `revenue_ledger` table in the project database — survives deploys. Run <strong>supabase/schema_revenue.sql</strong> once.</dd></div>
+        <div><dt>Server-local</dt><dd>a file beside this Loki server — real bookkeeping for this deployment.</dd></div>
+        <div><dt>Unavailable</dt><dd>ephemeral hosting with no database — nothing can be recorded, and it says so.</dd></div>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2>The agreement itself (draft)</h2>
+      <p>Fee: 30% of a subject's recorded monthly profit, invoiced monthly, computed by this ledger from the events the operator records. It is a service-side bookkeeping system; it does not execute payments yet — a later wave wires invoicing through a payment provider the operator owns.</p>
+      <div class="draft-band"><b>Draft, not legal advice.</b> The wording of an actual profit-share agreement — measurement, disputes, clawbacks, taxes — must be settled by the operator with a qualified professional before anyone signs anything or a cent moves.</div>
+    </div>
+
+    <p class="foot">Loki {{ version }} · <a href="/">Back to the workspace</a></p>
+  </div>
+</body>
+</html>
