@@ -77,21 +77,6 @@ async def member_privacy_boundary(request: Request, call_next):
     return response
 
 
-# Load the larger optional strategy engine only for terminal requests.
-class AdvancedTerminal:
-    def __init__(self):
-        self.application = None
-
-    async def __call__(self, scope, receive, send):
-        if self.application is None:
-            from loki.api.terminal_v8 import app as terminal_app
-
-            self.application = terminal_app
-        await self.application(scope, receive, send)
-
-
-app.mount("/terminal", AdvancedTerminal(), name="advanced-terminal")
-
 # Resolve assets independently of the process working directory.
 repo_dir = Path(__file__).resolve().parents[2]
 static_dir = repo_dir / "static"
@@ -131,7 +116,7 @@ async def root(request: Request):
 # The gate engages only on remote deployments (VERCEL) or when the launcher
 # asks for it (LOKI_SITE_GATE=1); the local desktop experience stays open.
 # ---------------------------------------------------------------------------
-_GATED_PAGES = {"/", "/account", "/terminal", "/terminal/", "/paper-tools", "/paper-tools/"}
+_GATED_PAGES = {"/", "/account", "/paper-tools", "/paper-tools/"}
 
 
 @app.middleware("http")

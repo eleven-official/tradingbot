@@ -170,7 +170,7 @@ class DeploymentConfigTests(unittest.TestCase):
             self.assertLess(source.index(visible), group_start)
         self.assertIn('id="nav-more-toggle"', source)
         for grouped in ("agent-council", "simulated-market", "ai-trading", "real-market",
-                        "scenarios", "copilot", "advanced-terminal", "paper-planner", "integrations", "game"):
+                        "scenarios", "copilot", "paper-planner", "integrations", "game"):
             self.assertGreater(source.index(f'data-view="{grouped}"'), group_start, grouped)
         # Account pill mounts into the topbar instead of floating over content.
         auth_js = (ROOT / "static" / "js" / "loki_auth.js").read_text(encoding="utf-8")
@@ -194,7 +194,6 @@ class DeploymentConfigTests(unittest.TestCase):
         backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")
         self.assertIn("loki-fusion-paper-v1", backup)
         self.assertIn("browser-backup", backup)
-        self.assertIn('id="terminal-offline-note"', source)
         self.assertIn("/static/js/next_steps.js", source)
         self.assertIn("/static/js/backup.js", source)
 

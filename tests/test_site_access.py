@@ -44,10 +44,13 @@ class TestAccessCode:
 class TestGateFlow:
     def test_locked_pages_redirect_without_cookie(self, monkeypatch):
         monkeypatch.setenv("VERCEL", "1")
-        for path in ("/", "/terminal/", "/paper-tools", "/login"):
+        for path in ("/", "/paper-tools", "/login"):
             response = client_nofollow.get(path)
             assert response.status_code == 303, path
             assert response.headers["location"] == "/gate", path
+        # The advanced terminal was removed; the route honestly answers 404.
+        response = client_nofollow.get("/terminal/")
+        assert response.status_code == 404
 
     def test_gate_endpoints_stay_open_without_cookie(self, monkeypatch):
         monkeypatch.setenv("VERCEL", "1")

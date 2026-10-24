@@ -117,17 +117,7 @@
     }
     updateButtons();
     updateFxNote();
-    updatePlacement();
   };
-
-  /* Frames inside the workspace put their own header in the top-right corner;
-   * when the switcher falls back to a fixed corner it steps aside there. */
-  const updatePlacement = () => {
-    const bar = document.querySelector('.loki-currency');
-    if (!bar || bar.classList.contains('in-topbar')) return;
-    bar.classList.toggle('hidden-view', location.hash === '#advanced-terminal');
-  };
-  window.addEventListener('hashchange', updatePlacement);
 
   function updateButtons() {
     document.querySelectorAll('.loki-currency .cur-opt').forEach((button) => {

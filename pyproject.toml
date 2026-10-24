@@ -136,7 +136,6 @@ module = [
     "loki.api.fusion",
     "loki.api.paper_tools",
     "loki.api.server",
-    "loki.api.terminal_v8",
     "loki_v8.agents",
     "loki_v8.backtest",
     "loki_v8.persistence",

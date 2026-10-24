@@ -142,8 +142,8 @@ jobs:
                 if attempt == 29:
                     raise
                 time.sleep(1)
-        for path in ("/", "/paper-tools", "/research-desk", "/terminal/",
-                     "/static/css/style.css", "/static/css/v8_terminal.css",
+        for path in ("/", "/paper-tools", "/research-desk",
+                     "/static/css/style.css",
                      "/static/css/paper_tools.css", "/static/js/workspace.js",
                      "/static/vendor/chartjs/chart.umd.js"):
             with urlopen(Request(base + path, headers={"Accept": "text/html"}), timeout=10) as response:
@@ -154,9 +154,9 @@ jobs:
             assert "local_token" not in capabilities
         try:
             urlopen(base + "/terminal/api/status")
-            raise AssertionError("Private account endpoint was public")
+            raise AssertionError("Removed terminal engine endpoint is still reachable")
         except HTTPError as error:
-            assert error.code == 403
+            assert error.code == 404
         print("Container startup, all interface assets and private API boundary passed.")
         PY
 

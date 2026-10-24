@@ -5,13 +5,11 @@ All tests are offline: synthetic OHLCV bars or canned/fake objects only, so
 the suite never depends on market data downloads.
 """
 
-import json
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
 
 from loki_v8 import train as train_module
 from loki_v8.backtest import Trade
@@ -187,73 +185,3 @@ class TestReportPersistence:
             assert report.get("symbols"), "bundled snapshot must carry the trained book"
 
 
-class TestTrainingAPI:
-    @pytest.fixture
-    def client(self, tmp_path, monkeypatch):
-        from loki.api.terminal_v8 import app, get_bot
-        from loki.api.fusion import _LOCAL_TOKEN
-        monkeypatch.setenv("LOKI_FUSION_LOCAL", "1")
-
-        path = tmp_path / "training_report.json"
-        monkeypatch.setattr(train_module, "report_path", lambda cfg=None: path)
-        bot = get_bot()
-        saved = (bot.cfg.signal_threshold, bot.cfg.stop_loss_atr)
-        yield TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 51000), headers={"X-Loki-Local-Token": _LOCAL_TOKEN}), bot, path
-        bot.cfg.signal_threshold, bot.cfg.stop_loss_atr = saved
-
-    def test_report_endpoint_empty_without_run(self, client, monkeypatch):
-        c, _bot, _path = client
-        monkeypatch.setattr(train_module, "BUNDLED_REPORT_FILENAME", "absent_snapshot.json")
-        res = c.get("/api/training/report")
-        assert res.status_code == 200
-        assert res.json() == {"generated_at": None, "symbols": []}
-
-    def test_run_endpoint_parses_symbols_and_delegates(self, client, monkeypatch):
-        c, bot, _path = client
-        seen = {}
-
-        def fake_train(symbols, cfg, period="5y", train_frac=0.7, **kw):
-            seen["symbols"] = symbols
-            seen["period"] = period
-            seen["cfg"] = cfg
-            return {"generated_at": "2026-01-01T00:00:00", "symbols": []}
-
-        monkeypatch.setattr(train_module, "train", fake_train)
-        res = c.get("/api/training/run", params={"symbols": "spy, btc-usd", "period": "5y"})
-        assert res.status_code == 200
-        assert seen["symbols"] == ["SPY", "BTC-USD"]
-        assert seen["period"] == "5y"
-        assert seen["cfg"] is bot.cfg
-
-    def test_run_endpoint_reports_failure(self, client, monkeypatch):
-        c, _bot, _path = client
-
-        def boom(*a, **k):
-            raise RuntimeError("market data offline")
-
-        monkeypatch.setattr(train_module, "train", boom)
-        res = c.get("/api/training/run")
-        assert res.status_code == 500
-        assert "market data offline" in res.json()["detail"]
-
-    def test_apply_endpoint_updates_running_engine(self, client):
-        c, bot, path = client
-        report = {
-            "generated_at": "2026-01-01T00:00:00",
-            "symbols": [
-                {
-                    "symbol": "AAPL",
-                    "ok": True,
-                    "best_params": {"signal_threshold": 25.0, "stop_loss_atr": 2.0},
-                }
-            ],
-        }
-        path.write_text(json.dumps(report), encoding="utf-8")
-
-        res = c.post("/api/training/apply", json={"symbol": "aapl"})
-        assert res.status_code == 200
-        assert res.json()["applied"]["signal_threshold"] == 25.0
-        assert bot.cfg.signal_threshold == 25.0
-
-        missing = c.post("/api/training/apply", json={"symbol": "MSFT"})
-        assert missing.status_code == 404
