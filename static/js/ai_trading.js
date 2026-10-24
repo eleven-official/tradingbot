@@ -47,6 +47,20 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* storage full: ignore */ }
   }
 
+  // Watch lease: at most one browser tab runs the AI checks at a time, so
+  // two open Loki pages cannot both place paper fills and fight over one
+  // journal. The lease is a plain timestamp; any tab whose stake is older
+  // than 15 s counts as gone (the check interval is 20 s). Per-account
+  // scoping is applied by scoped_storage.js.
+  const RUNNER_LEASE_KEY = 'loki_runner_lease';
+  function claimRunner() {
+    let held = 0;
+    try { held = Number(localStorage.getItem(RUNNER_LEASE_KEY) || 0); } catch { return false; }
+    if (held && Date.now() - held < 15000) return false;
+    try { localStorage.setItem(RUNNER_LEASE_KEY, String(Date.now())); } catch { return false; }
+    return true;
+  }
+
   function message(text, ok) {
     const target = $('ai-message');
     if (!target) return;
@@ -120,13 +134,19 @@
 
   async function step() {
     if (busy || !state.running) return;
-    if (document.hidden || $('ai-trading').hidden) return;
+    // The runner keeps checking while the user reads another section, has
+    // the Loki tab in the background, or is on another Loki page entirely.
+    // The paper journal is account-owned; it must not die when one screen
+    // goes away. A hung feed must never wedge the runner either, so every
+    // request is bound to a hard 15 s abort.
+    if (!claimRunner()) return; // another open tab is already running the checks
     busy = true;
     nextCheckAt = Date.now() + POLL_MS; // rough "next check in Ns" for the header ticker
     try {
       const res = await fetch('/api/fusion/ai/step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           symbol: state.symbol,
           equity: equityNow(),
@@ -140,6 +160,7 @@
         const detail = ((await res.json().catch(() => ({}))) || {}).detail;
         lastCheckAt = Date.now(); lastCheckOk = false; lastCheckWhy = String(detail || 'AI feed unavailable').slice(0, 60);
         logLine(detail || 'AI feed unavailable — will retry.', 'warn');
+        save();
         render();
         return;
       }
@@ -185,10 +206,12 @@
       state.curve.push({ t: Date.now(), e: equityNow() });
       if (state.curve.length > 240) state.curve.splice(0, state.curve.length - 240);
       lastCheckAt = Date.now(); lastCheckOk = true; lastCheckWhy = '';
+      save(); // fills, curve points and log lines survive a reload from here
       render();
     } catch {
       lastCheckAt = Date.now(); lastCheckOk = false; lastCheckWhy = 'connection hiccup';
       logLine('Connection hiccup — will retry.', 'warn');
+      save();
       render();
     } finally {
       busy = false;
@@ -396,6 +419,7 @@
           const res = await fetch('/api/fusion/ai/step', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(15000),
             body: JSON.stringify({
               symbol,
               equity: equityNow(),
@@ -428,6 +452,7 @@
         }
       }
       logLine('Scan complete — next auto-check in 20s.', 'info');
+      save();
       render();
     } finally {
       button.disabled = false;
@@ -469,15 +494,15 @@
     if (hb) {
       const inSecs = Math.max(0, Math.ceil((nextCheckAt - Date.now()) / 1000));
       if (!state.running) {
-        hb.textContent = 'Runner idle — press Start AI trading to activate. It checks the market every 20 s and needs this tab visible.';
+        hb.textContent = 'Runner idle — press Start AI trading to activate. The AI then checks the market every 20 s from any Loki page.';
       } else if (document.hidden) {
-        hb.textContent = 'Runner waiting — this tab is hidden, so Loki paused politely. It resumes the moment you come back.';
+        hb.textContent = 'Runner active in the background — browsers may slow hidden tabs a little, but the checks keep landing and the journal keeps saving.';
       } else if (!lastCheckAt) {
-        hb.textContent = `Runner active · first check in ${inSecs}s · it only checks while this tab is visible`;
+        hb.textContent = `Runner active · first check in ${inSecs}s · it keeps checking while you use other sections`;
       } else {
         hb.textContent = `Runner active · last check ${fmtTime(lastCheckAt)}` +
           (lastCheckOk === false ? ` · ${lastCheckWhy}` : ' · ok') +
-          ` · next in ${inSecs}s · needs this tab visible`;
+          ` · next in ${inSecs}s`;
       }
     }
   }
@@ -526,7 +551,13 @@
   }
 
   const init = async () => {
-    if (!$('ai-trading')) return;
+    if (!$('ai-trading')) {
+      // This page has no AI controls (account page, paper tools, research
+      // desk…). A runner the user started keeps trading from here anyway,
+      // quietly, under the same lease rule so only one tab checks at a time.
+      if (state.running) startLoop();
+      return;
+    }
     await loadSymbols();
     bind();
     $('ai-capital').value = state.startCash;

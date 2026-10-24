@@ -9,6 +9,8 @@
   <script src="/api/account/storage-context.js"></script><script src="/static/js/scoped_storage.js?v={{ version }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', path='/css/paper_tools.css') }}?v={{ version }}" />
   <script defer src="{{ url_for('static', path='/js/planner.js') }}?v={{ version }}"></script>
+  <!-- AI runner started elsewhere keeps its paper journal moving here. -->
+  <script defer src="/static/js/ai_trading.js?v={{ version }}"></script>
 </head>
 <body>
   <main class="app-shell">
