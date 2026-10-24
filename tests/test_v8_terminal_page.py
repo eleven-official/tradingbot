@@ -37,6 +37,32 @@ def test_offline_banner_names_the_launcher_reason():
     assert "Polling continues, politely spaced" in js
 
 
+def test_paper_loop_button_admits_the_lock_instead_of_silently_failing():
+    js = source()
+    assert "function setAutoLocked" in js
+    assert "LAUNCHER REQUIRED" in js
+    assert "btn.disabled = false;" in js  # a launcher arriving restores control
+    assert "setAutoLocked(String(e && e.message || e));" in js  # status-failure path
+
+
+def test_offline_banner_offers_the_working_browser_runner():
+    js = source()
+    assert "offline-banner-cta" in js
+    assert "cta.href = '/#ai'" in js
+    assert "Open the browser AI runner" in js
+
+
+def test_real_account_button_leaves_for_the_workspace_view():
+    js = source()
+    assert "window.top.location.assign('/#real-market')" in js
+
+
+def test_kpi_cards_do_not_advertise_engine_numbers_without_an_engine():
+    html = source()
+    assert "$100,000.00" not in html  # invented default removed
+    assert '<span class="brand-badge">LIVE</span>' not in html  # paper-only page
+
+
 def test_terminal_assets_and_engine_route_exist():
     assert (ROOT / "static" / "css" / "v8_terminal.css").exists()
     engine = (ROOT / "loki" / "api" / "terminal_v8.py").read_text(encoding="utf-8")

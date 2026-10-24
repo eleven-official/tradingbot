@@ -50,7 +50,7 @@ window.fetch = async (input, options={}) => {
       <div>
         <div class="brand-line">
           <span class="brand-title">LOKI QUANTUM TERMINAL</span>
-          <span class="brand-badge">LIVE</span>
+          <span class="brand-badge" title="Paper simulation — no real orders">PAPER</span>
         </div>
         <div class="brand-sub">
           <span>Autonomous Multi-Agent Trading</span>
@@ -82,7 +82,7 @@ window.fetch = async (input, options={}) => {
 
       <div class="mode-toggle" role="group" aria-label="Trading mode">
         <button id="btn-mode-paper" type="button" class="mode-btn active" onclick="setMode('paper')">PAPER SIM</button>
-        <button id="btn-mode-live" type="button" class="mode-btn" onclick="window.top.location.hash='real-market'">REAL ACCOUNT ↗</button>
+        <button id="btn-mode-live" type="button" class="mode-btn" onclick="window.top.location.assign('/#real-market')">REAL ACCOUNT ↗</button>
       </div>
 
       <button id="btn-toggle-auto" type="button" class="action-btn" style="padding:6px 13px; font-size:11px; background:rgba(139, 92, 246, 0.2); border:1px solid #8b5cf6; color:#c084fc; font-weight:700;" onclick="toggleAutonomousLoop()">
@@ -112,8 +112,8 @@ window.fetch = async (input, options={}) => {
           <span>Total Portfolio Equity</span>
           <span class="kpi-icon" aria-hidden="true">📈</span>
         </div>
-        <div class="kpi-value" id="kpi-equity">$100,000.00</div>
-        <div class="kpi-sub text-positive" id="kpi-pnl">+$0.00 (+0.00%)</div>
+        <div class="kpi-value" id="kpi-equity">—</div>
+        <div class="kpi-sub" id="kpi-pnl">No engine data yet</div>
         <div class="kpi-spark" id="kpi-spark" hidden>
           <svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true" focusable="false">
             <defs>
@@ -134,7 +134,7 @@ window.fetch = async (input, options={}) => {
           <span>Available Cash</span>
           <span class="kpi-icon" aria-hidden="true">💵</span>
         </div>
-        <div class="kpi-value" id="kpi-cash">$100,000.00</div>
+        <div class="kpi-value" id="kpi-cash">—</div>
         <div class="kpi-sub">Unencumbered liquidity</div>
       </div>
 
@@ -143,7 +143,7 @@ window.fetch = async (input, options={}) => {
           <span>Active Positions</span>
           <span class="kpi-icon" aria-hidden="true">🎯</span>
         </div>
-        <div class="kpi-value" id="kpi-positions">0 / 4</div>
+        <div class="kpi-value" id="kpi-positions">—</div>
         <div class="kpi-sub">Dynamic ATR sizing</div>
       </div>
 
@@ -152,7 +152,7 @@ window.fetch = async (input, options={}) => {
           <span>Completed Trades</span>
           <span class="kpi-icon" aria-hidden="true">📜</span>
         </div>
-        <div class="kpi-value" id="kpi-trades">0</div>
+        <div class="kpi-value" id="kpi-trades">—</div>
         <div class="kpi-sub">Zero-lookahead causal</div>
       </div>
 
@@ -1290,6 +1290,13 @@ window.fetch = async (input, options={}) => {
         banner.textContent = detail && detail.indexOf('launcher') !== -1
           ? '⚠ Engine API needs the local Loki launcher and its session token — this open browser tab cannot connect on its own. Polling continues, politely spaced, so a running launcher is picked up automatically.'
           : '⚠ Engine API unreachable — reconnecting automatically. Trading actions are disabled until the connection returns.';
+        if (!banner.querySelector('.offline-banner-cta')) {
+          const cta = document.createElement('a');
+          cta.className = 'offline-banner-cta';
+          cta.href = '/#ai';
+          cta.textContent = 'Open the browser AI runner ↗';
+          banner.appendChild(cta);
+        }
         if (!connectionLost) toast('Cannot reach the engine API — retrying automatically.', 'error');
         connectionLost = true;
       }
@@ -2231,6 +2238,17 @@ window.fetch = async (input, options={}) => {
     // ------------------------------------------------------------------
     // Autonomous loop
     // ------------------------------------------------------------------
+    function setAutoLocked(reason) {
+      const btn = $('btn-toggle-auto');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = 'LAUNCHER REQUIRED';
+      btn.title = reason;
+      btn.style.background = 'rgba(245, 158, 11, 0.14)';
+      btn.style.borderColor = '#f59e0b';
+      btn.style.color = '#fbbf24';
+    }
+
     async function checkAutonomousStatus() {
       try {
         const res = await fetch('/api/bot/autonomous', { cache: 'no-store' });
@@ -2240,6 +2258,7 @@ window.fetch = async (input, options={}) => {
 
         if (data.is_running) {
           panel.style.display = 'block';
+          btn.disabled = false;
           btn.textContent = '⏹ STOP PAPER LOOP';
           btn.style.background = 'rgba(239, 68, 68, 0.18)';
           btn.style.borderColor = '#ef4444';
@@ -2253,6 +2272,7 @@ window.fetch = async (input, options={}) => {
           }
         } else {
           panel.style.display = 'none';
+          btn.disabled = false;
           btn.textContent = '▶ START PAPER LOOP';
           btn.style.background = 'rgba(139, 92, 246, 0.2)';
           btn.style.borderColor = '#8b5cf6';
@@ -2261,6 +2281,7 @@ window.fetch = async (input, options={}) => {
       } catch (e) {
         autoFailures += 1;
         if (autoFailures === 1 || autoFailures % 5 === 0) console.error('Auto status error:', e);
+        setAutoLocked(String(e && e.message || e));
       }
     }
 
@@ -2284,7 +2305,11 @@ window.fetch = async (input, options={}) => {
         toast(nextAction === 'start' ? 'Autonomous 24/7 loop started.' : 'Autonomous loop stopped.', nextAction === 'start' ? 'success' : 'info');
         checkAutonomousStatus();
       } catch (e) {
-        toast('Toggle auto-loop failed: ' + e.message, 'error');
+        const reason = String(e && e.message || e);
+        setAutoLocked(reason);
+        toast(reason.indexOf('launcher') !== -1
+          ? 'Paper loop needs the local launcher. The browser AI runner on the Overview page works from anywhere.'
+          : 'Toggle auto-loop failed: ' + reason, 'error');
       }
     }
 
@@ -3622,8 +3647,9 @@ window.fetch = async (input, options={}) => {
       (savedTab && $('tab-' + savedTab) ? savedTab : 'radar');
     showTab(initialTab, document.querySelector(`.tab-btn[data-tab="${initialTab}"]`));
 
-    // Warm the radar on first load.
-    triggerScan();
+    // Warm the radar on first load. Silent: a launcher-less boot already
+    // explains itself in the banner; a red toast on every page load is noise.
+    triggerScan({ silent: true });
   </script>
 </body>
 </html>

@@ -277,6 +277,20 @@ body {
   display: none;
 }
 
+.offline-banner-cta {
+  display: inline-block;
+  margin-left: 14px;
+  color: #6ee7b7;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.offline-banner-cta:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
 /* ==========================================================================
    Layout
    ========================================================================== */
