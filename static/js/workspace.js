@@ -270,34 +270,63 @@ $('#scenario-form').addEventListener('submit',async event=>{event.preventDefault
 
 function componentStatus(component){const raw=component.status||component.state||'unknown';return{raw,label:human(raw),tone:['ready','active','available','configured','integrated','local'].includes(raw)?'good':['disabled','unavailable','license_required','blocked'].includes(raw)?'warning':''};}
 function renderCapabilities(){const target=$('#integration-cards');target.replaceChildren();const components=capabilities.components||[];for(const component of components){const status=componentStatus(component),card=element('article',null,'integration-card');card.append(element('div',String(component.name||component.id||'?').slice(0,1),'component-mark'));const heading=element('div',null,'section-title');heading.append(element('h2',component.name||human(component.id)),badge(status.label,status.tone));card.append(heading,element('p',component.reason||component.message||'See component capabilities below.'));const list=element('div',null,'capability-list');for(const cap of component.capabilities||[])list.append(element('span',human(typeof cap==='string'?cap:cap.name||cap.id)));card.append(list,element('p',typeof component.license==='string'?`Source license: ${component.license}`:component.license?`Source license: ${JSON.stringify(component.license)}`:'Source licensing is documented with the integration.','integration-license'));const linkTarget=/miro/i.test(component.id)?'scenarios':/fincept/i.test(component.id)?'fincept-panel':/hedge|council/i.test(component.id)?'agent-council':'strategy-lab';const link=element('a','Open workspace tool →','text-link');link.href=linkTarget==='fincept-panel'?'#integrations':`#${linkTarget}`;if(linkTarget==='fincept-panel')link.addEventListener('click',()=>$('#fincept-panel').scrollIntoView({block:'start'}));card.append(link);target.append(card);}$('#integration-summary').textContent=`${components.length} components · ${human(capabilities.mode||'paper research')} · ${capabilities.local_actions_enabled?'local external actions enabled':'external actions disabled in this session'}`;}
-async function loadCapabilities(){const button=$('#refresh-integrations');button.disabled=true;message('#integration-message','');try{capabilities=await request('/api/fusion/capabilities');renderCapabilities();}catch(error){message('#integration-message',`Could not read integration availability. ${error.message}`,true);$('#integration-summary').textContent='Component status unavailable.';}finally{button.disabled=false;}await Promise.allSettled([loadMiroStatus(),loadFinceptStatus()]);}
+async function loadCapabilities(){const button=$('#refresh-integrations');button.disabled=true;message('#integration-message','');try{capabilities=await request('/api/fusion/capabilities');renderCapabilities();}catch(error){message('#integration-message',`Could not read integration availability. ${error.message}`,true);$('#integration-summary').textContent='Component status unavailable.';}finally{button.disabled=false;}await Promise.allSettled([loadNarrativeStatus(),loadFinceptStatus()]);}
 $('#refresh-integrations').addEventListener('click',loadCapabilities);
-async function loadMiroStatus(){
-  try{
-    const status=capabilities?.local_actions_enabled?await request('/api/fusion/mirofish/status',undefined,true):(capabilities?.components||[]).find(item=>item.id==='mirofish');
-    if(!status)throw new Error('Integration status is unavailable.');
-    $('#miro-status').textContent=human(status.state||status.status);
-    $('#miro-unavailable').textContent=status.message||status.reason||'Optional external simulation service.';
-    const configured=Boolean(status.configured)&&!['unconfigured','disabled','unavailable'].includes(status.state);
-    const local=configured&&capabilities?.local_actions_enabled;
-    const jobsAllowed=Boolean(status.jobs_enabled||status.jobs_allowed);
-    $('#miro-inspector').hidden=!local;
-    $('#miro-form').hidden=!local;
-    for(const option of $('#miro-action').options)option.disabled=!jobsAllowed&&option.value!=='stop_simulation';
-    if(local&&!jobsAllowed){
-      $('#miro-action').value='stop_simulation';
-      $('#miro-unavailable').textContent+=' New provider jobs are disabled. Existing work can still be inspected or stopped.';
-    }
-    miroFields();
-  }catch(error){$('#miro-status').textContent='Unavailable';$('#miro-unavailable').textContent=error.message;$('#miro-form').hidden=true;$('#miro-inspector').hidden=true;}
+async function loadNarrativeStatus(){
+  const local=Boolean(capabilities?.local_actions_enabled);
+  $('#narrative-status').textContent=local?'Local engine ready':'Engine ready · reports save only with the local launcher';
+  const saveBox=$('#narrative-form [name="save"]');
+  if(saveBox){saveBox.disabled=!local;if(!local)saveBox.checked=false;}
 }
-function miroFields(){const action=$('#miro-action').value;$('.miro-create-fields').hidden=action!=='create_project';$('.miro-chat-fields').hidden=action!=='chat';$('#miro-form [name="message"]').required=action==='chat';$('.miro-id-fields').hidden=action==='create_project';for(const name of ['project_id','graph_id','simulation_id','max_rounds']){$(`#miro-form [name="${name}"]`).closest('label').hidden=name==='project_id'?!['build_graph','create_simulation'].includes(action):name==='graph_id'?action!=='create_simulation':name==='max_rounds'?action!=='start_simulation':!['prepare_simulation','start_simulation','generate_report','stop_simulation','chat'].includes(action);}for(const name of ['title','seed_text','requirements'])$(`#miro-form [name="${name}"]`).required=action==='create_project';$('#miro-form [name="project_id"]').required=['build_graph','create_simulation'].includes(action);$('#miro-form [name="simulation_id"]').required=['prepare_simulation','start_simulation','generate_report','stop_simulation','chat'].includes(action);}
-$('#miro-action').addEventListener('change',miroFields);
-function recordMiroIds(data){if(!data||typeof data!=='object')return;for(const name of ['project_id','graph_id','simulation_id'])if(typeof data[name]==='string')$(`#miro-form [name="${name}"]`).value=data[name];if(data.task_id){$('#miro-inspect-form [name="task_id"]').value=data.task_id;$('#miro-inspect-form [name="resource"]').value='task';$('#miro-inspect-form [name="id"]').value=data.task_id;}if(data.simulation_id&&!data.task_id){$('#miro-inspect-form [name="resource"]').value='simulation';$('#miro-inspect-form [name="id"]').value=data.simulation_id;}else if(data.project_id&&!data.task_id){$('#miro-inspect-form [name="resource"]').value='project';$('#miro-inspect-form [name="id"]').value=data.project_id;}if(data.data&&typeof data.data==='object')recordMiroIds(data.data);}
-function renderMiro(data){recordMiroIds(data);const target=$('#miro-results');target.replaceChildren();const value=data.data??data;if(typeof value==='string')target.append(element('p',value,'integration-note'));else{const content=value.report_content||value.content||value.markdown;if(typeof content==='string')target.append(element('p',content,'integration-note'));target.append(detailsJSON(value,'Inspect external service result'));const summary=element('p','Result received from the configured MiroFish service. Use returned project, task, and simulation IDs to continue or inspect progress.','caption');target.prepend(summary);}}
-$('#miro-form').addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.target),action=String(form.get('action')),payload={action};const fields=action==='create_project'?['title','seed_text','requirements']:action==='build_graph'?['project_id']:action==='create_simulation'?['project_id','graph_id']:['simulation_id'];for(const field of fields){const value=String(form.get(field)||'').trim();if(value)payload[field]=value;}if(action==='start_simulation')payload.max_rounds=Number(form.get('max_rounds'));if(action==='chat')payload.message=String(form.get('message')||'').trim();const button=event.target.querySelector('[type="submit"]');button.disabled=true;message('#miro-message',`Submitting ${human(action)} to the configured service…`);try{const result=await request('/api/fusion/mirofish/jobs',payload,true);renderMiro(result);message('#miro-message','The service accepted the request. Inspect its returned task or simulation ID to check progress.');}catch(error){message('#miro-message',error.message,true);}finally{button.disabled=false;}});
-$('#miro-inspect-form').addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.target),button=event.target.querySelector('button');button.disabled=true;try{const result=await request(`/api/fusion/mirofish/${encodeURIComponent(form.get('resource'))}/${encodeURIComponent(String(form.get('id')).trim())}${form.get('task_id')?'?task_id='+encodeURIComponent(String(form.get('task_id')).trim()):''}`,undefined,true);renderMiro(result);message('#miro-message','Latest external service result loaded.');}catch(error){message('#miro-message',error.message,true);}finally{button.disabled=false;}});
-$$('[data-miro-list]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{renderMiro(await request(`/api/fusion/mirofish/${button.dataset.miroList}`,undefined,true));message('#miro-message',`External ${button.dataset.miroList} loaded.`);}catch(error){message('#miro-message',error.message,true);}finally{button.disabled=false;}}));
+function renderNarrative(data){
+  const target=$('#narrative-results');target.hidden=false;target.replaceChildren();
+  target.append(element('p',`Aggregate stance ${data.lean} · ${String(data.aggregate_stance)} of [-100, +100]`,'narrative-lean'));
+  const traj=element('div',null,'narrative-trajectory');
+  traj.append(element('p','STANCE TRAJECTORY','eyebrow'));
+  for(const item of (data.trajectory||[]))traj.append(element('p',`Round ${item.round}: ${item.stance} · bullish ${item.shares.bullish}% / neutral ${item.shares.neutral}% / bearish ${item.shares.bearish}%`,'narrative-round'));
+  target.append(traj);
+  const agents=element('div',null,'narrative-agents');
+  agents.append(element('p','PERSONA FAMILIES AT THE FINAL ROUND','eyebrow'));
+  const byFamily={};
+  for(const agent of (data.agents||[]))(byFamily[agent.family]=byFamily[agent.family]||[]).push(Number(agent.stance));
+  for(const family of Object.keys(byFamily)){const stances=byFamily[family];const mean=stances.reduce((a,b)=>a+b,0)/stances.length;agents.append(element('p',`${family} · final ${mean.toFixed(1)}`,'narrative-agent'));}
+  target.append(agents);
+  const eventsBlock=element('div',null,'narrative-events');
+  eventsBlock.append(element('p','PARSED STANCE EVENTS'+(Number(data.events_skipped)?` · ${data.events_skipped} sentence(s) skipped (no directional language)`:''),'eyebrow'));
+  if(!(data.events||[]).length)eventsBlock.append(element('p','No directional sentences were parsed — nothing was invented to fill the gap.','integration-note'));
+  for(const event of (data.events||[]).slice(0,12))eventsBlock.append(element('p',`${event.direction>0?'+':'−'}${event.hedged?' (hedged)':''} ${event.text}${event.tickers&&event.tickers.length?' ['+event.tickers.join(', ')+']':''}`,'narrative-event'));
+  target.append(eventsBlock);
+  if(data.saved&&data.saved.report_id){
+    const row=element('p',null,'narrative-saved');
+    row.append(element('span',`Saved as native report ${data.saved.report_id}. `,'caption'));
+    const send=document.createElement('button');send.type='button';send.className='button secondary';send.textContent='Send to the Defence Council →';
+    send.addEventListener('click',()=>{
+      $('#miro-native-id').value=data.saved.report_id;
+      const review=$('#miro-native-reviewed');if(review)review.checked=false;
+      location.hash='#agent-council';
+      message('#council-message','The native narrative report id is filled in. Read the report, then tick the reviewed confirmation yourself.');
+    });
+    row.append(send);target.append(row);
+  }
+  target.append(detailsJSON(data,'Inspect full simulation result'));
+  target.append(element('p','Deterministic text statistics — not a forecast, not a probability, and not verified trading evidence.','caption'));
+}
+$('#narrative-form').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const form=new FormData(event.target);
+  const seedText=String(form.get('seed_text')||'').trim();
+  if(!seedText)message('#narrative-message','Paste source material for the simulation to read.',true);
+  const payload={seed_text:seedText,rounds:Number(form.get('rounds'))||6,save:form.get('save')!==null};
+  const question=String(form.get('question')||'').trim();if(question)payload.question=question;
+  const title=String(form.get('title')||'').trim();if(title)payload.title=title;
+  const button=event.target.querySelector('[type="submit"]');
+  if(!seedText)return;
+  button.disabled=true;
+  message('#narrative-message','Running the deterministic local simulation…');
+  try{renderNarrative(await request('/api/fusion/narrative',payload,true));message('#narrative-message','Simulation complete. Every stance movement traces back to the parsed events above.');}
+  catch(error){message('#narrative-message',error.message,true);}
+  finally{button.disabled=false;}
+});
 async function loadFinceptStatus(){try{finceptStatus=capabilities?.local_actions_enabled?await request('/api/fusion/fincept/status',undefined,true):(capabilities?.components||[]).find(item=>item.id==='fincept');if(!finceptStatus)throw new Error('Integration status is unavailable.');$('#fincept-status').textContent=human(finceptStatus.state||finceptStatus.status);$('#fincept-availability').textContent=finceptStatus.message||'The private engine reports its current configuration here.';$('#run-fincept').disabled=!(finceptStatus.configured&&(finceptStatus.licensed||finceptStatus.license_confirmed)&&(finceptStatus.jobs_enabled||finceptStatus.jobs_allowed)&&capabilities?.local_actions_enabled);}catch(error){$('#fincept-status').textContent='Unavailable';$('#fincept-availability').textContent=error.message;$('#run-fincept').disabled=true;}}
 $('#fincept-form').addEventListener('submit',async event=>{event.preventDefault();if(!currentBars){message('#fincept-message','Import history in Quant lab first.',true);return;}if($('#fincept-frequency').value!=='daily'){message('#fincept-message','This risk workflow requires daily observations. Import daily history and confirm the frequency.',true);return;}const intervals=currentBars.slice(1).map((bar,index)=>(Date.parse(bar.timestamp)-Date.parse(currentBars[index].timestamp))/86400000).sort((a,b)=>a-b);const medianInterval=intervals[Math.floor(intervals.length/2)];if(!Number.isFinite(medianInterval)||medianInterval<.9||medianInterval>4.1){message('#fincept-message','The timestamp spacing does not look daily. Fincept expects daily observations (including business-day gaps); import daily history before using its 252-day annualization.',true);return;}const returns=currentBars.slice(1).map((bar,index)=>bar.close/currentBars[index].close-1);if(returns.length>2000){message('#fincept-message','Use a dataset with at most 2,001 daily bars (2,000 returns) for Fincept analytics.',true);return;}const button=$('#run-fincept'),revision=datasetRevision;button.disabled=true;message('#fincept-message','Running the licensed local Fincept risk engine…');try{const result=await request('/api/fusion/fincept/analyze',{returns:[returns],weights:[1],portfolio_value:Number(new FormData(event.target).get('portfolio_value')),confidence:.95},true);if(revision!==datasetRevision){message('#fincept-message','Dataset changed during analysis. Run again for the current history.');return;}const data=result.data||result,risk=data.basic_risk_metrics||{},valueAtRisk=data.var_analysis?.var_95?.historical||{},target=$('#fincept-results');target.hidden=false;target.replaceChildren(inlineMetrics([['Annualized volatility',pct(risk.volatility_annual),'252-day annualization'],['Historical 95% VaR',pct(valueAtRisk.var),'Daily return estimate'],['Maximum drawdown',pct(risk.max_drawdown?.max_drawdown??risk.max_drawdown),'Supplied daily history']]),detailsJSON(result,'Inspect Fincept risk, stress, and decomposition'));message('#fincept-message','Fincept risk analysis complete. Full results include model assumptions and stress estimates.');}catch(error){message('#fincept-message',error.message,true);}finally{button.disabled=!(finceptStatus?.configured&&capabilities?.local_actions_enabled);}});
 

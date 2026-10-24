@@ -191,6 +191,45 @@ def council(payload: CouncilRequest, request: Request, response: Response):
     )
 
 
+class NarrativeRequest(StrictModel):
+    seed_text: str = Field(min_length=1, max_length=100000)
+    question: str | None = Field(default=None, max_length=4000)
+    title: str | None = Field(default=None, max_length=120)
+    rounds: int = Field(default=6, ge=2, le=12)
+    agents_per_family: int = Field(default=3, ge=1, le=3)
+    save: bool = True
+
+
+@router.post("/narrative")
+def narrative(payload: NarrativeRequest, request: Request, response: Response):
+    """Run the local narrative engine (no LLM, no Zep, no OASIS).
+
+    Running the simulation is pure text statistics and stays public. Saving
+    the resulting MiroFish-shaped report artifact requires the launcher's
+    session token, because it writes inside the native data directory.
+    """
+    from core.fusion.narrative import analyze_narrative, save_report
+
+    report = _call(
+        analyze_narrative,
+        payload.seed_text,
+        question=payload.question,
+        rounds=payload.rounds,
+        agents_per_family=payload.agents_per_family,
+        title=payload.title,
+    )
+    result = dict(report)
+    result["saved"] = None
+    if payload.save:
+        _require_local_action(request)
+        _private_response(response)
+        result["saved"] = {
+            "report_id": report["report_id"],
+            "path": str(_call(save_report, report)),
+        }
+    return result
+
+
 class PortfolioRequest(StrictModel):
     action: str = Field(default="snapshot", max_length=20)
     state: dict | None = None
