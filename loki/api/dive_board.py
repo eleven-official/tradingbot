@@ -1,17 +1,16 @@
 """Shared best-dive leaderboard for the Bored? game.
 
-One purpose: after a dive, a person may publish their best score under a
-board name so everyone playing this Loki sees who dove deepest. Publishing
-is always an explicit click — the game never submits a score on its own,
-and every score is self-reported: the server trusts the board name, not the
-person, so two divers sharing a name share its row (and the board says so).
+Account-owned public rankings in Supabase. Publishing is an explicit click;
+scores remain self-reported. The server takes identity from the signed session
+and the database atomically preserves each account's highest score. The local
+development file board remains nickname-based and is labeled separately.
 
 Three honest storage modes, decided by what the deployment actually has:
 
 - ``shared`` — Supabase is configured (the same credentials the accounts
-  feature uses). One global board held by the ``dive_scores`` table that
+   feature uses). One global board held by the ``member_dive_scores`` table that
   survives deploys. If the table itself is missing, the board says to run
-  ``supabase/schema_dive_scores.sql`` once instead of pretending.
+   ``supabase/schema_member_data.sql`` once instead of pretending.
 - ``server-local`` — no Supabase, but a long-lived server (a person running
   Loki on their machine). A JSON file beside the code is genuinely shared by
   every browser pointing at that server, and the board describes itself
@@ -36,6 +35,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from loki.api import site_access
+from loki.api.member_data import database, require_member
 
 router = APIRouter(prefix="/api/dive", tags=["Dive leaderboard"])
 
@@ -88,7 +88,7 @@ def _now_iso() -> str:
 # Supabase (shared) board
 # ---------------------------------------------------------------------------
 
-_TABLE_MISSING = "The shared score store is not set up yet — run supabase/schema_dive_scores.sql once in the project database."
+_TABLE_MISSING = "The account leaderboard is not set up yet — run supabase/schema_member_data.sql in the project database."
 
 
 def _supa_quote(value: str) -> str:
@@ -100,7 +100,10 @@ def _supa_send(method: str, path: str, *, json_body: Optional[dict] = None, head
     base_headers = site_access._supa_headers(key)
     if headers:
         base_headers.update(headers)
-    return http_requests.request(method, f"{url}{path}", json=json_body, headers=base_headers, timeout=15)
+    try:
+        return http_requests.request(method, f"{url}{path}", json=json_body, headers=base_headers, timeout=15)
+    except http_requests.RequestException as exc:
+        raise HTTPException(503, "The shared board is unreachable; try again shortly.") from exc
 
 
 def _guard(response: http_requests.Response) -> None:
@@ -113,7 +116,7 @@ def _guard(response: http_requests.Response) -> None:
 def _shared_read() -> Dict[str, Any]:
     response = _supa_send(
         "GET",
-        f"/rest/v1/dive_scores?select=nickname,best_score,dives,updated_at&order=best_score.desc.nullslast&limit={BOARD_LIMIT}",
+        f"/rest/v1/member_dive_scores?select=nickname,best_score,dives,updated_at&order=best_score.desc,updated_at.asc,user_id.asc&limit={BOARD_LIMIT}",
     )
     _guard(response)
     entries: List[Dict[str, Any]] = []
@@ -127,26 +130,11 @@ def _shared_read() -> Dict[str, Any]:
     return {"mode": "shared", "note": _mode_note("shared"), "entries": entries}
 
 
-def shared_write(nickname: str, best: int) -> Dict[str, Any]:
-    """Read the row, keep the higher dive, then merge — so a worse dive can
-    never lower a name's standing and every publish bumps the dive count."""
-    select = _supa_send(
-        "GET",
-        f"/rest/v1/dive_scores?nickname=eq.{_supa_quote(nickname)}&select=nickname,best_score,dives",
-    )
-    _guard(select)
-    rows = select.json() or []
-    previous = rows[0] if rows else None
-    dives = int((previous or {}).get("dives") or 0) + 1  # this publish finished one more dive
-    kept_best = max(best, int((previous or {}).get("best_score") or 0))
-    upsert = _supa_send(
-        "POST",
-        "/rest/v1/dive_scores?on_conflict=nickname",
-        json_body={"nickname": nickname, "best_score": kept_best, "dives": dives, "updated_at": _now_iso()},
-        headers={"Prefer": "resolution=merge-duplicates,return=representation"},
-    )
-    _guard(upsert)
-    return {"mode": "shared", "note": _mode_note("shared"), "nickname": nickname, "best": kept_best, "dives": dives}
+def shared_write(uid: str, nickname: str, best: int) -> Dict[str, Any]:
+    """Atomic maximum and count, keyed by the verified account, not its label."""
+    rows = database("POST", "/rest/v1/rpc/publish_member_dive", {"p_user_id": uid, "p_nickname": nickname, "p_best": best})
+    row = rows[0]
+    return {"mode": "shared", "note": _mode_note("shared"), "nickname": nickname, "best": row["best_score"], "dives": row["dives"]}
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +198,7 @@ def _throttled(client_ip: str) -> bool:
 
 
 class DiveScoreBody(BaseModel):
-    nickname: str = Field(max_length=32)
+    nickname: str = Field(default="", max_length=32)
     best: int = Field(ge=0, le=MAX_SCORE)
     dives: Optional[int] = Field(default=None, ge=0, le=1_000_000)  # accepted for API shape; the server counts its own
 
@@ -229,18 +217,22 @@ async def leaderboard() -> Dict[str, Any]:
 async def publish(request: Request, body: DiveScoreBody) -> Dict[str, Any]:
     # Validate before throttling: a rejected publish is not traffic worth
     # cooling down, so honest mistakes never cost the browser its slot.
-    nickname = site_access.clean_nickname(body.nickname)
+    mode = board_mode()
+    member = require_member(request) if mode == "shared" else None
+    if member and request.headers.get("x-workspace-owner", member["uid"]) != member["uid"]:
+        raise HTTPException(409, "Your signed-in account changed. Reload before publishing.")
+    nickname = site_access.clean_nickname(member["nickname"] if member else body.nickname)
     if not nickname:
         raise HTTPException(400, "Pick a board name (2-24 letters, numbers, spaces or dashes).")
     best = int(body.best)
     if best < 0 or best > MAX_SCORE:
         raise HTTPException(400, f"Scores are whole numbers from 0 to {MAX_SCORE} points.")
     client_ip = request.client.host if request.client else "unknown"
-    if _throttled(client_ip):
+    if _throttled(member["uid"] if member else client_ip):
         raise HTTPException(429, "One publish per 20 seconds — give the board a breath.")
-    mode = board_mode()
     if mode == "shared":
-        return await run_in_threadpool(shared_write, nickname, best)
+        assert member is not None
+        return await run_in_threadpool(shared_write, member["uid"], nickname, best)
     if mode == "server-local":
         return await run_in_threadpool(local_write, nickname, best)
     raise HTTPException(

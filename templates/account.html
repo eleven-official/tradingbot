@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">
+  <title>Loki · My account</title>
+  <script src="/api/account/storage-context.js"></script><script src="/static/js/scoped_storage.js?v={{ version }}"></script>
+  <link rel="stylesheet" href="/static/css/style.css?v={{ version }}">
+  <style>
+    body { background: radial-gradient(ellipse at top left,#143d36,transparent 55%),#070d17; padding: 30px 20px; }
+    .account-wrap { max-width: 880px; margin: auto; }
+    .account-nav { display: flex; justify-content: space-between; gap: 16px; padding: 16px 0 32px; }
+    .account-nav a { color: #baf0d8; }
+    h1 { font-size: clamp(32px,6vw,54px); letter-spacing: -.04em; margin: 12px 0; }
+    .account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 28px 0; }
+    .account-grid .panel { margin: 0; }
+    .account-number { font-size: 40px; color: #baf0d8; margin: 16px 0; font-weight: 700; }
+    #account-email { overflow-wrap: anywhere; }
+    .account-wrap p { line-height: 1.7; }
+    .account-wrap .button-row { flex-wrap: wrap; margin: 20px 0; gap: 10px; }
+    @media(max-width:600px) { .account-grid { grid-template-columns:1fr; } }
+  </style>
+  <script src="/static/js/account.js?v={{ version }}" defer></script>
+</head>
+<body><main class="account-wrap">
+  <nav class="account-nav"><a href="/">← Workspace</a><a href="/#game">The Loki Dive ↗</a></nav>
+  <p class="eyebrow">YOUR SPACE / YOUR PROGRESS</p><h1 id="account-name">My account</h1>
+  <p id="account-email" class="muted"></p>
+  <div class="account-grid">
+    <section class="panel"><p class="eyebrow">YOUR PUBLISHED BEST</p><p class="account-number" id="account-best">—</p><p id="account-dives" class="muted">Loading your game record…</p></section>
+    <section class="panel"><p class="eyebrow">PRIVATE CLOUD SAVE</p><h2>Pick up where you left off.</h2><p id="account-saved" class="muted">Checking saved workspace…</p></section>
+  </div>
+  <section class="panel"><h2>Your workspace, across devices.</h2>
+    <p class="muted">Save this account's journals, watchlist and game progress to the project database. On another device, sign in and restore your saved workspace. Saving replaces your previous cloud copy; restoring replaces this account's supported browser records. Nothing uploads automatically.</p>
+    <div class="button-row"><button id="cloud-save" class="button primary" disabled>Save workspace to my account</button><button id="cloud-load" class="button secondary" disabled>Restore my saved workspace</button><button id="account-logout" class="button secondary">Sign out</button></div>
+    <p class="caption">Broker keys, passwords and session cookies are excluded. Public leaderboard visitors see nicknames and scores only. Browser copies remain on this device: anyone with access to the browser profile can inspect local storage.</p>
+    <p class="caption">Older guest records are not automatically assigned to an account. If those records are yours, export a browser backup as a guest and import it after signing in.</p>
+    <p id="account-message" role="status" aria-live="polite"></p>
+  </section>
+</main></body></html>

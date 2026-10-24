@@ -10,7 +10,7 @@
 'use strict';
 (() => {
   const NAME_KEY = 'loki_dive_board_name'; // the name this browser publishes under
-  const state = { loaded: false, busy: false, mode: '', entries: [], note: '', refusal: false, sessionNickname: '' };
+  const state = { loaded: false, busy: false, mode: '', entries: [], note: '', refusal: false, sessionNickname: '', personalBest: null };
 
   const $ = (id) => document.getElementById(id);
   const viewActive = () => location.hash === '#game';
@@ -44,6 +44,8 @@
   async function prefill() {
     const input = $('dive-board-name');
     if (!input) return;
+    input.readOnly = state.mode === 'shared';
+    if (state.mode === 'shared') { input.value = state.sessionNickname; return; }
     if (boardName()) { input.value = boardName(); return; }
     if (state.sessionNickname) input.value = state.sessionNickname;
   }
@@ -63,7 +65,7 @@
     }
 
     if (note) {
-      if (state.mode === 'unavailable') note.textContent = state.note || 'Nothing can be published here.';
+      if (state.mode === 'unavailable' || state.refusal) note.textContent = state.note || 'Nothing can be published here.';
       else note.textContent = '';
     }
 
@@ -72,11 +74,11 @@
       const mine = boardName().trim().toLowerCase();
       state.entries.forEach((entry, index) => {
         const row = document.createElement('li');
-        row.className = 'dive-board-row' + (mine && entry.nickname.toLowerCase() === mine ? ' dive-board-mine' : '');
+        row.className = 'dive-board-row' + (index < 3 ? ' dive-board-podium' : '') + (state.mode !== 'shared' && mine && entry.nickname.toLowerCase() === mine ? ' dive-board-mine' : '');
         const rank = `<span class="dive-board-rank">${index + 1}</span>`;
         const name = `<span class="dive-board-name">${esc(entry.nickname)}</span>`;
         const best = `<span class="dive-board-best">${Math.round(entry.best)} pts</span>`;
-        const dives = `<span class="dive-board-dives">${entry.dives} dive${entry.dives === 1 ? '' : 's'}</span>`;
+        const dives = `<span class="dive-board-dives">${entry.dives} publication${entry.dives === 1 ? '' : 's'}</span>`;
         const when = `<span class="dive-board-when">${ago(entry.updated_at)}</span>`;
         row.innerHTML = rank + name + best + dives + when;
         list.append(row);
@@ -93,13 +95,19 @@
     if (pub) {
       const best = localBest();
       const showForm = state.mode === 'shared' || state.mode === 'server-local';
-      pub.hidden = !(showForm && best > 0 && !/not set up/i.test(state.note || ''));
+      pub.hidden = !(showForm && best > 0 && (state.mode !== 'shared' || state.sessionNickname) && !/not set up/i.test(state.note || ''));
       const hint = $('dive-publish-note');
       if (hint && showForm) {
-        hint.textContent = `Publishing is a click — the game never posts scores by itself. Your best finished dive here is ${best} points. The board trusts the name, not the person: two divers sharing a name share its row. Self-reported scores`;
+        hint.textContent = state.mode === 'shared'
+          ? (state.sessionNickname ? `Publishing is a click. Your browser best is ${best} points. Your account owns its row, even when another player uses the same nickname. Scores are self-reported, not cheat-verified.` : 'Sign in to publish your score and keep your progress across devices.')
+          : `Publishing is a click. This local-development board trusts the name, not the person. Self-reported scores.`;
       }
       prefill();
     }
+    const personal = $('dive-board-personal');
+    if (personal) personal.textContent = state.sessionNickname ? `${state.sessionNickname} · ${state.personalBest === null ? 'No published score yet' : 'Your published best: ' + state.personalBest + ' pts'}` : 'Your next personal best starts here. Sign in to keep an account record.';
+    const count = $('dive-board-count');
+    if (count) count.textContent = `${state.entries.length} ranked entries · top 25`;
   }
 
   async function refresh() {
@@ -107,6 +115,14 @@
     state.busy = true;
     render();
     try {
+      const auth = await fetch('/api/auth/session', {cache:'no-store'});
+      const session = auth.ok ? await auth.json() : {};
+      state.sessionNickname = session.nickname || '';
+      state.personalBest = null;
+      if (state.sessionNickname) {
+        const mine = await fetch('/api/account/me', {cache:'no-store'});
+        if (mine.ok) { const account = await mine.json(); state.personalBest = account.dive?.best_score ?? null; }
+      }
       const response = await fetch('/api/dive/leaderboard', { cache: 'no-store' });
       const payload = await response.json();
       // a refusal (503: shared store not set up) arrives as {detail} — that
@@ -120,7 +136,7 @@
       state.mode = state.mode || 'unavailable';
       state.note = `The board could not be reached (${error.message || 'network'}).`;
       state.entries = [];
-      state.refusal = false;
+       state.refusal = true;
     } finally {
       state.busy = false;
       render();
@@ -142,7 +158,7 @@
     try {
       const response = await fetch('/api/dive/score', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Workspace-Owner': window.LokiStorageOwner || '' },
         body: JSON.stringify({ nickname: name, best })
       });
       const payload = await response.json();
@@ -166,7 +182,7 @@
     } finally {
       if (button) button.disabled = false;
       await refresh();
-      if (rankLine) {
+      if (rankLine && state.mode !== 'shared') {
         // tell the diver exactly where the published row stands — facts from
         // the fetched list, never invented
         const mine = (boardName() || '').trim().toLowerCase();
@@ -176,6 +192,7 @@
           ? `${rankLine} #${rank} of ${state.entries.length} on the board (${state.entries.reduce((n, e) => n + (Number(e.dives) || 0), 0)} dives in all).`
           : `${rankLine} The board refresh hasn't caught up — press Refresh board ↻.`;
       }
+      if (rankLine && state.mode === 'shared') verdict = rankLine + ' Saved to your account.';
       if (message) message.textContent = verdict;
     }
   }
@@ -186,7 +203,7 @@
     if (state.loaded) refresh(); else if (viewActive()) refresh();
     if (typeof points === 'number' && points > 0) {
       const strip = $('dive-board-just-finished');
-      if (strip) strip.textContent = `Your dive just finished at ${points} points. Give it a name below to put it on the board.`;
+      if (strip) strip.textContent = `Your dive just finished at ${points} points. Publish your best below to join the board.`;
     }
   }
 
@@ -212,7 +229,7 @@
         });
         return {
           top: state.entries.length ? Math.round(Number(state.entries[0].best) || 0) : 0,
-          mine: mineBest,
+          mine: state.mode === 'shared' ? state.personalBest : mineBest,
           count: state.entries.length,
           mode: state.mode === 'shared' || state.mode === 'server-local' ? state.mode : ''
         };

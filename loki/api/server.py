@@ -21,6 +21,7 @@ from core.copilot import LokiCopilot
 from core.risk_preview import preview_position
 from core.strategy_lab import evaluate_strategy
 from loki.api import site_access
+from loki.api.member_data import router as member_router
 from loki.api.ai_paper import router as ai_paper_router
 from loki.api.news_desk import router as news_desk_router
 from loki.api.fusion import router as fusion_router
@@ -53,6 +54,27 @@ from loki.api.news_desk import router as news_desk_router
 app.include_router(news_desk_router)
 app.include_router(dive_board_router)
 app.include_router(revenue_router)
+app.include_router(member_router)
+
+
+@app.middleware("http")
+async def member_privacy_boundary(request: Request, call_next):
+    private = request.url.path.startswith(("/api/auth/", "/api/account/"))
+    protected_write = private or request.url.path == "/api/dive/score"
+    if protected_write and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        from urllib.parse import urlsplit
+        origin = request.headers.get("origin")
+        cross_site = request.headers.get("sec-fetch-site") == "cross-site"
+        if origin:
+            parsed = urlsplit(origin)
+            cross_site = cross_site or parsed.netloc != request.headers.get("host") or parsed.scheme not in {"http", "https"}
+        if cross_site:
+            return JSONResponse({"detail": "Use this website to change your account or publish a score."}, status_code=403, headers={"Cache-Control": "no-store"})
+    response = await call_next(request)
+    if private:
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["Vary"] = "Cookie"
+    return response
 
 
 # Load the larger optional strategy engine only for terminal requests.
@@ -109,7 +131,7 @@ async def root(request: Request):
 # The gate engages only on remote deployments (VERCEL) or when the launcher
 # asks for it (LOKI_SITE_GATE=1); the local desktop experience stays open.
 # ---------------------------------------------------------------------------
-_GATED_PAGES = {"/", "/terminal", "/terminal/", "/paper-tools", "/paper-tools/"}
+_GATED_PAGES = {"/", "/account", "/terminal", "/terminal/", "/paper-tools", "/paper-tools/"}
 
 
 @app.middleware("http")
@@ -191,6 +213,15 @@ async def terms_page(request: Request):
     )
 
 
+@app.get("/account", response_class=HTMLResponse)
+async def account_page(request: Request):
+    if not site_access.read_session_cookie_value(request.cookies.get(site_access.SESSION_COOKIE)):
+        return RedirectResponse("/login", status_code=303)
+    response = templates.TemplateResponse(request=request, name="account.html", context={"version": __version__})
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @app.post("/api/gate", include_in_schema=False)
 async def access_gate_submit(request: Request):
     client_ip = request.client.host if request.client else "unknown"
@@ -263,7 +294,7 @@ def _session_cookie(response: Response, uid: str, email: str, nickname: str) -> 
         site_access.SESSION_COOKIE,
         site_access.issue_session_cookie_value(uid, email, nickname),
         max_age=site_access.SESSION_MAX_AGE,
-        httponly=False,
+        httponly=True,
         samesite="lax",
         secure=bool(os.environ.get("VERCEL")),
     )
@@ -328,7 +359,7 @@ async def auth_logout(response: Response):
 
 
 @app.get("/api/auth/session", include_in_schema=False)
-async def auth_session(request: Request):
+async def auth_session(request: Request, response: Response):
     session = site_access.read_session_cookie_value(request.cookies.get(site_access.SESSION_COOKIE))
     if not session:
         if site_access.accounts_available():
@@ -338,6 +369,16 @@ async def auth_session(request: Request):
             # the page it serves.
             return {"enabled": True, "authenticated": False}
         return {"enabled": False}  # guest mode: local launcher without Supabase creds
+    # Upgrade existing browser-readable cookies too, without extending the
+    # signed session's original lifetime.
+    response.set_cookie(
+        site_access.SESSION_COOKIE,
+        request.cookies[site_access.SESSION_COOKIE],
+        max_age=max(0, int(site_access.SESSION_MAX_AGE - (time.time() - int(session["iat"])))),
+        httponly=True,
+        samesite="lax",
+        secure=bool(os.environ.get("VERCEL")),
+    )
     return {"enabled": True, "email": session.get("email"), "nickname": session.get("nickname")}
 
 

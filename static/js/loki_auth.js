@@ -52,10 +52,18 @@
     button.addEventListener('mouseleave', () => { button.style.color = '#7f93a8'; });
     button.addEventListener('click', async () => {
       button.disabled = true;
-      try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
+      try {
+        const result = await fetch('/api/auth/logout', { method: 'POST' });
+        if (!result.ok) throw new Error('Sign out failed');
+      } catch { button.disabled = false; button.textContent = 'Retry sign out'; return; }
+      window.LokiAccountChanged?.();
       window.location.href = '/login';
     });
-    pill.append(label, button);
+    const account = document.createElement('a');
+    account.href = '/account';
+    account.textContent = 'My account';
+    account.style.cssText = linkStyle;
+    pill.append(label, account, button);
     mount(pill);
     return pill;
   };

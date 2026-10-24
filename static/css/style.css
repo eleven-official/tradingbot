@@ -439,3 +439,10 @@ button.tag:hover{color:var(--text);border-color:#5a7a63}
 @media (prefers-reduced-motion:reduce){.dive-feedback.good,.dive-score.dive-bump{animation:none}}
 
 
+:root { --dive-podium-gold: #e8cc88; }
+.dive-board-panel { background: radial-gradient(ellipse at top right, #173b3955, transparent 60%), #0d1623; }
+.dive-member-strip { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0; padding: 20px; border: 1px solid #36564c; border-radius: 16px; background: #132b27; }
+.dive-member-strip strong { color: #baf0d8; }
+.dive-board-row.dive-board-podium { border-color: #8b784b66; background: linear-gradient(110deg, #51402222, #0e1927); }
+.dive-board-podium .dive-board-rank { color: var(--dive-podium-gold); font-size: 20px; font-weight: 800; }
+@media(max-width:600px) { .dive-member-strip { align-items: flex-start; flex-direction: column; } }

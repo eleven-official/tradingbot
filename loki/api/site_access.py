@@ -22,6 +22,7 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import threading
 import time
 import unicodedata
@@ -43,10 +44,11 @@ _DEFAULT_CODE = "flathead"
 # The Terms of Use a visitor ticks before the door opens. Version stamps every
 # acceptance cookie: bump TERMS_VERSION whenever the document changes, and every
 # browser re-gates once to accept the new words.
-TERMS_VERSION = 1
-TERMS_UPDATED = "2026-10-23"
+TERMS_VERSION = 2
+TERMS_UPDATED = "2026-10-24"
 
 _COOKIE_SALT = b"loki-site-access-v1"
+_PROCESS_SECRET = secrets.token_bytes(32)
 
 # Every environment name a deployment might put the Supabase service credential
 # under — hand-set SUPABASE_SERVICE_KEY / SUPABASE_KEY, or the Supabase–Vercel
@@ -140,8 +142,12 @@ def _secret() -> bytes:
     if explicit:
         return hashlib.sha256(_COOKIE_SALT + explicit.encode()).digest()
     material = f"{os.environ.get('SUPABASE_URL') or ''}\0{_supabase_key()}"
-    if material.strip("\0"):
+    if _supabase_key():
         return hashlib.sha256(_COOKIE_SALT + material.encode()).digest()
+    if os.environ.get("VERCEL"):
+        # A URL is public and cannot be signing material. Fail closed across
+        # instances until an operator supplies a real secret.
+        return _PROCESS_SECRET
     # Local/dev deployments: stable-but-throwaway secret keeps cookies verifiable.
     return hashlib.sha256(_COOKIE_SALT + b"loki-local-dev-gate").digest()
 
@@ -159,7 +165,7 @@ def verify_gate_cookie_value(value: Optional[str]) -> bool:
     if not value or "." not in value:
         return False
     payload, signature = value.rsplit(".", 1)
-    if not _sign(payload) == signature:
+    if not hmac.compare_digest(_sign(payload).encode("ascii"), signature.encode("utf-8")):
         return False
     try:
         return float(payload) >= time.time()
@@ -186,7 +192,7 @@ def read_terms_cookie_value(value: Optional[str]) -> int:
     if "." not in cleaned:
         return 0
     payload, signature = cleaned.rsplit(".", 1)
-    if not _sign(payload) == signature:
+    if not hmac.compare_digest(_sign(payload).encode("ascii"), signature.encode("utf-8")):
         return 0
     parts = payload.split(".")
     if len(parts) != 2:
@@ -209,10 +215,12 @@ def issue_session_cookie_value(uid: str, email: str, nickname: str) -> str:
 
 
 def read_session_cookie_value(value: Optional[str]) -> Optional[Dict[str, Any]]:
+    if value:
+        value = value.strip('"')
     if not value or "." not in value:
         return None
     payload, signature = value.rsplit(".", 1)
-    if not _sign(payload) == signature:
+    if not hmac.compare_digest(_sign(payload).encode("ascii"), signature.encode("utf-8")):
         return None
     try:
         data = json.loads(base64.urlsafe_b64decode(payload.encode("ascii")))
@@ -220,8 +228,13 @@ def read_session_cookie_value(value: Optional[str]) -> Optional[Dict[str, Any]]:
         return None
     if not isinstance(data, dict):
         return None
-    issued = float(data.get("iat") or 0)
-    if time.time() - issued > SESSION_MAX_AGE:
+    try:
+        issued = int(data.get("iat") or 0)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    if not 0 <= time.time() - issued <= SESSION_MAX_AGE:
+        return None
+    if not all(isinstance(data.get(key), str) and data[key] for key in ("uid", "email", "nickname")):
         return None
     return data
 

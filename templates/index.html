@@ -4,6 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#060a12">
   <meta name="description" content="Loki brings strategy research, structured agent reviews, paper portfolios, and scenario analysis into one evidence-led workspace.">
   <title>Loki · Trading intelligence</title>
+  <script src="/api/account/storage-context.js"></script><script src="/static/js/scoped_storage.js?v={{ version }}"></script>
   <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/desk.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/dive_board.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script>
 </head>
 <body>
@@ -221,7 +222,7 @@
       <p><a class="text-link" href="/research-desk" target="_blank" rel="noopener">Open CSV agent and versioned rule workbench ↗</a> · <a class="text-link" href="/strategy-lab" target="_blank" rel="noopener">Open public-candle strategy lab ↗</a></p>
       <section class="panel backup-panel">
         <div class="section-title"><div><p class="eyebrow">YOUR DATA / SAFEKEEPING</p><h2>Backup &amp; restore.</h2></div></div>
-        <p class="muted">Everything Loki papers — research journal, AI trading, planner entries, Dive records — lives in this browser's localStorage on this device only. Nothing is uploaded anywhere. Export a backup file before clearing the browser or moving laptops; import it on another device to restore.</p>
+        <p class="muted">Research journals, AI trading, planner entries and Dive progress are saved in this browser for the current account. Export a backup file, or open <a href="/account">My account</a> to explicitly save and restore a private cloud copy across devices. Public leaderboard publishing is separate.</p>
         <div class="button-row"><button class="button primary" id="backup-export" type="button">Export backup ↓</button><label class="button secondary" id="backup-import-label" for="backup-file">Import backup ↥<input id="backup-file" type="file" accept="application/json,.json" hidden></label></div>
         <p id="backup-message" class="form-message" role="status"></p>
         <p class="caption" id="backup-where">Saved in this browser (localStorage) · exported as a JSON file you keep wherever you like.</p>
@@ -340,12 +341,13 @@
         </div>
       </section>
       <section class="panel dive-board-panel" id="dive-board" aria-label="Dive leaderboard">
-        <div class="section-title"><div><p class="eyebrow">LEADERBOARD / WHO DOVE DEEPEST</p><h2>Best scores, one per board name.</h2></div><button id="dive-board-refresh" class="button secondary" type="button">Refresh board ↻</button></div>
+        <div class="section-title"><div><p class="eyebrow">THE DEEP END / LEADERBOARD</p><h2>A little friendly competition.</h2></div><button id="dive-board-refresh" class="button secondary" type="button">Refresh board ↻</button></div>
+        <div class="dive-member-strip"><div><strong id="dive-board-personal">Your next personal best starts here.</strong><p id="dive-board-count" class="caption">Loading rankings…</p></div><a class="button secondary" href="/account">My progress ↗</a></div>
         <p id="dive-board-kind" class="caption" role="status"></p>
         <p id="dive-board-note" class="form-message" role="status"></p>
         <ol id="dive-board-list" class="dive-board-list" aria-label="Best dive scores under each board name"></ol>
         <form id="dive-publish-form" class="dive-publish" autocomplete="off">
-          <label>Board name<input id="dive-board-name" maxlength="24" placeholder="2–24 letters, numbers or dashes" aria-label="Board name to publish your best score under"></label>
+          <label>Account nickname<input id="dive-board-name" maxlength="24" placeholder="Sign in to publish" aria-label="Account nickname used for your score"></label>
           <button class="button primary" type="submit">Publish my best →</button>
         </form>
         <p id="dive-board-just-finished" class="caption" role="status"></p>

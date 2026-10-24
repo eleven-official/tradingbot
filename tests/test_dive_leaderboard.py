@@ -32,6 +32,7 @@ class FakeResponse:
         self._payload = payload
         self.text = str(payload)
         self.headers = {}
+        self.content = b"json"
 
     def json(self):
         return self._payload
@@ -119,13 +120,12 @@ class TestSharedBoard:
             return FakeResponse(200, [{"nickname": "Champ", "best_score": 750, "dives": 3}])
 
         monkeypatch.setattr(dive_board.http_requests, "request", fake_request)
-        result = dive_board.shared_write("Champ", 750)
+        result = dive_board.shared_write("11111111-1111-4111-8111-111111111111", "Champ", 750)
         assert result["best"] == 750 and result["dives"] == 3  # deepest kept, dive count bumped
         ordering = [call["method"] for call in calls]
-        assert ordering == ["GET", "POST"]
-        upsert = calls[1]
-        assert upsert["url"].endswith("/rest/v1/dive_scores?on_conflict=nickname")
-        assert upsert["headers"]["Prefer"].startswith("resolution=merge-duplicates")
+        assert ordering == ["POST"]  # atomic database RPC, no read/write race
+        assert calls[0]["url"].endswith("/rest/v1/rpc/publish_member_dive")
+        assert calls[0]["json"]["p_user_id"] == "11111111-1111-4111-8111-111111111111"
 
     def test_missing_table_names_the_sql_to_run(self, monkeypatch):
         monkeypatch.setenv("SUPABASE_URL", "https://project.supabase.co")
@@ -133,7 +133,7 @@ class TestSharedBoard:
         monkeypatch.setattr(dive_board.http_requests, "request", lambda *a, **k: FakeResponse(404, {"code": "42P01", "message": "relation does not exist"}))
         with pytest.raises(HTTPException) as caught:
             dive_board._shared_read()
-        assert "schema_dive_scores.sql" in caught.value.detail
+        assert "schema_member_data.sql" in caught.value.detail
 
 
 class TestWiring(unittest.TestCase):
