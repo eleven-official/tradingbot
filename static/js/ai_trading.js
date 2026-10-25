@@ -88,7 +88,7 @@
   const isCrypto = (symbol) => symbol.endsWith('-USD');
 
   function roundQty(symbol, qty) {
-    return isCrypto(symbol) ? Math.max(0, Math.round(qty * 1e6) / 1e6) : Math.max(0, Math.floor(qty));
+    return isCrypto(symbol) ? Math.max(0, Math.floor(qty * 1e6) / 1e6) : Math.max(0, Math.floor(qty));
   }
 
   function equityNow() {
@@ -160,6 +160,7 @@
       });
       if (!res.ok) {
         const detail = ((await res.json().catch(() => ({}))) || {}).detail;
+        if (revision !== paperRevision || !state.running) return;
         lastCheckAt = Date.now(); lastCheckOk = false; lastCheckWhy = String(detail || 'AI feed unavailable').slice(0, 60);
         logLine(detail || 'AI feed unavailable — will retry.', 'warn');
         save();
@@ -175,15 +176,19 @@
       const risk = trail.find((t) => t.agent === 'risk') || {};
       const director = trail.find((t) => t.agent === 'director') || {};
 
-      // Auto-exit checks first: stops and targets outrank new entries.
+      let exited = false;
+      // Do not re-enter on the same decision as a protective exit.
       if (state.position && state.position.symbol === data.symbol) {
-        if (state.position.stop && data.price <= state.position.stop) closePosition(data.price, 'stop hit');
-        else if (state.position.target && data.price >= state.position.target) closePosition(data.price, 'target reached');
+        if (state.position.stop && data.price <= state.position.stop) { closePosition(data.price, 'stop hit'); exited = true; }
+        else if (state.position.target && data.price >= state.position.target) { closePosition(data.price, 'target reached'); exited = true; }
       }
 
       const action = (quant.action || 'HOLD').toUpperCase();
-      if (action === 'BUY' && risk.approved && !state.position) {
-        let qty = Number(risk.qty) > 0 ? Number(risk.qty) : roundQty(data.symbol, (state.cash * 0.95) / data.price);
+      if (exited) {
+        logLine('Exit completed — waiting for the next market check before a new entry.', 'info');
+      } else if (action === 'BUY' && risk.approved === true && !state.position) {
+        let qty = Number(risk.qty);
+        if (!Number.isFinite(qty) || qty <= 0) throw new Error('Risk approval has no valid quantity');
         qty = roundQty(data.symbol, qty);
         if (qty > 0 && qty * data.price <= state.cash) {
           openPosition(data.price, qty, trail);
@@ -213,9 +218,10 @@
       if (String(data.symbol) === String(state.symbol)) refreshCandles(); // candles of exactly the traded symbol
       save(); // fills, curve points and log lines survive a reload from here
       render();
-    } catch {
-      lastCheckAt = Date.now(); lastCheckOk = false; lastCheckWhy = 'connection hiccup';
-      logLine('Connection hiccup — will retry.', 'warn');
+    } catch (error) {
+      if (revision !== paperRevision || !state.running) return;
+      lastCheckAt = Date.now(); lastCheckOk = false; lastCheckWhy = error.message || 'connection hiccup';
+      logLine(`${lastCheckWhy} — will retry.`, 'warn');
       save();
       render();
     } finally {
@@ -630,6 +636,11 @@
 
   function bind() {
     $('ai-start').addEventListener('click', () => {
+      const capital = $('ai-capital');
+      if (!state.trades.length && !state.position && (!capital.value || !capital.reportValidity() || !Number.isFinite(Number(capital.value)))) {
+        message('Enter paper capital between $100 and $10,000,000 in $100 increments.');
+        return;
+      }
       state.running = true;
       state.symbol = $('ai-symbol').value;
       if (!state.trades.length && !state.position) state.startCash = Number($('ai-capital').value) || state.startCash;

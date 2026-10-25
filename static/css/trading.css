@@ -1,0 +1,45 @@
+/* Trading workspace: clear hierarchy, generous chart space, responsive controls. */
+#ai-trading:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+}
+#ai-trading > * { min-width: 0; margin: 0; }
+#ai-trading > .page-heading,
+#ai-trading > nav,
+#ai-trading > .panel:nth-of-type(3),
+#ai-trading > .panel:last-child { grid-column: 1 / -1; }
+#ai-trading > .page-heading {
+  padding: 28px;
+  border: 1px solid rgba(139,218,212,.22);
+  border-radius: 20px;
+  background: radial-gradient(ellipse at top right, rgba(54,148,147,.18), transparent 65%), #101b2b;
+}
+#ai-trading h1 { font-size: clamp(1.8rem, 3vw, 2.8rem); letter-spacing: -.035em; }
+#ai-trading .page-heading .muted { max-width: 78ch; line-height: 1.7; }
+#ai-trading > .panel { padding: 24px; border-radius: 18px; border: 1px solid rgba(159,176,194,.19); background: #101a29; }
+#ai-trading .section-title { flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+#ai-trading h2 { font-size: 1.25rem; letter-spacing: -.02em; }
+#ai-trading .caption { line-height: 1.65; color: #aabbcf; }
+#ai-trading .button-row { flex-wrap: wrap; gap: 10px; }
+#ai-trading button, #ai-trading input, #ai-trading select { min-height: 44px; }
+#ai-trading :is(button,input,select):focus-visible { outline: 2px solid #8bdad4; outline-offset: 3px; }
+#ai-trading button:disabled { opacity: .5; cursor: not-allowed; }
+#ai-trading fieldset { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
+#ai-trading .tag { white-space: normal; line-height: 1.5; }
+#ai-trading #ai-live-controls { border-top: 3px solid #e6b875; }
+#ai-trading > .panel:first-of-type { border-top: 3px solid #8bdad4; }
+#ai-candles { margin-top: 18px; border-radius: 12px; background: #0b1422; }
+#ai-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 12px; }
+#ai-stats .metric { background: #0b1422; border: 1px solid rgba(139,218,212,.12); border-radius: 12px; padding: 16px; }
+#ai-stats strong { font-variant-numeric: tabular-nums; }
+#ai-log { max-height: 320px; overflow: auto; }
+#ai-trading .table-scroll { overflow-x: auto; }
+@media (max-width: 1000px) {
+  #ai-trading:not([hidden]) { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  #ai-trading > .panel, #ai-trading > .page-heading { padding: 16px; }
+  #ai-trading .form-grid { grid-template-columns: minmax(0, 1fr); }
+  #ai-trading .button-row > .button { flex: 1 1 140px; }
+}

@@ -6,6 +6,7 @@
   <title>Loki · Trading intelligence</title>
   <script src="/api/account/storage-context.js"></script><script src="/static/js/scoped_storage.js?v={{ version }}"></script>
   <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/desk.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/dive_board.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script>
+  <link rel="stylesheet" href="/static/css/trading.css?v={{ version }}">
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to workspace</a>
@@ -173,13 +174,13 @@
           <label>Paper capital (USD)<input id="ai-capital" type="number" value="10000" min="100" max="10000000" step="100"></label>
         </div>
         <div class="button-row">
-          <button id="ai-start" class="button primary" type="button">Start AI trading</button>
+          <button id="ai-start" class="button primary" type="button">Start paper AI</button>
           <button id="ai-stop" class="button secondary" type="button" disabled>Pause</button>
           <button id="ai-reset" class="button secondary" type="button">Reset paper account</button>
         </div>
         <p id="ai-message" class="form-message" role="status"></p>
         <p class="caption" id="ai-heartbeat">Runner idle — press Start AI trading to activate.</p>
-        <p class="caption">Checks the market every 20 seconds while this tab is visible. Fills are simulated at the latest traded price, with the AI's own stop and target enforced. Decisions come from the same verified profiles shown on Overview.</p>
+        <p class="caption">Simulated money · no broker connection needed. Checks every 20 seconds while this page is open; background tabs may be delayed. Stops and targets are checked on each update, not continuously. Pausing stops monitoring open paper positions.</p>
         <div class="dive-wait" id="dive-wait-chip" hidden>⏳ While the AI waits between checks, the Dive is waiting too — <a href="#game" class="text-link">play The Loki Dive ↗</a></div>
       </section>
       <section class="panel">
@@ -191,7 +192,7 @@
         <div class="form-grid two-col"><label>Chart market<select id="ai-chart-symbol"><option value="">Follow paper symbol</option><option>SPY</option><option>QQQ</option><option>AAPL</option><option>BTC-USD</option><option>ETH-USD</option><option value="ES=F">S&amp;P futures · reference</option><option value="NQ=F">Nasdaq futures · reference</option><option value="GC=F">Gold futures · reference</option></select></label><label>Chart timeframe<select id="ai-chart-timeframe"><option value="1m">1 minute</option><option value="5m" selected>5 minutes</option><option value="15m">15 minutes</option><option value="1h">1 hour</option><option value="1d">1 day</option></select></label></div>
         <div class="button-row"><button type="button" id="ai-chart-refresh" class="button secondary">Refresh candles</button></div>
         <svg id="ai-candles" style="width:100%;min-height:240px;display:none" role="img" aria-label="Market candlestick chart" hidden></svg>
-        <p class="caption" id="ai-bars-note">Completed daily candles from Loki's data provider — not a live quote. Fills always use the latest traded price from the step feed; the chart appears when you open AI trading, updates as checks land, and stays empty rather than inventing candles.</p>
+        <p class="caption" id="ai-bars-note">Yahoo Finance candles may be delayed; the latest bar may still be forming. Choose a market and timeframe above. Chart settings do not change the daily AI strategy.</p>
       </section>
       <section class="panel" id="ai-live-controls">
         <div class="section-title"><div><p class="eyebrow">ALPACA LIVE · REAL BROKER ORDERS</p><h2>Your account. Your limits.</h2></div><span class="tag" id="ai-live-status">Disconnected</span></div>

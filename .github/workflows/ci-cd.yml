@@ -71,7 +71,7 @@ jobs:
         PYTHONPATH: .
     
     - name: Test browser profile and research agent logic
-      run: node --test tests/test_profile.js tests/test_strategy_lab.js
+      run: node --test tests/test_profile.js tests/test_strategy_lab.js tests/test_ai_trading.js
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v7
