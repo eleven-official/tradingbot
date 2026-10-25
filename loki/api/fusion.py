@@ -404,6 +404,26 @@ def native_mirofish_report(
     return _call(load_report, identifier, _call(_symbol, symbol))
 
 
+@router.get("/native-mirofish/reports")
+def native_mirofish_reports(
+    request: Request,
+    response: Response,
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    """The saved narrative library, newest first — engine fields only.
+
+    Reads the local launcher's native data directory, so it answers with the
+    same launcher-token refusal as every other native read; a remote
+    deployment keeps no local reports and lists none. Nothing here is
+    invented: an artifact that cannot be read back is flagged unreadable.
+    """
+    from core.fusion.narrative import list_reports
+
+    _require_local_action(request)
+    _private_response(response)
+    return {"reports": _call(list_reports, limit)}
+
+
 @router.post("/real/account")
 def real_account(request: Request, response: Response):
     from core.fusion.real_account import account_snapshot

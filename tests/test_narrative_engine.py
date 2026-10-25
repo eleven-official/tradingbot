@@ -7,6 +7,7 @@ cannot read back.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -236,3 +237,119 @@ def test_endpoint_validates_input_as_human_copy(local_client, data_path):
     assert response.status_code == 422
     oversized = local_client.post("/api/fusion/narrative", json={"seed_text": "NVDA rallies. " * 12000})
     assert oversized.status_code == 422
+
+
+def test_empty_or_foreign_data_answers_an_honest_empty_library(data_path):
+    (data_path / "reports").mkdir()
+    (data_path / "reports" / "not_a_report_thing").mkdir()
+    (data_path / "reports" / "report_flatfile").write_text(
+        "a file, not a folder", encoding="utf-8"
+    )
+    assert narrative_module.list_reports() == []
+
+
+def test_saved_scenarios_list_newest_first_with_only_engine_fields(data_path):
+    first = narrative_module.save_report(
+        narrative_module.analyze_narrative(BULLISH_TEXT, title="Storm of inflows")
+    )
+    second = narrative_module.save_report(
+        narrative_module.analyze_narrative(BEARISH_TEXT, title="Crash waves")
+    )
+    os.utime(first.parent, (900_000_000, 900_000_000))
+    os.utime(second.parent, (1_100_000_000, 1_100_000_000))
+    rows = narrative_module.list_reports()
+    assert [row["report_id"] for row in rows] == [second.parent.name, first.parent.name]
+    for row in rows:
+        assert set(row) == {
+            "report_id",
+            "title",
+            "created_at",
+            "status",
+            "simulation_requirement",
+        }
+        assert row["status"] == "completed"
+        assert row["simulation_requirement"]
+    assert rows[0]["title"] == "Crash waves"
+    assert rows[1]["title"] == "Storm of inflows"
+
+
+def test_unreadable_artifacts_stay_visible_with_no_fields_invented(data_path):
+    saved = narrative_module.save_report(
+        narrative_module.analyze_narrative(BULLISH_TEXT, title="Still readable")
+    )
+    broken = saved.parent.parent / "report_broken"
+    broken.mkdir()
+    (broken / "meta.json").write_text("{not json", encoding="utf-8")
+    rows = narrative_module.list_reports()
+    flagged = [row for row in rows if row.get("unreadable")]
+    assert len(flagged) == 1
+    assert flagged[0]["report_id"] == "report_broken"
+    assert set(flagged[0]) == {"report_id", "unreadable"}
+    assert any(row.get("title") == "Still readable" for row in rows)
+
+
+def test_library_limit_caps_and_validates(data_path):
+    texts = (BULLISH_TEXT, BEARISH_TEXT, BULLISH_TEXT + " " + BEARISH_TEXT)
+    saved = [
+        narrative_module.save_report(
+            narrative_module.analyze_narrative(text, title=f"Report {index}")
+        )
+        for index, text in enumerate(texts)
+    ]
+    os.utime(saved[0].parent, (800_000_000, 800_000_000))
+    os.utime(saved[1].parent, (900_000_000, 900_000_000))
+    # An identical recomputation overwrites its own artifact on purpose: one
+    # honest landing spot per distinct narrative, never duplicates.
+    assert len({path.parent.name for path in saved}) == 3
+    assert len(narrative_module.list_reports(limit=2)) == 2
+    with pytest.raises(ValueError):
+        narrative_module.list_reports(limit=0)
+    with pytest.raises(ValueError):
+        narrative_module.list_reports(limit=101)
+    with pytest.raises(ValueError):
+        narrative_module.list_reports(limit=True)
+
+
+def test_library_endpoint_requires_the_local_launcher_and_its_token(data_path, app):
+    no_local = TestClient(app)
+    assert no_local.get("/api/fusion/native-mirofish/reports").status_code == 403
+    assert "launcher" in no_local.get("/api/fusion/native-mirofish/reports").json()["detail"]
+
+
+def test_library_endpoint_lists_caps_and_answers_empty_honestly(data_path, local_client):
+    headers = local_token(local_client)
+    empty = local_client.get(
+        "/api/fusion/native-mirofish/reports", headers=headers
+    )
+    assert empty.status_code == 200
+    assert empty.json() == {"reports": []}
+    assert empty.headers["cache-control"] == "private, no-store"
+
+    first = narrative_module.save_report(
+        narrative_module.analyze_narrative(BULLISH_TEXT, title="First saved")
+    )
+    second = narrative_module.save_report(
+        narrative_module.analyze_narrative(BEARISH_TEXT, title="Second saved")
+    )
+    os.utime(first.parent, (900_000_000, 900_000_000))
+    os.utime(second.parent, (1_100_000_000, 1_100_000_000))
+
+    listing = local_client.get("/api/fusion/native-mirofish/reports", headers=headers)
+    assert listing.status_code == 200
+    rows = listing.json()["reports"]
+    assert len(rows) == 2
+    assert all(
+        re.fullmatch(r"report_[A-Za-z0-9_-]{1,100}", row["report_id"]) for row in rows
+    ), rows
+    assert [row["title"] for row in rows] == ["Second saved", "First saved"]
+
+    capped = local_client.get(
+        "/api/fusion/native-mirofish/reports", params={"limit": 1}, headers=headers
+    )
+    assert capped.status_code == 200
+    assert [row["title"] for row in capped.json()["reports"]] == ["Second saved"]
+
+    invalid = local_client.get(
+        "/api/fusion/native-mirofish/reports", params={"limit": 77}, headers=headers
+    )
+    assert invalid.status_code == 422

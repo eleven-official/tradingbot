@@ -512,3 +512,50 @@ def save_report(report: dict[str, Any]) -> Path:
     )
     (folder / "full_report.md").write_text(outline_markdown(report["outline"]), encoding="utf-8")
     return folder / "meta.json"
+
+
+def list_reports(limit: int = 20) -> list[dict[str, Any]]:
+    """Saved native narrative artifacts, newest first, as a small library.
+
+    Reports exactly what meta.json carries (identifier, title, creation stamp,
+    status, simulation requirement) for at most `limit` folders. A report
+    whose meta.json is missing or unparsable is flagged unreadable rather than
+    skipped silently — and exactly nothing is invented to fill its fields.
+    """
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+        raise ValueError("Limit must be an integer from 1 to 100")
+    base = data_directory() / "reports"
+    if not base.is_dir():
+        return []
+    folders = [
+        path
+        for path in base.iterdir()
+        if path.is_dir() and re.fullmatch(r"report_[A-Za-z0-9_-]{1,100}", path.name)
+    ]
+    folders.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    rows: list[dict[str, Any]] = []
+    for folder in folders[:limit]:
+        meta_file = folder / "meta.json"
+        meta: dict[str, Any] | None = None
+        if meta_file.is_file():
+            try:
+                parsed = json.loads(meta_file.read_text(encoding="utf-8"))
+                if isinstance(parsed, dict):
+                    meta = parsed
+            except ValueError:
+                meta = None
+        if not isinstance(meta, dict):
+            rows.append({"report_id": folder.name, "unreadable": True})
+            continue
+        outline = meta.get("outline")
+        title = outline.get("title") if isinstance(outline, dict) else None
+        rows.append(
+            {
+                "report_id": str(meta.get("report_id") or folder.name),
+                "title": str(title) if title else "",
+                "created_at": str(meta.get("created_at") or ""),
+                "status": str(meta.get("status") or ""),
+                "simulation_requirement": str(meta.get("simulation_requirement") or ""),
+            }
+        )
+    return rows

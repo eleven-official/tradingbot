@@ -327,6 +327,38 @@ $('#narrative-form').addEventListener('submit',async event=>{
   catch(error){message('#narrative-message',error.message,true);}
   finally{button.disabled=false;}
 });
+async function miroNativeLibrary(){
+  const button=$('#miro-native-library');
+  if(!button)return;
+  button.disabled=true;
+  message('#miro-native-library-message','Reading saved reports from the local launcher…');
+  try{
+    const result=await request('/api/fusion/native-mirofish/reports',undefined,true),rows=Array.isArray(result.reports)?result.reports:[],target=$('#miro-native-library-list');
+    if(!rows.length){target.replaceChildren(element('p','No saved narrative reports in the local launcher data yet — run one in Scenarios with save ticked.','caption'));message('#miro-native-library-message','');return;}
+    target.replaceChildren(...rows.map(row=>{
+      const rowNode=element('p',null,'native-report-row');
+      const use=element('button','Use →','button secondary');
+      use.type='button';
+      if(row.unreadable){rowNode.append(element('strong',row.report_id),element('span',' · unreadable local artifact — kept visible, no fields invented for it','caption'));use.disabled=true;}
+      else{
+        rowNode.append(element('strong',row.title||'Untitled simulation'));
+        rowNode.append(element('span',` · ${row.created_at?String(row.created_at).slice(0,19).replace('T',' '):'creation time not recorded'} · ${row.status||'status not recorded'} · ${row.report_id}`,'caption'));
+      }
+      use.addEventListener('click',()=>{
+        $('#miro-native-id').value=row.report_id;
+        $('#miro-native-reviewed').checked=false;
+        $('#miro-native-preview').replaceChildren();
+        message('#miro-native-message',`Loaded ${row.report_id} from the saved reports. Inspect it, then tick the reviewed confirmation yourself.`);
+        $('#miro-native-id').focus();
+      });
+      rowNode.append(use);
+      return rowNode;
+    }));
+    message('#miro-native-library-message',`Listed ${rows.length} saved report${rows.length===1?'':'s'} from the launcher's local data — newest first, echo of what was saved.`);
+  }catch(error){message('#miro-native-library-message',error.message,true);}
+  finally{button.disabled=false;}
+}
+$('#miro-native-library').addEventListener('click',miroNativeLibrary);
 async function loadFinceptStatus(){try{finceptStatus=capabilities?.local_actions_enabled?await request('/api/fusion/fincept/status',undefined,true):(capabilities?.components||[]).find(item=>item.id==='fincept');if(!finceptStatus)throw new Error('Integration status is unavailable.');$('#fincept-status').textContent=human(finceptStatus.state||finceptStatus.status);$('#fincept-availability').textContent=finceptStatus.message||'The private engine reports its current configuration here.';$('#run-fincept').disabled=!(finceptStatus.configured&&(finceptStatus.licensed||finceptStatus.license_confirmed)&&(finceptStatus.jobs_enabled||finceptStatus.jobs_allowed)&&capabilities?.local_actions_enabled);}catch(error){$('#fincept-status').textContent='Unavailable';$('#fincept-availability').textContent=error.message;$('#run-fincept').disabled=true;}}
 $('#fincept-form').addEventListener('submit',async event=>{event.preventDefault();if(!currentBars){message('#fincept-message','Import history in Quant lab first.',true);return;}if($('#fincept-frequency').value!=='daily'){message('#fincept-message','This risk workflow requires daily observations. Import daily history and confirm the frequency.',true);return;}const intervals=currentBars.slice(1).map((bar,index)=>(Date.parse(bar.timestamp)-Date.parse(currentBars[index].timestamp))/86400000).sort((a,b)=>a-b);const medianInterval=intervals[Math.floor(intervals.length/2)];if(!Number.isFinite(medianInterval)||medianInterval<.9||medianInterval>4.1){message('#fincept-message','The timestamp spacing does not look daily. Fincept expects daily observations (including business-day gaps); import daily history before using its 252-day annualization.',true);return;}const returns=currentBars.slice(1).map((bar,index)=>bar.close/currentBars[index].close-1);if(returns.length>2000){message('#fincept-message','Use a dataset with at most 2,001 daily bars (2,000 returns) for Fincept analytics.',true);return;}const button=$('#run-fincept'),revision=datasetRevision;button.disabled=true;message('#fincept-message','Running the licensed local Fincept risk engine…');try{const result=await request('/api/fusion/fincept/analyze',{returns:[returns],weights:[1],portfolio_value:Number(new FormData(event.target).get('portfolio_value')),confidence:.95},true);if(revision!==datasetRevision){message('#fincept-message','Dataset changed during analysis. Run again for the current history.');return;}const data=result.data||result,risk=data.basic_risk_metrics||{},valueAtRisk=data.var_analysis?.var_95?.historical||{},target=$('#fincept-results');target.hidden=false;target.replaceChildren(inlineMetrics([['Annualized volatility',pct(risk.volatility_annual),'252-day annualization'],['Historical 95% VaR',pct(valueAtRisk.var),'Daily return estimate'],['Maximum drawdown',pct(risk.max_drawdown?.max_drawdown??risk.max_drawdown),'Supplied daily history']]),detailsJSON(result,'Inspect Fincept risk, stress, and decomposition'));message('#fincept-message','Fincept risk analysis complete. Full results include model assumptions and stress estimates.');}catch(error){message('#fincept-message',error.message,true);}finally{button.disabled=!(finceptStatus?.configured&&capabilities?.local_actions_enabled);}});
 
@@ -336,7 +368,7 @@ $('#chat-form').addEventListener('submit',event=>{event.preventDefault();const t
 $('#chat-prompts').addEventListener('click',event=>{const button=event.target.closest('[data-prompt]');if(button)sendChat(button.dataset.prompt);});
 $$('[data-ask]').forEach(link=>link.addEventListener('click',()=>{sendChat(link.dataset.ask);}));
 new ResizeObserver(drawChart).observe($('#equity-chart'));
-updatePaperAction();miroFields();syncContext();navigate();Promise.allSettled([loadPortfolio(),loadCapabilities()]);
+updatePaperAction();syncContext();navigate();Promise.allSettled([loadPortfolio(),loadCapabilities()]);
 
 // PINNED RESEARCH RUNS — evidence an honest terminal keeps between sessions.
 // A pin snapshots a finished report: its fingerprint, windows, costs and
