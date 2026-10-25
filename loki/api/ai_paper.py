@@ -16,7 +16,7 @@ never mutated (that would leak one browser's day baseline and loss streak
 into another browser's decisions).
 
 A read-only ``GET /bars`` endpoint serves the engine's cached history as
-completed candles for the AI trading view; it shares the provider cache,
+market candles for the AI trading view; it shares the provider cache,
 so polling it dedupes against the step analysis fetch.
 """
 
@@ -26,7 +26,8 @@ import logging
 import math
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -186,17 +187,14 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
 @router.get("/bars")
 def ai_bars(
     response: Response,
-    symbol: str = Query(min_length=1, max_length=12),
+    symbol: str = Query(min_length=1, max_length=12, pattern=r"^[A-Za-z0-9.^=\-]+$"),
     limit: int = Query(default=60, ge=10, le=120),
+    timeframe: Literal["1m", "5m", "15m", "1h", "1d"] = "1d",
 ) -> Dict[str, Any]:
-    """Completed candles of one symbol for the AI trading view, newest LAST.
+    """Bounded provider candles, sorted oldest first; newest may be forming.
 
-    Read-only public market history through the engine's provider — the
-    same fetch and the same 60s provider cache the step analysis uses, so
-    polling the chart does not double the data traffic. These are completed
-    daily candles, NOT a live quote: paper fills always use the latest
-    traded price from the step feed, and a row that does not carry finite
-    OHLCV values is skipped rather than invented.
+    Daily requests share the analysis provider cache. Intraday timeframes
+    use bounded windows independently of the daily strategy configuration.
     """
     symbol = symbol.strip().upper()
     if not symbol:
@@ -204,8 +202,9 @@ def ai_bars(
     _private_response(response)
 
     pipeline, cfg, _applied = _get_pipeline(symbol)
+    period = {"1m": "5d", "5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": cfg.period}[timeframe]
     try:
-        frame = pipeline.provider.fetch_history(symbol, cfg.period, cfg.timeframe)
+        frame = pipeline.provider.fetch_history(symbol, period, timeframe)
     except Exception as exc:  # noqa: BLE001 - provider/network outages surface as 503
         logger.warning("AI bars fetch failed for %s: %s", symbol, exc.__class__.__name__)
         raise HTTPException(
@@ -215,6 +214,8 @@ def ai_bars(
 
     candles: List[Dict[str, Any]] = []
     if frame is not None and not getattr(frame, "empty", True):
+        frame = frame.sort_index()
+        frame = frame[~frame.index.duplicated(keep="last")]
         for stamp, row in frame.tail(limit).iterrows():
             try:
                 values = [
@@ -224,6 +225,9 @@ def ai_bars(
             except (KeyError, TypeError, ValueError):
                 continue
             if not all(math.isfinite(value) for value in values):
+                continue
+            o, h, low, c, v = values
+            if min(o, h, low, c) <= 0 or v < 0 or not low <= min(o, c) <= max(o, c) <= h:
                 continue
             candles.append(
                 {
@@ -243,13 +247,18 @@ def ai_bars(
         )
     return {
         "symbol": symbol,
-        "period": cfg.period,
-        "timeframe": cfg.timeframe,
+        "period": period,
+        "timeframe": timeframe,
         "count": len(candles),
-        "kind": "daily_completed_candles",
+        "kind": "provider_candles",
+        "source": "Yahoo Finance",
+        "as_of": candles[-1]["t"],
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "latest_bar_may_be_incomplete": True,
         "note": (
-            "Completed daily candles from Loki's data provider — not a live quote. "
-            "Fills always use the latest traded price from the step feed."
+            "Yahoo Finance market candles — potentially delayed, not a live quote. "
+            "The newest candle may still be forming. Chart timeframe does not change the daily AI strategy. "
+            "Futures charts are reference series, not a Lucid execution feed or a specific tradable contract."
         ),
         "candles": candles,
     }

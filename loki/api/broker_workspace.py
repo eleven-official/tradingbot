@@ -1,4 +1,4 @@
-"""Local-only key entry, historical model training and PAPER-only AI control."""
+"""Local broker sessions, training, paper AI and explicit-start live AI."""
 
 from fastapi import APIRouter, Request, Response
 from pydantic import Field, SecretStr
@@ -7,6 +7,7 @@ import json
 
 from loki.api.fusion import StrictModel, _call, _require_local_action, _private_response
 from core.fusion import broker_link, paper_models, paper_agent
+from core.fusion import live_agent
 
 router = APIRouter(prefix="/api/fusion/broker", tags=["Private broker workspace"])
 
@@ -39,6 +40,8 @@ def connect(payload: ConnectRequest, request: Request, response: Response):
             profile = broker_link.get_profile(previous)
             if profile.provider == "alpaca" and profile.mode == "paper":
                 _call(paper_agent.stop, profile, previous)
+            elif profile.provider == "alpaca" and profile.mode == "live":
+                _call(live_agent.stop, profile, previous)
         except ValueError:
             pass
     identifier, result = _call(
@@ -84,6 +87,8 @@ def disconnect(request: Request, response: Response):
     profile, identifier = _session(request)
     if profile.provider == "alpaca" and profile.mode == "paper":
         _call(paper_agent.stop, profile, identifier)
+    elif profile.provider == "alpaca" and profile.mode == "live":
+        _call(live_agent.stop, profile, identifier)
     broker_link.disconnect(identifier)
     response.delete_cookie(broker_link.COOKIE, path="/api/fusion/broker")
     return {
@@ -218,3 +223,45 @@ def cancel_pending(request: Request, response: Response):
     _private(request, response)
     profile, identifier = _session(request)
     return _call(paper_agent.reconcile, profile, identifier, cancel=True)
+
+
+class LiveStartRequest(StrictModel):
+    symbol: Literal["SPY", "QQQ", "AAPL"]
+    max_notional: float = Field(gt=0, le=100000)
+    daily_loss: float = Field(gt=0, le=10000)
+    max_orders: int = Field(ge=1, le=10)
+
+
+@router.post("/live-ai/start")
+def live_start(payload: LiveStartRequest, request: Request, response: Response):
+    _private(request, response)
+    profile, identifier = _session(request)
+    return _call(live_agent.start, profile, identifier, **payload.model_dump())
+
+
+@router.get("/live-ai")
+def live_status(request: Request, response: Response):
+    _private(request, response)
+    profile, identifier = _session(request)
+    return _call(live_agent.status, profile, identifier)
+
+
+@router.post("/live-ai/tick")
+def live_tick(request: Request, response: Response):
+    _private(request, response)
+    profile, identifier = _session(request)
+    return _call(live_agent.tick, profile, identifier)
+
+
+@router.post("/live-ai/stop")
+def live_stop(request: Request, response: Response):
+    _private(request, response)
+    profile, identifier = _session(request)
+    return _call(live_agent.stop, profile, identifier)
+
+
+@router.post("/live-ai/reconcile")
+def live_reconcile(request: Request, response: Response):
+    _private(request, response)
+    profile, identifier = _session(request)
+    return _call(live_agent.reconcile, profile, identifier)

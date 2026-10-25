@@ -29,6 +29,7 @@
   let state = loadState();
   let timer = null;
   let busy = false;
+  let paperRevision = 0;
   let nextCheckAt = 0;
   let lastCheckAt = 0, lastCheckOk = null, lastCheckWhy = '';
 
@@ -141,6 +142,7 @@
     // request is bound to a hard 15 s abort.
     if (!claimRunner()) return; // another open tab is already running the checks
     busy = true;
+    const revision = paperRevision;
     nextCheckAt = Date.now() + POLL_MS; // rough "next check in Ns" for the header ticker
     try {
       const res = await fetch('/api/fusion/ai/step', {
@@ -165,6 +167,8 @@
         return;
       }
       const data = await res.json();
+      if (revision !== paperRevision || !state.running || data.symbol !== state.symbol) return;
+      if (!Number.isFinite(data.price) || data.price <= 0) throw new Error('Invalid market price');
       state.lastPrice = data.price;
       const trail = data.trail || [];
       const quant = trail.find((t) => t.agent === 'quant') || {};
@@ -316,12 +320,12 @@
 
   // --- Candles of the traded symbol (read-only, completed daily bars) ---
 
-  let barsBusy = false;
+  let barsController = null;
   let barsSymbol = '';
 
   const axisPrice = (value) => Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
   const fmtDay = (iso) => {
-    try { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+    try { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
     catch { return ''; }
   };
 
@@ -330,7 +334,9 @@
     if (!svg) return;
     barsSymbol = symbol;
     if (!candles.length) {
-      svg.hidden = true;
+      svg.setAttribute('hidden', '');
+      svg.style.display = 'none';
+      svg.replaceChildren();
       return;
     }
     const width = 900, height = 320;
@@ -371,39 +377,53 @@
       `<text x="${plot.left + slot * index + slot / 2}" y="315" text-anchor="middle" style="fill:#7f93a8;font-size:11px">${escapeHtml(fmtDay(candles[index].t))}</text>`).join('');
 
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('aria-label', `${symbol} completed daily candlestick chart`);
+    svg.setAttribute('aria-label', `${symbol} ${$('ai-chart-timeframe')?.value || '1d'} market candlestick chart`);
     svg.innerHTML = `<title>${escapeHtml(symbol)} completed daily candles</title>${grid}${bars}<line x1="${plot.left}" x2="${plot.right}" y1="238" y2="238" style="stroke:rgba(139,218,212,.13)"/><text x="${plot.left}" y="240" style="fill:#7f93a8;font-size:11px">VOLUME</text><line x1="${plot.left}" x2="${plot.right}" y1="${lastY}" y2="${lastY}" style="stroke:#8bdad4;stroke-width:1;stroke-dasharray:4 3"/><rect x="${plot.right - 62}" y="${labelY - 10}" width="62" height="17" rx="3" style="fill:#b4f2d2"/><text x="${plot.right - 56}" y="${labelY + 2}" style="fill:#08130d;font-size:10.5px;font-weight:700">${escapeHtml(axisPrice(lastPrice))}</text>${xLabels}`;
-    svg.hidden = false;
+    svg.removeAttribute('hidden');
+    svg.style.display = 'block';
   }
 
   async function refreshCandles() {
     const svg = $('ai-candles');
     const note = $('ai-bars-note');
-    if (!svg || barsBusy) return;
-    const symbol = String(state.symbol || ($('ai-symbol') ? $('ai-symbol').value : '') || '').toUpperCase();
+    if (!svg) return;
+    const symbol = String($('ai-chart-symbol')?.value || state.symbol || '').toUpperCase();
+    const timeframe = $('ai-chart-timeframe')?.value || '1d';
     if (!symbol) return;
-    barsBusy = true;
+    if (barsController) barsController.abort();
+    const controller = new AbortController();
+    barsController = controller;
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    renderCandles(symbol, []);
+    $('ai-bars-tag').textContent = `${symbol} · ${timeframe} · loading`;
+    if (note) note.textContent = 'Fetching market candles…';
     try {
-      const res = await fetch(`/api/fusion/ai/bars?symbol=${encodeURIComponent(symbol)}&limit=60`, { cache: 'no-store' });
+      const res = await fetch(`/api/fusion/ai/bars?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=100`, { cache: 'no-store', signal: controller.signal });
+      if (barsController !== controller) return;
       if (!res.ok) {
-        let copy = `Candle data for ${symbol} is unavailable right now; try again shortly. The chart keeps showing the last verified candles rather than filling gaps.`;
+        let copy = `Candle data for ${symbol} is unavailable right now; try again shortly.`;
         if (res.status === 503) {
           try { copy = (await res.json()).detail || copy; } catch { /* server copy first, fallback second */ }
         }
+        if (barsController !== controller) return;
         if (barsSymbol !== symbol) renderCandles(symbol, []);
         if (note) note.textContent = copy;
         return;
       }
       const data = await res.json();
+      if (barsController !== controller) return;
       const candles = (data.candles || []).filter((candle) => [candle.o, candle.h, candle.l, candle.c, candle.v].every(Number.isFinite));
       renderCandles(data.symbol || symbol, candles);
       const tag = $('ai-bars-tag');
-      if (tag) tag.textContent = `${data.count || candles.length} completed ${data.timeframe === '1d' ? 'daily' : (data.timeframe || 'candle')} bars`;
-      if (note) note.textContent = data.note || note.textContent;
+      if (tag) tag.textContent = `${symbol} · ${timeframe} · ${candles.length} candles`;
+      if (note) note.textContent = `${data.note} Latest bar: ${fmtDay(data.as_of)} · fetched ${fmtTime(data.fetched_at)}. Refreshes every 20 seconds while this view is visible.`;
     } catch {
-      if (note) note.textContent = 'Candle data could not be fetched right now — the chart keeps its last verified candles rather than filling gaps.';
+      if (barsController !== controller) return;
+      if (note) note.textContent = 'Market feed unavailable or timed out. Refresh to retry; no candles were invented.';
+      $('ai-bars-tag').textContent = `${symbol} · feed unavailable`;
     } finally {
-      barsBusy = false;
+      clearTimeout(timeout);
+      if (barsController === controller) barsController = null;
     }
   }
 
@@ -504,7 +524,8 @@
       stop.disabled = !state.running;
     }
     const symbolSelect = $('ai-symbol');
-    if (symbolSelect) symbolSelect.disabled = state.running;
+    if (symbolSelect) symbolSelect.disabled = state.running || !!state.position;
+    if ($('ai-capital')) $('ai-capital').disabled = state.running || !!state.position || !!state.trades.length;
   }
 
   async function scanAll() {
@@ -611,7 +632,7 @@
     $('ai-start').addEventListener('click', () => {
       state.running = true;
       state.symbol = $('ai-symbol').value;
-      state.startCash = Number($('ai-capital').value) || state.startCash;
+      if (!state.trades.length && !state.position) state.startCash = Number($('ai-capital').value) || state.startCash;
       if (!state.trades.length && !state.position) state.cash = state.startCash;
       logLine(`AI trading started on ${state.symbol} with ${fmtMoney(state.cash)} paper cash.`, 'good');
       message(`AI is now checking ${state.symbol} every 20 seconds — paper money only.`, true);
@@ -623,6 +644,7 @@
     $('ai-stop').addEventListener('click', () => {
       const proceed = !state.position || window.confirm('A paper position is open. Pause anyway? It will not be monitored while paused.');
       if (!proceed) return;
+      paperRevision++;
       state.running = false;
       if (timer) { clearInterval(timer); timer = null; }
       logLine('AI trading paused.', 'warn');
@@ -632,6 +654,7 @@
     });
     $('ai-reset').addEventListener('click', () => {
       if (!window.confirm('Flatten everything and restart the paper account with fresh capital?')) return;
+      paperRevision++;
       const keepSymbol = state.symbol;
       state = defaults();
       state.symbol = keepSymbol;
@@ -643,12 +666,18 @@
       render();
     });
     $('ai-symbol').addEventListener('change', (event) => {
+      if (state.running || state.position) { event.target.value = state.symbol; return; }
       state.symbol = event.target.value;
       save();
       render();
       refreshCandles();
     });
     $('ai-scan').addEventListener('click', scanAll);
+    ['ai-chart-symbol', 'ai-chart-timeframe'].forEach(id => $(id)?.addEventListener('change', refreshCandles));
+    $('ai-chart-refresh')?.addEventListener('click', refreshCandles);
+    setInterval(() => {
+      if (!document.hidden && !$('ai-trading').hidden && !barsController) refreshCandles();
+    }, POLL_MS);
   }
 
   const init = async () => {

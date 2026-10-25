@@ -222,7 +222,8 @@ class TestBars:
         assert data["symbol"] == "SPY"
         assert data["period"] == "1y"
         assert data["timeframe"] == "1d"
-        assert data["kind"] == "daily_completed_candles"
+        assert data["kind"] == "provider_candles"
+        assert data["latest_bar_may_be_incomplete"] is True
         assert data["count"] == 4
         # Ascending order, newest LAST: exactly the provider's contract.
         assert [candle["t"] for candle in data["candles"]] == [
@@ -289,3 +290,18 @@ class TestBars:
         assert client.get("/api/fusion/ai/bars?symbol=" + "S" * 13).status_code == 422
         assert client.get("/api/fusion/ai/bars?symbol=SPY&limit=5").status_code == 422
         assert client.get("/api/fusion/ai/bars?symbol=SPY&limit=121").status_code == 422
+        assert client.get("/api/fusion/ai/bars?symbol=SPY&timeframe=2m").status_code == 422
+
+    def test_intraday_futures_and_malformed_geometry(self, monkeypatch):
+        frame = _frame().iloc[::-1]
+        frame.loc[frame.index[0], "high"] = 1  # impossible OHLC
+        provider = FakeProvider(frame=frame)
+        _bars_stub(monkeypatch, provider)
+        response = client.get("/api/fusion/ai/bars?symbol=NQ%3DF&timeframe=5m")
+        assert response.status_code == 200
+        data = response.json()
+        assert provider.calls == [("NQ=F", "1mo", "5m")]
+        assert data["count"] == 3
+        assert [c["t"] for c in data["candles"]] == sorted(c["t"] for c in data["candles"])
+        assert data["as_of"] == data["candles"][-1]["t"]
+        assert "not a Lucid execution feed" in data["note"]

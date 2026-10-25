@@ -1,7 +1,8 @@
 """Verified local broker sessions. Secrets live in server memory, never exports.
 
-The fixed Alpaca paper host is the only host on which this client permits order
-writes. Live Alpaca and CCXT connections are account inspection only here.
+Alpaca order writes default to the fixed paper host. Only the explicitly
+started live runner constructs a client with live-order authority.
+CCXT connections remain account inspection only here.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ class Profile:
             "account": self.account,
             "expires_at": self.expires,
             "paper_ai_available": self.provider == "alpaca" and self.mode == "paper",
-            "live_automation_available": False,
+            "live_automation_available": self.provider == "alpaca" and self.mode == "live",
             "credential_storage": "Server memory for four hours or until disconnect/restart; never browser storage or source files.",
         }
 
@@ -136,10 +137,11 @@ def connect(provider, mode, key, secret, passphrase="", previous=None):
 
 
 class AlpacaClient:
-    def __init__(self, profile):
+    def __init__(self, profile, *, live_orders=False):
         if profile.provider != "alpaca":
             raise ValueError("This operation requires an Alpaca connection")
         self.profile = profile
+        self.live_orders = live_orders
 
     def request(self, method, path, *, data=False, params=None, body=None):
         if self.profile.expires <= time.time():
@@ -149,7 +151,7 @@ class AlpacaClient:
         if method not in {"GET", "POST", "DELETE"}:
             raise ValueError("Unsupported broker operation")
         if method != "GET" and (
-            data or self.profile.mode != "paper" or not path.startswith("/v2/orders")
+            data or (self.profile.mode != "paper" and not self.live_orders) or not path.startswith("/v2/orders")
         ):
             raise ValueError("Automated order writes are restricted to the Alpaca paper endpoint")
         host = DATA_HOST if data else PAPER_HOST if self.profile.mode == "paper" else LIVE_HOST
