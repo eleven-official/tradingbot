@@ -122,6 +122,8 @@ def test_the_terms_page_is_public_and_honest():
     assert "To the maximum extent permitted by applicable law" in html
     assert "strict paper mode" in html
     assert "Version" in html and "Updated" in html
+    assert "free to use" in html and "30% of recorded profits" in html
+    assert "/revenue" in html  # the fee model's public home is one click away
 
 
 def test_a_badge_baked_under_old_words_stops_opening_the_door(monkeypatch):
@@ -148,3 +150,24 @@ def test_the_terms_are_advertised_and_stamped():
     index = (REPO / "templates" / "index.html").read_text(encoding="utf-8")
     assert 'href="/terms"' in index
     assert site_access.TERMS_VERSION >= 1 and site_access.TERMS_UPDATED
+
+
+def test_free_to_use_is_stated_at_every_door():
+    """The price policy in the user's own words, on each public surface.
+
+    Free to use — the only ask is the house's 30% fee of recorded profits,
+    and nothing is charged automatically. Each wording keeps the honest
+    qualifiers (recorded profits, no auto-charging) instead of a bare 30%.
+    """
+    gate = (REPO / "templates" / "gate.html").read_text(encoding="utf-8")
+    assert "free to use" in gate and "30% fee of recorded profits" in gate
+    assert "nothing is charged automatically" in gate
+
+    login = (REPO / "templates" / "login.html").read_text(encoding="utf-8")
+    assert "free to use" in login and "30% fee of recorded profits" in login
+
+    index_footer = (REPO / "templates" / "index.html").read_text(encoding="utf-8")
+    assert "Free to use — the house's only ask is a 30% fee of recorded profits" in index_footer
+
+    # A version bump is the re-tick mechanism: words changed → ask again.
+    assert site_access.TERMS_VERSION >= 3

@@ -145,6 +145,8 @@ def test_the_public_page_and_info_show_the_model_never_the_figures(monkeypatch, 
     html = page.text
     assert "30%" in html and "Draft" in html  # the model and its draft status stated plainly
     assert "0.00" not in html and "revenue_ledger.json" not in html  # no figures, no file paths
+    assert "free to use" in html  # the price policy sits beside the fee model
+    assert "never anything charged automatically" in html
 
 
 def test_the_csv_export_is_the_real_books(monkeypatch, tmp_path):

@@ -44,8 +44,8 @@ _DEFAULT_CODE = "flathead"
 # The Terms of Use a visitor ticks before the door opens. Version stamps every
 # acceptance cookie: bump TERMS_VERSION whenever the document changes, and every
 # browser re-gates once to accept the new words.
-TERMS_VERSION = 2
-TERMS_UPDATED = "2026-10-24"
+TERMS_VERSION = 3
+TERMS_UPDATED = "2026-10-25"
 
 _COOKIE_SALT = b"loki-site-access-v1"
 _PROCESS_SECRET = secrets.token_bytes(32)
