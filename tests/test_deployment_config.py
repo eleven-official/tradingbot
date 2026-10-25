@@ -164,12 +164,12 @@ class DeploymentConfigTests(unittest.TestCase):
 
     def test_workspace_responsive_nav_next_steps_and_backup(self):
         source = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
-        # Nav: Overview / Quant lab / Paper portfolio stay visible; the rest is grouped under "More".
+        # Primary workspaces, including AI trading, stay directly accessible.
         group_start = source.index('id="nav-more-group"')
-        for visible in ('data-view="overview"', 'data-view="strategy-lab"', 'data-view="portfolio"'):
+        for visible in ('data-view="overview"', 'data-view="strategy-lab"', 'data-view="portfolio"', 'data-view="ai-trading"'):
             self.assertLess(source.index(visible), group_start)
         self.assertIn('id="nav-more-toggle"', source)
-        for grouped in ("agent-council", "simulated-market", "ai-trading", "real-market",
+        for grouped in ("agent-council", "simulated-market", "real-market",
                         "scenarios", "copilot", "paper-planner", "integrations", "game"):
             self.assertGreater(source.index(f'data-view="{grouped}"'), group_start, grouped)
         # Account pill mounts into the topbar instead of floating over content.
