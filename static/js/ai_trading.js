@@ -206,6 +206,7 @@
       state.curve.push({ t: Date.now(), e: equityNow() });
       if (state.curve.length > 240) state.curve.splice(0, state.curve.length - 240);
       lastCheckAt = Date.now(); lastCheckOk = true; lastCheckWhy = '';
+      if (String(data.symbol) === String(state.symbol)) refreshCandles(); // candles of exactly the traded symbol
       save(); // fills, curve points and log lines survive a reload from here
       render();
     } catch {
@@ -312,6 +313,104 @@
       note.textContent = `Equity curve · ${change >= 0 ? '+' : '-'}${fmtMoney(Math.abs(change)).replace('$', '$')} vs start · last ${points.length} checks.`;
     }
   }
+
+  // --- Candles of the traded symbol (read-only, completed daily bars) ---
+
+  let barsBusy = false;
+  let barsSymbol = '';
+
+  const axisPrice = (value) => Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const fmtDay = (iso) => {
+    try { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }); }
+    catch { return ''; }
+  };
+
+  function renderCandles(symbol, candles) {
+    const svg = $('ai-candles');
+    if (!svg) return;
+    barsSymbol = symbol;
+    if (!candles.length) {
+      svg.hidden = true;
+      return;
+    }
+    const width = 900, height = 320;
+    const plot = { left: 66, right: 864, top: 16, bottom: 226, volumeTop: 246, volumeBottom: 294 };
+    const lows = candles.map((candle) => candle.l);
+    const highs = candles.map((candle) => candle.h);
+    const lastPrice = candles[candles.length - 1].c;
+    const rawMin = Math.min(...lows, lastPrice);
+    const rawMax = Math.max(...highs, lastPrice);
+    const pad = Math.max((rawMax - rawMin) * 0.08, rawMax * 0.001);
+    const min = rawMin - pad, max = rawMax + pad;
+    const y = (value) => plot.bottom - ((value - min) / (max - min || 1)) * (plot.bottom - plot.top);
+    const slot = (plot.right - plot.left) / candles.length;
+    const bodyWidth = Math.max(3, Math.min(12, slot * 0.54));
+    const maxVolume = Math.max(...candles.map((candle) => candle.v), 1);
+
+    const grid = Array.from({ length: 5 }, (_, index) => {
+      const gridY = plot.top + index * ((plot.bottom - plot.top) / 4);
+      const value = max - index * ((max - min) / 4);
+      return `<line x1="${plot.left}" x2="${plot.right}" y1="${gridY}" y2="${gridY}" style="stroke:rgba(139,218,212,.13)"/><text x="4" y="${gridY + 3}" style="fill:#7f93a8;font-size:11px">${escapeHtml(axisPrice(value))}</text>`;
+    }).join('');
+
+    const bars = candles.map((candle, index) => {
+      const center = plot.left + slot * index + slot / 2;
+      const up = candle.c >= candle.o;
+      const color = up ? '#8bdad4' : '#ff9d9d';
+      const bodyY = Math.min(y(candle.o), y(candle.c));
+      const bodyHeight = Math.max(1.5, Math.abs(y(candle.c) - y(candle.o)));
+      const volumeHeight = (candle.v / maxVolume) * (plot.volumeBottom - plot.volumeTop);
+      const title = `${fmtDay(candle.t)} · O ${axisPrice(candle.o)} · H ${axisPrice(candle.h)} · L ${axisPrice(candle.l)} · C ${axisPrice(candle.c)} · V ${Number(candle.v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+      return `<g><title>${escapeHtml(title)}</title><line x1="${center}" x2="${center}" y1="${y(candle.h)}" y2="${y(candle.l)}" style="stroke:${color};stroke-width:1.35"/><rect x="${center - bodyWidth / 2}" y="${bodyY}" width="${bodyWidth}" height="${bodyHeight}" rx="1.4" style="fill:${color}"/><rect x="${center - bodyWidth / 2}" y="${plot.volumeBottom - volumeHeight}" width="${bodyWidth}" height="${volumeHeight}" style="fill:${color};opacity:.54"/></g>`;
+    }).join('');
+
+    const lastY = y(lastPrice);
+    const labelY = Math.max(12, Math.min(plot.bottom - 3, lastY - 5));
+    const shown = [0, Math.floor((candles.length - 1) / 2), candles.length - 1].filter((value, index, list) => list.indexOf(value) === index);
+    const xLabels = shown.map((index) =>
+      `<text x="${plot.left + slot * index + slot / 2}" y="315" text-anchor="middle" style="fill:#7f93a8;font-size:11px">${escapeHtml(fmtDay(candles[index].t))}</text>`).join('');
+
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('aria-label', `${symbol} completed daily candlestick chart`);
+    svg.innerHTML = `<title>${escapeHtml(symbol)} completed daily candles</title>${grid}${bars}<line x1="${plot.left}" x2="${plot.right}" y1="238" y2="238" style="stroke:rgba(139,218,212,.13)"/><text x="${plot.left}" y="240" style="fill:#7f93a8;font-size:11px">VOLUME</text><line x1="${plot.left}" x2="${plot.right}" y1="${lastY}" y2="${lastY}" style="stroke:#8bdad4;stroke-width:1;stroke-dasharray:4 3"/><rect x="${plot.right - 62}" y="${labelY - 10}" width="62" height="17" rx="3" style="fill:#b4f2d2"/><text x="${plot.right - 56}" y="${labelY + 2}" style="fill:#08130d;font-size:10.5px;font-weight:700">${escapeHtml(axisPrice(lastPrice))}</text>${xLabels}`;
+    svg.hidden = false;
+  }
+
+  async function refreshCandles() {
+    const svg = $('ai-candles');
+    const note = $('ai-bars-note');
+    if (!svg || barsBusy) return;
+    const symbol = String(state.symbol || ($('ai-symbol') ? $('ai-symbol').value : '') || '').toUpperCase();
+    if (!symbol) return;
+    barsBusy = true;
+    try {
+      const res = await fetch(`/api/fusion/ai/bars?symbol=${encodeURIComponent(symbol)}&limit=60`, { cache: 'no-store' });
+      if (!res.ok) {
+        let copy = `Candle data for ${symbol} is unavailable right now; try again shortly. The chart keeps showing the last verified candles rather than filling gaps.`;
+        if (res.status === 503) {
+          try { copy = (await res.json()).detail || copy; } catch { /* server copy first, fallback second */ }
+        }
+        if (barsSymbol !== symbol) renderCandles(symbol, []);
+        if (note) note.textContent = copy;
+        return;
+      }
+      const data = await res.json();
+      const candles = (data.candles || []).filter((candle) => [candle.o, candle.h, candle.l, candle.c, candle.v].every(Number.isFinite));
+      renderCandles(data.symbol || symbol, candles);
+      const tag = $('ai-bars-tag');
+      if (tag) tag.textContent = `${data.count || candles.length} completed ${data.timeframe === '1d' ? 'daily' : (data.timeframe || 'candle')} bars`;
+      if (note) note.textContent = data.note || note.textContent;
+    } catch {
+      if (note) note.textContent = 'Candle data could not be fetched right now — the chart keeps its last verified candles rather than filling gaps.';
+    } finally {
+      barsBusy = false;
+    }
+  }
+
+  window.addEventListener('hashchange', () => {
+    const section = $('ai-trading');
+    if (section && !section.hidden) refreshCandles();
+  });
 
   function renderNavIndicator() {
     const navLink = document.querySelector('.sidebar nav a[data-view="ai-trading"]');
@@ -446,6 +545,7 @@
           if (state.symbol === symbol) {
             state.lastPrice = data.price;
             renderTrail(data);
+            refreshCandles();
           }
         } catch {
           logLine(`${symbol}: connection hiccup.`, 'warn');
@@ -546,6 +646,7 @@
       state.symbol = event.target.value;
       save();
       render();
+      refreshCandles();
     });
     $('ai-scan').addEventListener('click', scanAll);
   }
@@ -567,6 +668,8 @@
       startLoop();
       step();
     }
+    const section = $('ai-trading');
+    if (section && !section.hidden) refreshCandles(); // deep links straight into AI trading draw their tape
     setInterval(tickCountdown, 1000);
     tickCountdown();
   };

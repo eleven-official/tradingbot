@@ -186,6 +186,11 @@
         <div id="ai-trail"><p class="muted">Start AI trading to watch the Director → Quant → Risk reasoning stream in here, step by step. While a scan runs, <a href="#game" class="text-link">Bored? → the Loki Dive</a> in the bottom nav is the waiting-room game.</p></div>
       </section>
       <section class="panel">
+        <div class="section-title"><div><p class="eyebrow">THE TAPE</p><h2>Candles of the symbol being traded.</h2></div><span class="tag" id="ai-bars-tag">Completed daily bars</span></div>
+        <svg id="ai-candles" role="img" aria-label="Completed candlestick chart of the symbol being traded" hidden></svg>
+        <p class="caption" id="ai-bars-note">Completed daily candles from Loki's data provider — not a live quote. Fills always use the latest traded price from the step feed; the chart appears when you open AI trading, updates as checks land, and stays empty rather than inventing candles.</p>
+      </section>
+      <section class="panel">
         <div class="section-title"><div><p class="eyebrow">PAPER BOOK</p><h2>Equity &amp; results.</h2></div><button id="ai-scan" class="button secondary" type="button">Scan all symbols now</button></div>
         <div id="ai-stats" class="inline-metrics"></div>
         <canvas id="ai-curve" height="120" style="width:100%;margin:6px 0 2px" aria-label="Paper equity curve" role="img"></canvas>

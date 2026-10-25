@@ -9,17 +9,26 @@ its own journal; the server never places orders and never holds positions.
 The expensive part of a step is the history fetch + indicator scoring, so
 the per-symbol analysis (regime, director posture, quant signal, price) is
 cached briefly; the risk/execution legs are recomputed per request because
-they depend on the caller's paper equity and open positions.
+they depend on the caller's paper equity and open positions. Each step
+builds its OWN RiskAgent aligned with the caller's browser ledger — the
+cached pipeline is shared between every caller, so its risk manager is
+never mutated (that would leak one browser's day baseline and loss streak
+into another browser's decisions).
+
+A read-only ``GET /bars`` endpoint serves the engine's cached history as
+completed candles for the AI trading view; it shares the provider cache,
+so polling it dedupes against the step analysis fetch.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from loki.api.fusion import _private_response
@@ -69,6 +78,25 @@ def _get_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
     with _PIPELINE_LOCK:
         _PIPELINE_CACHE[symbol] = entry
     return entry
+
+
+def _risk_agent_for(cfg: Any, payload: AiStepBody) -> Any:
+    """Build a fresh RiskAgent aligned with the caller's browser paper ledger.
+
+    The cached pipeline is shared between every caller of this endpoint, so
+    its own risk manager must never be touched — a reset there would leak
+    one browser's day baseline and loss streak into another browser's
+    decisions. Instead, each step gets its own agent, seeded from the
+    ledger the caller sent (``equity_start`` becomes the day baseline;
+    ``consecutive_losses`` carries the streak), and shares nothing.
+    """
+    from loki_v8.agents import RiskAgent
+
+    risk = RiskAgent(cfg)
+    if payload.equity_start > 0:
+        risk.risk.reset_day(payload.equity_start)
+    risk.risk._consecutive_losses = payload.consecutive_losses
+    return risk
 
 
 def _analyze(symbol: str) -> Dict[str, Any]:
@@ -122,20 +150,12 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
     _private_response(response)
 
     analysis = _analyze(symbol)
-    pipeline, _cfg, _applied = _get_pipeline(symbol)
+    cfg = _get_pipeline(symbol)[1]
 
-    # The paper ledger lives in the browser; align the risk manager's
-    # day baseline and streak with it so daily-loss guards mean the same
-    # thing for the paper account as they do for the engine.
-    try:
-        if payload.equity_start > 0:
-            pipeline.risk.risk.reset_day(payload.equity_start)
-        pipeline.risk.risk._consecutive_losses = payload.consecutive_losses
-    except AttributeError:
-        pass
-
+    # The paper ledger lives in the browser; this step's risk agent is built
+    # fresh from it. Nothing below mutates the cached pipeline.
     quant = analysis.get("quant")
-    risk = pipeline.risk.run(
+    risk = _risk_agent_for(cfg, payload).run(
         analysis["director"]["posture"],
         quant,
         payload.equity,
@@ -160,4 +180,76 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
         "trained_profile_applied": analysis.get("trained_profile_applied", False),
         "trail": trail,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
+@router.get("/bars")
+def ai_bars(
+    response: Response,
+    symbol: str = Query(min_length=1, max_length=12),
+    limit: int = Query(default=60, ge=10, le=120),
+) -> Dict[str, Any]:
+    """Completed candles of one symbol for the AI trading view, newest LAST.
+
+    Read-only public market history through the engine's provider — the
+    same fetch and the same 60s provider cache the step analysis uses, so
+    polling the chart does not double the data traffic. These are completed
+    daily candles, NOT a live quote: paper fills always use the latest
+    traded price from the step feed, and a row that does not carry finite
+    OHLCV values is skipped rather than invented.
+    """
+    symbol = symbol.strip().upper()
+    if not symbol:
+        raise HTTPException(400, "Pick a symbol first.")
+    _private_response(response)
+
+    pipeline, cfg, _applied = _get_pipeline(symbol)
+    try:
+        frame = pipeline.provider.fetch_history(symbol, cfg.period, cfg.timeframe)
+    except Exception as exc:  # noqa: BLE001 - provider/network outages surface as 503
+        logger.warning("AI bars fetch failed for %s: %s", symbol, exc.__class__.__name__)
+        raise HTTPException(
+            503,
+            f"Candle data for {symbol} is unavailable right now; try again shortly.",
+        ) from exc
+
+    candles: List[Dict[str, Any]] = []
+    if frame is not None and not getattr(frame, "empty", True):
+        for stamp, row in frame.tail(limit).iterrows():
+            try:
+                values = [
+                    float(row[label])
+                    for label in ("open", "high", "low", "close", "volume")
+                ]
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not all(math.isfinite(value) for value in values):
+                continue
+            candles.append(
+                {
+                    "t": stamp.isoformat() if hasattr(stamp, "isoformat") else str(stamp),
+                    "o": round(values[0], 6),
+                    "h": round(values[1], 6),
+                    "l": round(values[2], 6),
+                    "c": round(values[3], 6),
+                    "v": values[4],
+                }
+            )
+    if not candles:
+        raise HTTPException(
+            503,
+            f"Candle data for {symbol} is unavailable right now; try again shortly. "
+            "The chart stays empty rather than inventing candles.",
+        )
+    return {
+        "symbol": symbol,
+        "period": cfg.period,
+        "timeframe": cfg.timeframe,
+        "count": len(candles),
+        "kind": "daily_completed_candles",
+        "note": (
+            "Completed daily candles from Loki's data provider — not a live quote. "
+            "Fills always use the latest traded price from the step feed."
+        ),
+        "candles": candles,
     }
