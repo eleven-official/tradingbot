@@ -169,7 +169,7 @@ jobs:
     # Registry publication remains a deliberate release action, not a PR/main push.
     - name: Log in to Container Registry for release
       if: github.event_name == 'release'
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
