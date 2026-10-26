@@ -12,6 +12,7 @@ Alpaca never pretends otherwise.
 from __future__ import annotations
 
 import json
+import math
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
@@ -141,8 +142,9 @@ def _exchange(
 def _number_or_none(value: Any) -> Optional[float]:
     """Round money numbers to cents; junk becomes None, never 0 (no invention)."""
     try:
-        return round(float(value), 2)
-    except (TypeError, ValueError):
+        number = float(value)
+        return round(number, 2) if math.isfinite(number) else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -208,7 +210,14 @@ def _position_view(payload: Dict[str, Any]) -> Dict[str, Any]:
         value = payload.get(field)
         if value is None:
             continue
-        if field in _POSITION_MONEY:
+        if field == "unrealized_plpc":
+            try:
+                value = float(value)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if not math.isfinite(value):
+                continue
+        elif field in _POSITION_MONEY:
             number = _number_or_none(value)
             if number is None:
                 continue

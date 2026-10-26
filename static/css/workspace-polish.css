@@ -120,3 +120,52 @@
   .loki-workspace .sidebar nav a, .workspace-launchers > a { transition: none; }
   .loki-workspace .ai-live-dot { animation: none; }
 }
+
+/* Instrument-panel finish: quiet surfaces, precise type, deliberate motion. */
+.loki-workspace { font-family: "Segoe UI", system-ui, sans-serif; }
+.loki-workspace .panel { border-radius: 10px; box-shadow: none; }
+.loki-workspace .hero {
+  border-radius: 12px;
+  background: #101a23;
+  border-color: #34434b;
+  padding: 48px;
+}
+.loki-workspace .hero h1 { font-weight: 500; line-height: 1.06; max-width: 650px; }
+.loki-workspace .hero .muted { max-width: 54ch; line-height: 1.8; }
+.loki-workspace .hero::before {
+  content: ""; position: absolute; inset: 0 0 0 60%; pointer-events: none;
+  background-image: linear-gradient(#a3b8bb08 1px, transparent 1px), linear-gradient(90deg, #a3b8bb08 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.loki-workspace .orbit-core { border-radius: 6px; box-shadow: none; background: #142722; }
+.loki-workspace .orbit-inner { box-shadow: none; }
+.loki-workspace .orbit-outer::after {
+  content: ""; position: absolute; top: -3px; left: calc(50% - 3px);
+  width: 6px; height: 6px; background: #b8e6d7; border-radius: 50%;
+}
+.loki-workspace .workspace-launchers > a { border-radius: 8px; background: #101923; }
+.loki-workspace .launcher-icon { background: transparent; border: 1px solid #32483f; border-radius: 6px; }
+.loki-workspace .launcher-arrow { transition: transform 180ms ease; }
+.loki-workspace .workspace-launchers > a:hover .launcher-arrow { transform: translateX(4px); }
+.loki-workspace .inline-metric strong { font-variant-numeric: tabular-nums; letter-spacing: -.6px; }
+.loki-workspace .button { border-radius: 6px; transition: background 160ms ease, border-color 160ms ease; }
+.loki-workspace input[type=checkbox] { min-height: 0; width: 18px; height: 18px; accent-color: #9debd0; }
+.loki-workspace :focus-visible { outline: 2px solid #b2ecd7; outline-offset: 4px; }
+.loki-workspace #alpaca-account, .loki-workspace #broker-paper-account, .loki-workspace #broker-live-account { overflow-x: auto; }
+.loki-workspace #ai-trading > .page-heading { background: #101a23; border-radius: 10px; }
+.loki-workspace #ai-candles { border-radius: 6px; }
+@keyframes instrument-orbit { to { transform: rotate(360deg); } }
+@keyframes workspace-arrive { from { opacity: .5; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: no-preference) {
+  .loki-workspace .orbit-outer { animation: instrument-orbit 48s linear infinite; }
+  .loki-workspace .workspace-view:not([hidden]) { animation: workspace-arrive 240ms ease-out; }
+  .loki-workspace .hero-visual:hover .orbit-outer { animation-play-state: paused; }
+}
+@media (max-width: 760px) {
+  .loki-workspace .hero { padding: 26px 22px; }
+  .loki-workspace .hero h1 { font-size: 38px; }
+  .loki-workspace .panel { padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loki-workspace .button, .loki-workspace .launcher-arrow { transition: none; }
+}

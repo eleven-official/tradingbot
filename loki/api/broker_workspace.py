@@ -81,9 +81,9 @@ _POSITION_KEYS = (
 
 
 def positions_view(raw) -> list[dict]:
-    """Whitelist venue holdings; unknown shapes collapse to nothing, never invented."""
+    """Whitelist venue holdings; a failed payload is not an empty portfolio."""
     if not isinstance(raw, list):
-        return []
+        raise ValueError("Broker holdings are unavailable: expected a positions list")
     return [
         {key: position[key] for key in _POSITION_KEYS if position.get(key) is not None}
         for position in raw

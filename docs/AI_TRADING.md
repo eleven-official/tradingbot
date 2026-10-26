@@ -8,6 +8,14 @@ Changing a chart timeframe does not change the trained daily strategy.
 
 ## Portfolio display
 
+Portfolio refresh failures are shown as unavailable, not as zero holdings or
+fresh balances. A failed key check clears the verified connection state.
+Chart refreshes retain the previous candles for the same symbol/timeframe
+while fetching; the status distinguishes a failed refresh from current data.
+
+An accepted test order proves order transport, not autonomous strategy
+performance or a fill. A model with no validated entry threshold waits in cash.
+
 When an Alpaca paper account is connected, the workspace shows exactly what
 the venue reports as held: key facts (status, cash, equity, buying power) plus
 the actual holdings table from Alpaca (`/v2/positions`, whitelisted keys). An

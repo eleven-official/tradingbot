@@ -328,6 +328,7 @@
 
   let barsController = null;
   let barsSymbol = '';
+  let barsTimeframe = '';
 
   const axisPrice = (value) => Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 });
   const fmtDay = (iso) => {
@@ -400,7 +401,8 @@
     const controller = new AbortController();
     barsController = controller;
     const timeout = setTimeout(() => controller.abort(), 20000);
-    renderCandles(symbol, []);
+    if (barsSymbol !== symbol || barsTimeframe !== timeframe) renderCandles(symbol, []);
+    barsTimeframe = timeframe;
     $('ai-bars-tag').textContent = `${symbol} · ${timeframe} · loading`;
     if (note) note.textContent = 'Fetching market candles…';
     try {
@@ -413,6 +415,7 @@
         }
         if (barsController !== controller) return;
         if (barsSymbol !== symbol) renderCandles(symbol, []);
+        $('ai-bars-tag').textContent = `${symbol} · refresh unavailable`;
         if (note) note.textContent = copy;
         return;
       }

@@ -334,7 +334,10 @@
         if (holdings && holdings.ok) positions = holdings.positions;
       } catch { /* holdings stay unavailable; the account still renders honestly */ }
       renderAccount(facts, positions);
-    } catch { /* the previous render stays untouched on failure */ }
+    } catch {
+      renderAccount(null);
+      message('#alpaca-message', 'Portfolio refresh failed. Verify the connection before relying on account figures.', true);
+    }
   }
 
   async function verify() {
@@ -368,6 +371,7 @@
       message('#alpaca-message', 'Keys verified — Alpaca confirmed this account on the paper endpoint.');
       fetchOrders();
     } catch (error) {
+      connected = false;
       stopAutopilot('Keys stopped verifying with Alpaca.');
       renderAccount(null);
       message('#alpaca-message', error.message || 'The Alpaca check failed.', true);

@@ -128,7 +128,7 @@ class TestPositions:
             "market_value": 1966.2,
             "cost_basis": 1950.33,
             "unrealized_pl": 15.87,
-            "unrealized_plpc": 0.01,
+            "unrealized_plpc": 0.0081384,
         }
         assert "asset_id" not in view and "exchange" not in view and "change_today" not in view
 

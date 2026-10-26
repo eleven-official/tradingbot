@@ -288,5 +288,6 @@ def test_junk_venue_holdings_collapse_to_nothing_and_never_to_invented_rows():
     from loki.api.broker_workspace import positions_view
 
     assert positions_view(VENUE_HOLDINGS) == [positions_view([VENUE_HOLDINGS[0]])[0]]
-    assert positions_view("garbage") == []
-    assert positions_view(None) == []
+    for invalid in ("garbage", None):
+        with pytest.raises(ValueError, match="holdings are unavailable"):
+            positions_view(invalid)
