@@ -14,7 +14,7 @@ def test_workspace_and_assets_resolve_outside_repo_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     response = client.get("/")
     assert response.status_code == 200
-    assert "Find an edge." in response.text
+    assert 'id="overview" class="workspace-view"' in response.text
     assert "Separate practice accounts" in response.text
     assert 'id="real-order-fields" disabled' in response.text
     for view in (
