@@ -122,6 +122,24 @@
 }
 
 /* Instrument-panel finish: quiet surfaces, precise type, deliberate motion. */
+.signal-instrument { flex: 0 0 360px; align-self: center; min-width: 0; border: 1px solid #365047; background: #0d191c; border-radius: 8px; overflow: hidden; }
+.instrument-heading, .instrument-footer { display: flex; justify-content: space-between; gap: 10px; padding: 15px; font: 9px "Consolas", monospace; letter-spacing: 1.2px; color: #9cb9b0; }
+.instrument-heading { border-bottom: 1px solid #2b413c; }
+.instrument-footer { border-top: 1px solid #2b413c; font-size: 8px; letter-spacing: 0; }
+.signal-drawing { display: block; width: 100%; height: auto; }
+.instrument-heading button { padding: 0; border: 0; background: none; color: #b6d7ca; font: inherit; cursor: pointer; }
+.signal-instrument[data-paused="true"] .signal-trace, .signal-instrument[data-paused="true"] .signal-reference { animation-play-state: paused; }
+.instrument-key::before { content: ""; display: inline-block; width: 12px; height: 2px; margin-right: 5px; background: #a8ead2; vertical-align: middle; }
+@keyframes signal-write { 0% { stroke-dashoffset: 100; } 45%, 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -100; } }
+@keyframes signal-reference-flow { to { stroke-dashoffset: -36; } }
+@media (prefers-reduced-motion: no-preference) {
+  .signal-trace { stroke-dasharray: 100; animation: signal-write 12s ease-in-out infinite; }
+  .signal-reference { animation: signal-reference-flow 8s linear infinite; }
+  .signal-instrument:hover .signal-trace, .signal-instrument:hover .signal-reference { animation-play-state: paused; }
+}
+@media (max-width: 1200px) { .signal-instrument { flex-basis: 280px; } }
+@media (max-width: 1000px) { .loki-workspace .hero { flex-wrap: wrap; } .signal-instrument { flex: 1 1 100%; max-width: 480px; } }
+@media (max-width: 760px) { .signal-instrument { max-width: none; } }
 .loki-workspace { font-family: "Segoe UI", system-ui, sans-serif; }
 .loki-workspace .panel { border-radius: 10px; box-shadow: none; }
 .loki-workspace .hero {

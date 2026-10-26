@@ -1,6 +1,13 @@
 'use strict';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
+$('#signal-motion-toggle')?.addEventListener('click', event => {
+  const button = event.currentTarget;
+  const paused = button.getAttribute('aria-pressed') !== 'true';
+  button.setAttribute('aria-pressed', String(paused));
+  button.textContent = paused ? 'Resume motion' : 'Pause motion';
+  button.closest('.signal-instrument').dataset.paused = String(paused);
+});
 let report=null, reportTime=null, sizing=null, riskRevision=0, previousIntent='help';
 let currentBars=null, currentSymbol='', currentFile='', currentConfig=null;
 let quantResult=null, councilResult=null, portfolio=null, scenarioResult=null, capabilities=null;
