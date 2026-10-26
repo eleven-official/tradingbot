@@ -74,11 +74,34 @@ def connection(request: Request, response: Response):
         return {"connected": False, "paper_ai_available": False, "live_automation_available": False}
 
 
+_POSITION_KEYS = (
+    "symbol", "qty", "side", "avg_entry_price", "current_price",
+    "market_value", "cost_basis", "unrealized_pl",
+)
+
+
+def positions_view(raw) -> list[dict]:
+    """Whitelist venue holdings; unknown shapes collapse to nothing, never invented."""
+    if not isinstance(raw, list):
+        return []
+    return [
+        {key: position[key] for key in _POSITION_KEYS if position.get(key) is not None}
+        for position in raw
+        if isinstance(position, dict) and position.get("symbol")
+    ]
+
+
 @router.post("/account")
 def account(request: Request, response: Response):
     _private(request, response)
     profile, _ = _session(request)
-    return _call(broker_link.refresh_account, profile)
+    result = _call(broker_link.refresh_account, profile)
+    if profile.provider == "alpaca":
+        positions = _call(
+            lambda: broker_link.AlpacaClient(profile).request("GET", "/v2/positions")
+        )
+        result["positions"] = positions_view(positions)
+    return result
 
 
 @router.post("/disconnect")

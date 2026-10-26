@@ -206,3 +206,87 @@ def test_local_key_entry_is_private_http_only_and_isolated_from_another_browser(
             first.post("/api/fusion/broker/disconnect", headers=headers).json()["connected"]
             is False
         )
+
+
+HOLDINGS_PAYLOAD = {
+    "id": "fixture-paper-account-1234",
+    "currency": "USD",
+    "status": "ACTIVE",
+    "cash": "23500",
+    "equity": "25000",
+    "trading_blocked": False,
+    "account_blocked": False,
+    "account_number": "PARB123X9",
+}
+
+VENUE_HOLDINGS = [
+    {
+        "symbol": "SPY",
+        "qty": "3",
+        "side": "long",
+        "avg_entry_price": "650.11",
+        "avg_cost": "650.11",
+        "current_price": "655.4",
+        "market_value": "1966.2",
+        "cost_basis": "1950.33",
+        "unrealized_pl": "15.87",
+        "change_today": "0.0012",
+        "asset_id": "b28f4066-5c6d-479b-a2af-85dc1a8f16fb",
+    },
+    {"junk": "unknown shape"},
+    "stray string",
+]
+
+
+def test_account_endpoint_reports_whitelisted_venue_holdings(monkeypatch, tmp_path):
+    from loki.api import broker_workspace
+
+    monkeypatch.setenv("LOKI_FUSION_LOCAL", "1")
+    monkeypatch.setenv("LOKI_PAPER_AI_DB", str(tmp_path / "paper.sqlite3"))
+    payload = {
+        "provider": "alpaca",
+        "mode": "paper",
+        "api_key": "fixture-api-key",
+        "api_secret": "fixture-api-secret",
+    }
+    seen = []
+
+    def fake_request(self, method, path, *, data=False, params=None, body=None):
+        seen.append(path)
+        if path == "/v2/account":
+            return HOLDINGS_PAYLOAD
+        if path == "/v2/positions":
+            return VENUE_HOLDINGS
+        raise AssertionError((method, path))
+
+    with TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 1250)) as local:
+        token = local.get("/api/fusion/capabilities").json()["local_token"]
+        headers = {"X-Loki-Local-Token": token}
+        with patch.object(link.AlpacaClient, "request", fake_request):
+            assert (
+                local.post("/api/fusion/broker/connect", json=payload, headers=headers).status_code
+                == 200
+            )
+            result = local.post("/api/fusion/broker/account", headers=headers).json()
+    assert result["positions"] == [
+        {
+            "symbol": "SPY",
+            "qty": "3",
+            "side": "long",
+            "avg_entry_price": "650.11",
+            "current_price": "655.4",
+            "market_value": "1966.2",
+            "cost_basis": "1950.33",
+            "unrealized_pl": "15.87",
+        }
+    ]
+    assert set(result["positions"][0]) <= set(broker_workspace._POSITION_KEYS)
+    assert "/v2/positions" in seen
+
+
+def test_junk_venue_holdings_collapse_to_nothing_and_never_to_invented_rows():
+    from loki.api.broker_workspace import positions_view
+
+    assert positions_view(VENUE_HOLDINGS) == [positions_view([VENUE_HOLDINGS[0]])[0]]
+    assert positions_view("garbage") == []
+    assert positions_view(None) == []

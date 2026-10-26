@@ -81,12 +81,95 @@ def _deferred(assert_later):
     return fake
 
 
+POSITION_PAYLOAD = {
+    "id": "0d0d0d0d-0000-0000-0000-000000000001",
+    "symbol": "SPY",
+    "exchange": "SMART",
+    "asset_class": "us_equity",
+    "asset_id": "b28f4066-5c6d-479b-a2af-85dc1a8f16fb",
+    "qty": "3",
+    "side": "long",
+    "status": "active",
+    "avg_entry_price": "650.11",
+    "avg_cost": "650.11",
+    "current_price": "655.4",
+    "market_value": "1966.2",
+    "cost_basis": "1950.33",
+    "unrealized_pl": "15.87",
+    "unrealized_plpc": "0.0081384",
+    "change_today": "0.0012",
+}
+
+
 class TestRelayAccess:
     def test_relay_requires_the_access_door(self, monkeypatch):
         fresh = TestClient(app)
         response = fresh.post("/api/broker/alpaca/test", json=KEYS)
         assert response.status_code == 403
         assert "access door" in response.json()["detail"]
+
+
+class TestPositions:
+    def gate(self):
+        opened = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True})
+        assert opened.status_code == 200
+
+    def test_positions_whitelist_only_known_fields(self):
+        view = module._position_view(POSITION_PAYLOAD)
+        assert view == {
+            "symbol": "SPY",
+            "qty": "3",
+            "side": "long",
+            "asset_class": "us_equity",
+            "status": "active",
+            "avg_entry_price": 650.11,
+            "avg_cost": 650.11,
+            "current_price": 655.4,
+            "market_value": 1966.2,
+            "cost_basis": 1950.33,
+            "unrealized_pl": 15.87,
+            "unrealized_plpc": 0.01,
+        }
+        assert "asset_id" not in view and "exchange" not in view and "change_today" not in view
+
+    def test_positions_list_is_read_back_with_no_invented_holdings(self, monkeypatch):
+        self.gate()
+        later = {}
+
+        def fake(request, timeout=None):
+            later["request"] = request
+            return FakeResponse(
+                json.dumps([POSITION_PAYLOAD, {"nonsense": None}, "stray"]).encode()
+            )
+
+        monkeypatch.setattr(module.urllib.request, "urlopen", fake)
+        response = client.post("/api/broker/alpaca/positions", json=KEYS)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ok"] is True and body["paper"] is True
+        assert body["positions"] == [module._position_view(POSITION_PAYLOAD), {}]
+        assert later["request"].full_url.endswith("/v2/positions")
+
+    def test_empty_positions_answer_is_exactly_empty(self, monkeypatch):
+        self.gate()
+        monkeypatch.setattr(
+            module.urllib.request,
+            "urlopen",
+            lambda request, timeout=None: FakeResponse(b"[]"),
+        )
+        body = client.post("/api/broker/alpaca/positions", json=KEYS).json()
+        assert body == {"ok": True, "paper": True, "positions": []}
+
+    def test_positions_failure_never_invents_holdings(self, monkeypatch):
+        self.gate()
+
+        def fake(request, timeout=None):
+            raise urllib.error.URLError(OSError("no route to host"))
+
+        monkeypatch.setattr(module.urllib.request, "urlopen", fake)
+        response = client.post("/api/broker/alpaca/positions", json=KEYS)
+        assert response.status_code == 503
+        assert "unreachable" in response.json()["detail"]
 
 
 class TestRelay:

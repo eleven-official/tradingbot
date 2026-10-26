@@ -35,7 +35,7 @@
     $('#alpaca-status').textContent = saved ? `Keys held in this browser (${mask(saved.key_id)})` : 'No keys in this browser';
   }
 
-  function renderAccount(data) {
+  function renderAccount(data, positions) {
     const target = $('#alpaca-account');
     target.replaceChildren();
     if (!connected || !data) {
@@ -50,10 +50,25 @@
       ['Equity', usd(data.equity)],
       ['Buying power', usd(data.buying_power)]
     ]));
+    const holdings = Array.isArray(positions) ? positions.filter((item) => item && item.symbol) : null;
+    target.append(element('p', 'WHAT THE ACCOUNT HOLDS', 'eyebrow'));
+    if (holdings === null) {
+      target.append(element('p', "Holdings could not be read — Alpaca's positions answer failed. Nothing was invented to fill the gap.", 'integration-note'));
+    } else if (!holdings.length) {
+      target.append(element('p', 'No open positions right now — Loki sees a cash-only paper account.', 'muted'));
+    } else {
+      target.append(table(
+        ['Symbol', 'Units', 'Entry', 'Mark', 'Value', 'Open P&L'],
+        holdings.map((item) => [
+          item.symbol, item.qty, number(item.avg_entry_price), number(item.current_price),
+          number(item.market_value), number(item.unrealized_pl)
+        ])
+      ));
+    }
     if (data.trading_blocked || data.account_blocked) {
       target.append(element('p', 'Alpaca flags this account as trading/blocked — check your Alpaca dashboard before expecting anything.', 'integration-note'));
     }
-    target.append(element('p', 'Account facts and the order log come from Alpaca\'s paper endpoint; orders are placed only when you click, armed then confirmed.', 'caption'));
+    target.append(element('p', 'Account facts, holdings and the order log come from Alpaca\'s paper endpoint; open orders also appear in the log below, and paper-runner orders in the AI runner\'s journal. Orders are placed only when you click, armed then confirmed.', 'caption'));
   }
 
   /* ---------- autopilot (paper, tab-open only, published rule) ---------- */
@@ -298,6 +313,7 @@
       const status = String((answer.order || {}).status || 'unknown').toLowerCase();
       message('#alpaca-order-message', `Sent to Alpaca paper: ${summary} — Alpaca's status: ${status}.` + (status === 'rejected' ? ' Alpaca refused it; the log will show it as-is.' : ''));
       await fetchOrders();
+      refreshPortfolio();
     } catch (error) {
       disarmOrder();
       message('#alpaca-order-message', error.message || 'Alpaca did not answer the order; nothing was confirmed.', true);
@@ -305,6 +321,20 @@
       busy = false;
       controls();
     }
+  }
+
+  async function refreshPortfolio() {
+    const saved = load();
+    if (!saved || !connected) return;
+    try {
+      const facts = await request('/api/broker/alpaca/account', saved);
+      let positions = null;
+      try {
+        const holdings = await request('/api/broker/alpaca/positions', saved);
+        if (holdings && holdings.ok) positions = holdings.positions;
+      } catch { /* holdings stay unavailable; the account still renders honestly */ }
+      renderAccount(facts, positions);
+    } catch { /* the previous render stays untouched on failure */ }
   }
 
   async function verify() {
@@ -329,7 +359,12 @@
       connected = true;
       statusTag();
       const facts = await request('/api/broker/alpaca/account', body);
-      renderAccount(facts);
+      let positions = null;
+      try {
+        const holdings = await request('/api/broker/alpaca/positions', body);
+        if (holdings && holdings.ok) positions = holdings.positions;
+      } catch { /* holdings stay unavailable; the account still renders honestly */ }
+      renderAccount(facts, positions);
       message('#alpaca-message', 'Keys verified — Alpaca confirmed this account on the paper endpoint.');
       fetchOrders();
     } catch (error) {
@@ -381,7 +416,7 @@
       syncLimit();
     }
     const refresh = $('#alpaca-orders-refresh');
-    if (refresh) refresh.addEventListener('click', (event) => { event.preventDefault(); if (!busy) fetchOrders(); });
+    if (refresh) refresh.addEventListener('click', (event) => { event.preventDefault(); if (!busy) { fetchOrders(); refreshPortfolio(); } });
   }
 
   const autoSwitch = $('#alpaca-autopilot-switch');

@@ -189,6 +189,34 @@ def _order_view(payload: Dict[str, Any]) -> Dict[str, Any]:
     return view
 
 
+_POSITION_FIELDS = (
+    "symbol", "qty", "side", "asset_class", "status",
+    "avg_entry_price", "avg_cost", "current_price",
+    "market_value", "cost_basis", "unrealized_pl", "unrealized_plpc",
+)
+
+_POSITION_MONEY = frozenset(
+    {"avg_entry_price", "avg_cost", "current_price",
+     "market_value", "cost_basis", "unrealized_pl", "unrealized_plpc"}
+)
+
+
+def _position_view(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Whitelist the portfolio fields that leave the relay; holdings stay honest."""
+    view: Dict[str, Any] = {}
+    for field in _POSITION_FIELDS:
+        value = payload.get(field)
+        if value is None:
+            continue
+        if field in _POSITION_MONEY:
+            number = _number_or_none(value)
+            if number is None:
+                continue
+            value = number
+        view[field] = str(value) if not isinstance(value, (int, float)) else value
+    return view
+
+
 def _dict_payload(payload: Any, what: str) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         raise HTTPException(502, f"Alpaca's answer was not the expected {what} payload.")
@@ -244,6 +272,21 @@ async def alpaca_recent_orders(request: Request, keys: AlpacaPaperKeys) -> Dict[
     orders: List[Dict[str, Any]] = [_order_view(order) for order in payload if isinstance(order, dict)]
     orders.sort(key=lambda view: str(view.get("created_at") or ""), reverse=True)
     return {"ok": True, "paper": True, "orders": orders}
+
+
+@router.post("/positions", include_in_schema=False)
+async def alpaca_positions(request: Request, keys: AlpacaPaperKeys) -> Dict[str, Any]:
+    """What the paper account actually holds right now — read-only, whitelisted.
+
+    The portfolio panel renders exactly this list. Empty means no positions,
+    never an invented holding; a failed read surfaces an honest error.
+    """
+    _require_gate(request)
+    payload = await run_in_threadpool(_paper_exchange, "GET", "/v2/positions", keys)
+    if not isinstance(payload, list):
+        raise HTTPException(502, "Alpaca's positions answer was not the expected list.")
+    positions = [_position_view(item) for item in payload if isinstance(item, dict)]
+    return {"ok": True, "paper": True, "positions": positions}
 
 
 @router.post("/bars", include_in_schema=False)

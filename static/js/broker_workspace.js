@@ -21,7 +21,16 @@
       if(!connection?.connected){node.append(element('p','No broker account is linked in this browser.','muted'));continue;}
       const account=connection.account;
       node.append(element('p',`${connection.provider.toUpperCase()} · ${connection.mode.toUpperCase()} · ${account.status||'verified'}`,'integration-note'));
-      if(connection.provider==='alpaca')node.append(inlineMetrics([['Broker cash',number(account.cash)+' USD'],['Broker equity',number(account.equity)+' USD'],['Account ending',account.id_hint]]));
+      if(connection.provider==='alpaca'){
+        node.append(inlineMetrics([['Broker cash',number(account.cash)+' USD'],['Broker equity',number(account.equity)+' USD'],['Account ending',account.id_hint]]));
+        const holdings=Array.isArray(connection.positions)?connection.positions:null;
+        if(!holdings)node.append(element('p','Holdings could not be read from the venue right now — nothing was invented to fill the gap.','caption'));
+        else{
+          node.append(element('p',"WHAT THE ACCOUNT HOLDS",'eyebrow'));
+          if(!holdings.length)node.append(element('p',"No open positions right now — Loki sees a cash-only paper account.",'muted'));
+          else node.append(table(['Symbol','Units','Entry','Mark','Value','Open P&L'],holdings.map(item=>[item.symbol,item.qty,number(item.avg_entry_price),number(item.current_price),number(item.market_value),number(item.unrealized_pl)])));
+        }
+      }
       else node.append(table(['Asset','Total units','Available units'],(account.assets||[]).map(a=>[a.currency,number(a.total,8),number(a.free,8)])));
       node.append(element('p',connection.credential_storage,'caption'));
     }
@@ -52,7 +61,9 @@
     $('#ai-paper-journal').replaceChildren(agent.journal?.length?table(['Time / UTC','Paper order','State','Actual filled units'],agent.journal.map(row=>[new Date(row.created_at*1000).toISOString().replace('T',' ').slice(0,19),`${row.request.side} ${row.request.qty} ${row.request.symbol} @ ${row.request.limit_price}`,human(row.state),number(row.order?.filled_qty,6)])):element('p','No AI paper order claims yet.','muted'));controls();
   }
   async function refresh(){
-    connection=await request('/api/fusion/broker/connection',undefined,true);accountCard();
+    connection=await request('/api/fusion/broker/connection',undefined,true);
+    if(connection.connected)try{connection=await request('/api/fusion/broker/account',{},true);}catch(error){/* keep the connection facts; holdings stay unavailable */}
+    accountCard();
     if(paperConnection()){await loadModels();agent=await request('/api/fusion/broker/paper-ai',undefined,true);renderAgent();}
   }
   function openDialog(mode){
@@ -65,7 +76,7 @@
   $('#broker-connect-dialog').addEventListener('cancel',()=>$('#broker-connect-form').reset());
   $('#broker-connect-form').addEventListener('submit',event=>{
     event.preventDefault();const data=Object.fromEntries(new FormData(event.target));event.target.querySelectorAll('input[type=password]').forEach(input=>{input.value='';});
-    perform(async()=>{await pause();connection=await request('/api/fusion/broker/connect',data,true);model=null;agent=null;accountCard();await loadModels();$('#broker-connect-dialog').close();message('#broker-message','Account verified. Keys stay in this server session; no order was sent.');},'#broker-dialog-message');
+    perform(async()=>{await pause();connection=await request('/api/fusion/broker/connect',data,true);try{connection=await request('/api/fusion/broker/account',{},true);}catch(error){/* holdings stay unavailable; nothing invented */}model=null;agent=null;accountCard();await loadModels();$('#broker-connect-dialog').close();message('#broker-message','Account verified. Keys stay in this server session; no order was sent.');},'#broker-dialog-message');
   });
   $('#broker-account-refresh').addEventListener('click',()=>perform(async()=>{connection=await request('/api/fusion/broker/account',{},true);accountCard();},'#broker-message'));
   $('#broker-disconnect').addEventListener('click',()=>perform(async()=>{await pause();const result=await request('/api/fusion/broker/disconnect',{},true);connection=null;model=null;agent=null;accountCard();renderAgent();$('#instrument-model-results').hidden=true;message('#broker-message',result.message);},'#broker-message'));

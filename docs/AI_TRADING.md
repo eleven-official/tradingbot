@@ -6,6 +6,17 @@ The AI trading page's paper controls fill a browser journal with simulated
 money. The simulator calls `/api/fusion/ai/step`, which never sends orders.
 Changing a chart timeframe does not change the trained daily strategy.
 
+## Portfolio display
+
+When an Alpaca paper account is connected, the workspace shows exactly what
+the venue reports as held: key facts (status, cash, equity, buying power) plus
+the actual holdings table from Alpaca (`/v2/positions`, whitelisted keys). An
+account with no positions honestly shows a cash-only portfolio; a failed
+holdings read shows an unavailable note instead of invented rows. The hard-keys
+panel (Real account) reads positions per request with browser-held keys; the
+launcher panel reads the same feed for the connected server session. Open
+orders appear in the order log and, for the AI runner, in its journal.
+
 ## Alpaca live runner
 
 Run the local launcher. Under AI trading, connect **Alpaca live**, enter a
