@@ -102,16 +102,17 @@
     }
     const cards = book.symbols.map((entry) => {
       const holdout = entry.final_holdout || {};
+      const hasAudit = holdout.trades !== null && holdout.trades !== undefined
+        && Number.isFinite(Number(holdout.trades));
       // The badge carries win rate and the sample size; this line carries the
       // other two audited numbers. No number is printed twice.
       const holdoutLine =
-        holdout.trades ?
+        hasAudit ?
           `<span style="color:#8bdad4;font-size:12px">Final 20% never touched by training:</span>
            <span style="color:#e7f0ff;font-size:12.5px">${escapeHtml(num(holdout.profitable_months_pct))} profitable months · PF ${escapeHtml(num(holdout.profit_factor, 2, ''))}</span>` :
           '<span style="color:#7f93a8;font-size:12px">Holdout audit pending</span>';
-      // Judged against the thresholds this book was actually trained to, not a
-      // hardcoded set — otherwise a verified card can show a failing badge.
-      const badge = holdout.trades ? holdoutBadge(holdout, book.hurdle_targets) : '';
+      // The final audit is distinct from development and robustness checks.
+      const badge = hasAudit ? holdoutBadge(holdout, book.hurdle_targets) : '';
       const robustness = robustnessBadge(entry);
       const selection = selectionBadge(entry);
       const expectancy = expectancyLine(entry);
@@ -124,12 +125,9 @@
         hurdleLine = '<span style="color:#cbd8ff;font-size:12px">not promoted — simulated tapes never reached the fill floor</span>';
       } else if (entry.good === false) {
         hurdleLine = '<span style="color:#f0b8b8;font-size:12px">missed hurdles — research only, not a verified edge</span>';
-      } else if (holdout.trades && holdoutAudit(holdout, book.hurdle_targets).missed.length) {
-        // Cleared the gate and then lost its own untouched tail. Both facts are
-        // true at once and the card says so instead of picking the flattering
-        // one: the parameters survived every check the trainer could run, and
-        // the most recent fifth of history still argues against them.
-        hurdleLine = '<span style="color:#f0c98b;font-size:12px">cleared every gate, then lost in the untouched tail — promising, not proven forward</span>';
+      } else if (hasAudit && holdoutAudit(holdout, book.hurdle_targets).missed.length) {
+        // Missing a trade-count or win-rate hurdle does not imply a net loss.
+        hurdleLine = '<span style="color:#f0c98b;font-size:12px">development checks passed; final holdout below audit thresholds</span>';
       }
       return `<article style="${cardStyle}">
         <strong style="font-size:15px;color:#b8f0d8">${escapeHtml(entry.symbol)}</strong>

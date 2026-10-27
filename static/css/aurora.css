@@ -813,3 +813,110 @@ body.loki-workspace::after{
   body.loki-workspace::before,body.loki-workspace::after,.topbar::after,.panel::before{display:none}
   .panel,.metric{background:#fff;color:#111;box-shadow:none;border-color:#ddd;backdrop-filter:none}
 }
+
+/* Editorial terminal: quieter surfaces, stronger hierarchy, usable mid-width layout. */
+@media screen {
+  body.loki-workspace{--text:#eef5f8;--muted:#a2b5c4;--accent:#c9ffe2;--green:#a8f0c6;--panel:#101a24;--line:#293c3c;--aurora-1:#2ee6b0;--aurora-2:#83d9bb;--aurora-3:#b4e8d5;--surface-deep:#0a1319;--surface:#111e26;--surface-raised:#182c32;--surface-border:#30494c;--ink-soft:#b7cdc9;--mint:#a8f0c6;background:#070b11}
+  body.loki-workspace::before{background:radial-gradient(ellipse at 85% 0,rgba(46,230,176,.08),transparent 45%),#070b11}
+  body.loki-workspace::after{opacity:.018}
+  .loki-workspace .sidebar{background:var(--surface-deep);box-shadow:none;border-color:var(--line);padding:26px 18px;width:216px}
+  .loki-workspace main{margin-left:216px;padding:0 32px 32px;min-width:0}
+  .loki-workspace .brand{font-size:24px;letter-spacing:4px}
+  .loki-workspace .brand-mark{background:linear-gradient(140deg,#c9ffe2,#80d9bc);color:#102c25;border:0;box-shadow:0 6px 24px #2ee6b014;border-radius:10px}
+  .loki-workspace .nav-label{font-size:9px;letter-spacing:2px;color:var(--muted);margin-top:38px}
+  .loki-workspace .sidebar nav a{min-height:44px;border:1px solid transparent;border-radius:8px;font-size:12px}
+  .loki-workspace .sidebar nav a.active{background:#19332d;color:var(--accent);border-color:#31584b;box-shadow:none}
+  .loki-workspace .sidebar nav a.active::before{background:var(--mint);box-shadow:none;height:17px}
+  .loki-workspace .sidebar-context{background:var(--surface);border-color:var(--line);box-shadow:none}
+  .loki-workspace .topbar{position:relative;min-height:76px;background:transparent;backdrop-filter:none;flex-wrap:wrap;padding:16px 0;gap:12px}
+  .loki-workspace .topbar::after{display:none}
+  .loki-workspace .topbar-status{flex-wrap:wrap;gap:8px}
+  .loki-workspace .pill{box-shadow:none;background:#122a24;border-color:#345b4d;color:var(--mint)}
+  .loki-workspace .mode-switch button[aria-pressed="true"]{background:var(--mint);box-shadow:none;color:#102c25}
+  .loki-workspace .hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(240px,1fr);gap:32px;align-items:center;padding:40px 36px;margin:24px 0;border-radius:20px;background:linear-gradient(120deg,#162e2c,#101d27 75%);border:1px solid #35514e;box-shadow:0 20px 55px #03091655;overflow:hidden}
+  .loki-workspace .hero::after{background:radial-gradient(ellipse at 100% 0,rgba(46,230,176,.08),transparent 65%)}
+  .loki-workspace .hero h1{font-size:clamp(32px,3.8vw,64px);line-height:1.08;letter-spacing:-2px;margin:18px 0 20px}
+  .loki-workspace .hero h1 em{background:linear-gradient(90deg,#c9ffe2,#77ddbd);background-clip:text;-webkit-background-clip:text;color:transparent;font-style:normal;animation:none}
+  .loki-workspace .hero .eyebrow{font-size:9px;letter-spacing:2.4px;color:var(--mint)}
+  .loki-workspace .hero .muted{font-size:13px;line-height:1.85;color:var(--ink-soft)}
+  .loki-workspace .hero-actions{gap:18px;flex-wrap:wrap;margin-top:26px}
+  .loki-workspace .button.primary{background:linear-gradient(115deg,#c9ffe2,#8be4c6);color:#102c25;border:1px solid #b0f0d4;box-shadow:0 6px 20px #2ee6b014;border-radius:9px;min-height:44px}
+  .loki-workspace .button.primary:hover{background:#d8ffeb;transform:translateY(-1px)}
+  .loki-workspace .hero-actions .text-link{color:var(--accent);font-size:11px}
+  .loki-workspace .signal-instrument{width:100%;min-width:0;background:var(--surface-deep);border:1px solid var(--surface-border);box-shadow:0 12px 30px #02081844;border-radius:14px}
+  .loki-workspace .signal-instrument::after{display:none}
+  .loki-workspace .signal-drawing{display:block;width:100%;max-height:245px}
+  .loki-workspace .signal-trace{stroke:var(--mint);filter:drop-shadow(0 0 4px #2ee6b033)}
+  .loki-workspace .instrument-heading{padding:14px;font-size:9px;color:var(--mint)}
+  .loki-workspace .instrument-footer{padding:12px;font-size:8px;gap:8px;flex-wrap:wrap}
+  .loki-workspace .workspace-launchers{gap:14px}
+  .loki-workspace .workspace-launchers>a{background:linear-gradient(145deg,var(--surface-raised),var(--surface));border-color:var(--line);border-radius:14px;box-shadow:none;padding:22px}
+  .loki-workspace .workspace-launchers>a:hover{background:#203b36;border-color:#5a8f7a;box-shadow:0 8px 24px #03091444}
+  .loki-workspace .launcher-icon{background:#203e34;color:var(--mint);border-color:#3b6251;box-shadow:none;border-radius:11px}
+  .loki-workspace .workspace-launchers>a:nth-child(2) .launcher-icon{background:#243c3f;color:#b7e3db;border-color:#3a5c60}
+  .loki-workspace .panel,.loki-workspace #ai-trading>.panel{background:var(--surface);border-color:var(--line);box-shadow:0 8px 28px #03091622;backdrop-filter:none;border-radius:16px;padding:26px}
+  .loki-workspace .panel::before{display:none}
+  .loki-workspace .section-title h2{font-size:22px;letter-spacing:-.7px}
+  .loki-workspace .section-title .eyebrow{color:var(--mint)}
+  .loki-workspace .metric{background:linear-gradient(135deg,var(--surface-raised),var(--surface));border:1px solid var(--surface-border);border-top:2px solid #83c9ab;border-radius:12px;padding:22px;box-shadow:none}
+  .loki-workspace .metric:nth-child(2n){border-top-color:#6a9b96}
+  .loki-workspace .metric strong{font-size:34px;font-weight:500;letter-spacing:-1.5px;font-variant-numeric:tabular-nums}
+  .loki-workspace .metric p{color:var(--ink-soft);font-size:11px}
+  .loki-workspace .metric small{color:var(--muted);line-height:1.6}
+  .loki-workspace .metric::before,.loki-workspace .metric::after{display:none}
+  .loki-workspace .page-heading{padding:32px 0 24px}
+  .loki-workspace .page-heading h1{font-size:38px;letter-spacing:-1.5px}
+  .loki-workspace input,.loki-workspace select,.loki-workspace textarea{background:var(--surface-deep);border-color:var(--surface-border);border-radius:8px}
+  .loki-workspace :is(a,button,input,select,textarea):focus-visible{outline:2px solid var(--mint);outline-offset:3px}
+  .loki-workspace #trained-book-grid>article{flex:1 1 290px!important;min-width:0!important;background:linear-gradient(145deg,var(--surface-raised),var(--surface))!important;border:1px solid var(--surface-border)!important;border-radius:14px!important;padding:22px!important;gap:10px!important;box-shadow:none!important}
+  .loki-workspace #trained-book-grid>article>strong{font-size:19px!important;color:var(--mint)!important;letter-spacing:-.5px}
+  .loki-workspace #trained-book-grid>article>span{overflow-wrap:anywhere;line-height:1.55}
+  .loki-workspace th{background:var(--surface-deep);color:var(--ink-soft);font-size:10px;letter-spacing:.08em}
+  .loki-workspace td{border-color:var(--line);padding-top:14px;padding-bottom:14px}
+  .loki-workspace .sidebar nav a:hover{background:#1d3230;color:var(--text)}
+  .loki-workspace .workspace-context{background:#142a27;border-color:#355b50}
+  .loki-workspace .mode-switch,.loki-workspace .palette-chip{background:var(--surface);border-color:var(--surface-border)}
+  .loki-workspace .button.secondary{background:var(--surface-raised);border-color:var(--surface-border);color:var(--text)}
+  .loki-workspace .instrument-key::before{background:var(--mint)}
+  .loki-workspace .signal-drawing stop{stop-color:var(--mint)}
+  .loki-workspace .hero-copy{min-width:0}
+  .loki-workspace .section-title{gap:16px;margin-bottom:22px}
+  .loki-workspace .workspace-view{scroll-margin-top:24px}
+  .loki-workspace .button:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+  .loki-workspace .table-wrap{border:1px solid var(--line);border-radius:10px;overflow:auto}
+  .loki-workspace tbody tr:hover{background:#a8f0c609}
+  .loki-workspace .workspace-launchers strong{font-size:15px}
+  .loki-workspace .workspace-launchers p{line-height:1.65}
+}
+@media screen and (max-width:1100px){
+  .loki-workspace .hero{grid-template-columns:1fr;padding:30px;gap:24px}
+  .loki-workspace .signal-drawing{max-height:180px}
+  .loki-workspace .hero h1{font-size:44px}
+}
+@media screen and (max-width:900px){
+  .loki-workspace .sidebar{position:relative;width:100%;padding:18px 22px;border-right:0;border-bottom:1px solid var(--line)}
+  .loki-workspace .sidebar nav{display:flex;flex-wrap:wrap;gap:5px;margin-top:16px}
+  .loki-workspace .sidebar nav a,.loki-workspace .sidebar nav .nav-more{min-height:38px;padding:8px 11px;font-size:11px}
+  .loki-workspace .sidebar .nav-label,.loki-workspace .sidebar-context,.loki-workspace .sidebar-bottom{display:none}
+  .loki-workspace main{margin-left:0;padding:0 22px 24px}
+  .loki-workspace .hero{grid-template-columns:minmax(0,1.2fr) minmax(200px,1fr);gap:22px}
+  .loki-workspace .hero h1{font-size:36px}
+  .loki-workspace .nav-more-group.open{flex-basis:100%}
+}
+@media screen and (max-width:600px){
+  .loki-workspace main{padding:0 14px 24px}
+  .loki-workspace .sidebar{padding:16px 14px}
+  .loki-workspace .hero{grid-template-columns:1fr;padding:24px 20px;margin-top:16px}
+  .loki-workspace .hero h1{font-size:38px}
+  .loki-workspace .signal-drawing{max-height:150px}
+  .loki-workspace .panel,.loki-workspace #ai-trading>.panel{padding:18px}
+  .loki-workspace .metric{padding:16px}
+  .loki-workspace .metric strong{font-size:27px}
+  .loki-workspace .hero-actions{align-items:flex-start;flex-direction:column}
+  .loki-workspace .workspace-launchers{grid-template-columns:1fr}
+  .loki-workspace .sidebar nav{flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px}
+  .loki-workspace .sidebar nav>a,.loki-workspace .sidebar nav>button{flex-shrink:0;min-height:44px}
+  .loki-workspace .sidebar nav:has(.nav-more-group.open){flex-wrap:wrap}
+  .loki-workspace .hero .button{white-space:normal;text-align:center}
+  .loki-workspace .section-title .button{min-height:44px}
+}
