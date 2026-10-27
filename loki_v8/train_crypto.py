@@ -354,6 +354,7 @@ def run(
     windows: Tuple[int, ...] = (5, 7, 10),
     synthetic_seeds: Tuple[int, ...] = (11, 23, 37, 53, 71),
     robustness: bool = True,
+    custom_grid: Optional[Dict[str, List[Any]]] = None,
 ) -> Dict[str, Any]:
     """Train the crypto universe and write the merged snapshot."""
     from loki_v8.train import consensus_params
@@ -397,7 +398,7 @@ def run(
             CryptoJob(
                 s,
                 1,
-                None,
+                custom_grid,
                 optimization_period,
                 timeframe,
                 windows,
@@ -546,12 +547,22 @@ def main() -> None:
         help="skip the window + synthetic gate (report the hurdle result only)",
     )
     parser.add_argument("--no-write", action="store_true", help="report only, do not touch the snapshot")
+    parser.add_argument("--grid", default="", help="custom grid as key=val1,val2... pairs (e.g. 'signal_threshold=8,14 stop_loss_atr=2,3')")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     universe = tuple(s.strip().upper() for s in args.symbols.split(",") if s.strip()) or None
     windows = tuple(int(v) for v in args.windows.split(",") if v.strip()) or (5, 7, 10)
     seeds = tuple(int(v) for v in args.synthetic_seeds.split(",") if v.strip()) or (11, 23, 37, 53, 71)
+    # Parse custom grid if provided
+    custom_grid = None
+    if args.grid.strip():
+        custom_grid = {}
+        for pair in args.grid.split():
+            if "=" in pair:
+                k, vals = pair.split("=", 1)
+                custom_grid[k.strip()] = [float(v) if "." in v else int(v) for v in vals.split(",") if v.strip()]
+        print(f"Using custom grid: {json.dumps(custom_grid)}", flush=True)
     run(
         universe=universe,
         rounds=args.rounds,
@@ -562,6 +573,7 @@ def main() -> None:
         windows=windows,
         synthetic_seeds=seeds,
         robustness=not args.no_robustness,
+        custom_grid=custom_grid,
     )
 
 
