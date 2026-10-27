@@ -293,6 +293,11 @@ def _session_summary(
         "profit_factor": round(profit_factor, 2) if profit_factor != float("inf") else "inf",
         "avg_win": round(gross_win / len(wins), 2) if wins else 0.0,
         "avg_loss": round(gross_loss / len(losses), 2) if losses else 0.0,
+        # Mean P&L per fill. The trainer ranks profiles on this, so the paper
+        # session reports it too: a high hit rate with a tiny average win and a
+        # large average loss is visible in one number instead of hidden behind
+        # the win percentage.
+        "expectancy": round(sum(pnls) / len(pnls), 2) if pnls else 0.0,
         "max_drawdown_pct": round(max_dd, 2),
         "active_symbols": active_symbols,
     }
@@ -637,6 +642,7 @@ def print_replay(payload: Dict[str, Any]) -> None:
     print(f"  net P&L        ${summary['pnl']:,.2f}  ({summary['return_pct']:+.2f}%)")
     print(f"  trades         {summary['trades']}  ({summary['wins']}W / {summary['losses']}L, {summary['win_rate_pct']}%)")
     print(f"  profit factor  {summary['profit_factor']}")
+    print(f"  expectancy     ${summary['expectancy']:,.2f} per fill")
     print(f"  max drawdown   {summary['max_drawdown_pct']:.2f}%")
     if payload.get("session_file"):
         print(f"  session file   {payload['session_file']}")

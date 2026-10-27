@@ -521,9 +521,236 @@ body.loki-workspace::after{
   background:radial-gradient(560px 220px at 12% 0%, rgba(46,230,176,.12), transparent 70%), var(--glass);
 }
 
-/* ---------- motion ---------- */
+/* ==========================================================================
+   AURORA II — typography rhythm, data density, and instrument chrome.
+   Same rules as above: scoped to .loki-workspace, presentation only.
+   ========================================================================== */
+
+/* ---------- type scale ---------- */
+
+.loki-workspace h1,.loki-workspace h2,.loki-workspace h3,.loki-workspace h4{
+  font-family:var(--sans);color:#f4fbff;text-wrap:balance;
+  font-variation-settings:"wght" 600;
+}
+.loki-workspace h2{font-size:clamp(17px,1.35vw,21px);letter-spacing:-.55px;line-height:1.24}
+.loki-workspace h3{font-size:clamp(14px,1.15vw,17px);letter-spacing:-.35px;line-height:1.28}
+.loki-workspace h4{font-size:13px;letter-spacing:.02em;text-transform:none;color:#dfeef5}
+.loki-workspace p,.loki-workspace li{line-height:1.62;text-wrap:pretty}
+.loki-workspace .caption,.loki-workspace .muted,.loki-workspace .field-note{line-height:1.55}
+.loki-workspace .eyebrow{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+  font-weight:600;color:#7fe3bb;
+}
+.loki-workspace .mono,.loki-workspace code,.loki-workspace kbd,.loki-workspace samp,
+.loki-workspace .data-fingerprint,.loki-workspace .metric .caption{
+  font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1,"ss01" 1;
+}
+.loki-workspace code{
+  padding:1px 6px;border-radius:6px;font-size:.92em;
+  background:rgba(126,168,184,.10);border:1px solid rgba(126,168,184,.16);color:#cfeef7;
+}
+.loki-workspace kbd{
+  padding:2px 7px;border-radius:6px;font-size:11px;color:#d6ecf4;
+  background:linear-gradient(180deg,rgba(34,52,66,.95),rgba(14,23,32,.95));
+  border:1px solid rgba(126,168,184,.28);box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 2px 0 rgba(0,0,0,.5);
+}
+.loki-workspace a{transition:color .16s ease,opacity .16s ease}
+.loki-workspace a:hover{color:#d3ffe8}
+.loki-workspace .text-link,.loki-workspace a.text-link{
+  position:relative;text-decoration:none;border-bottom:1px solid rgba(168,240,198,.28);
+  transition:border-color .2s ease,color .2s ease,box-shadow .2s ease;
+}
+.loki-workspace .text-link:hover{border-bottom-color:rgba(168,240,198,.85);box-shadow:0 6px 14px -12px rgba(46,230,176,.9)}
+.loki-workspace strong{color:#f2fbff;font-weight:600}
+.loki-workspace .positive,.loki-workspace [data-tone="positive"]{color:#8ff0c6}
+.loki-workspace .negative,.loki-workspace [data-tone="negative"]{color:#ffb3a7}
+.loki-workspace .neutral,.loki-workspace [data-tone="neutral"]{color:#a2b5c4}
+
+/* ---------- page headings & section rules ---------- */
+
+.loki-workspace .page-heading{
+  position:relative;padding-bottom:16px;margin-bottom:4px;
+}
+.loki-workspace .page-heading::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:linear-gradient(90deg,rgba(46,230,176,.5),rgba(56,189,248,.28) 32%,rgba(126,168,184,.06) 76%,transparent);
+}
+.loki-workspace .page-heading h1{font-size:clamp(24px,2.4vw,34px);letter-spacing:-1.4px;line-height:1.06}
+.loki-workspace .section-title{position:relative;align-items:baseline;gap:10px}
+.loki-workspace .section-title h2 + .caption,.loki-workspace .section-title .caption{margin-left:auto}
+.loki-workspace .section-title .eyebrow::before{
+  content:"";display:inline-block;width:16px;height:1px;vertical-align:middle;
+  margin-right:8px;background:linear-gradient(90deg,transparent,rgba(127,227,187,.9));
+}
+.loki-workspace .divider,.loki-workspace hr{
+  border:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(126,168,184,.22),transparent);
+}
+
+/* ---------- data tables: dense, legible, quiet ---------- */
+
+.loki-workspace table{width:100%;font-size:12.5px}
+.loki-workspace thead th{
+  padding:9px 12px;font-weight:600;white-space:nowrap;
+  border-bottom:1px solid rgba(126,168,184,.24);
+  background:linear-gradient(180deg,rgba(12,20,28,.98),rgba(10,17,24,.94));
+}
+.loki-workspace thead th:first-child{border-top-left-radius:10px}
+.loki-workspace thead th:last-child{border-top-right-radius:10px;text-align:right}
+.loki-workspace tbody td{
+  padding:9px 12px;border-bottom:1px solid rgba(126,168,184,.08);
+  color:#d3e3ec;vertical-align:middle;
+}
+.loki-workspace tbody tr:nth-child(even) td{background:rgba(126,168,184,.026)}
+.loki-workspace tbody tr:hover td{background:rgba(46,230,176,.055)}
+.loki-workspace tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 rgba(46,230,176,.75)}
+.loki-workspace tbody td:last-child{text-align:right}
+.loki-workspace td.num,.loki-workspace th.num,.loki-workspace td[data-numeric]{
+  text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.1px;color:#e6f4fa;
+}
+.loki-workspace td .tag,.loki-workspace td .pill{font-size:9.5px;padding:3px 8px;letter-spacing:.05em}
+.loki-workspace tbody tr.is-selected td{background:rgba(46,230,176,.10)}
+.loki-workspace .table-scroll{
+  overflow:auto;border-radius:12px;
+  box-shadow:inset 0 0 0 1px rgba(126,168,184,.12),0 20px 50px -44px rgba(0,0,0,.9);
+}
+.loki-workspace .table-scroll::-webkit-scrollbar-thumb{background:rgba(126,168,184,.34);background-clip:padding-box}
+
+/* ---------- delta chips & inline stats ---------- */
+
+.loki-workspace .delta,.loki-workspace .change,.loki-workspace .sim-up,.loki-workspace .sim-down{
+  font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:11.5px;
+  border-radius:999px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;
+  letter-spacing:-.1px;
+}
+.loki-workspace .sim-up{color:#a8f0c6;background:rgba(46,230,176,.10);border:1px solid rgba(46,230,176,.26)}
+.loki-workspace .sim-down{color:#ffb3a7;background:rgba(255,143,128,.10);border:1px solid rgba(255,143,128,.26)}
+.loki-workspace .inline-metric{
+  display:inline-flex;align-items:baseline;gap:6px;font-family:var(--mono);
+  font-variant-numeric:tabular-nums;color:#e8f6fc;
+}
+.loki-workspace .inline-metric span{color:#94a9b8;font-family:var(--sans);font-size:11.5px;letter-spacing:.01em}
+
+/* ---------- progress / meters ---------- */
+
+.loki-workspace progress,.loki-workspace .meter,.loki-workspace .dive-timerline{
+  appearance:none;-webkit-appearance:none;height:6px;border-radius:999px;overflow:hidden;
+  background:rgba(7,12,18,.9);border:1px solid rgba(126,168,184,.18);
+}
+.loki-workspace progress::-webkit-progress-bar{background:rgba(7,12,18,.9)}
+.loki-workspace progress::-webkit-progress-value{
+  border-radius:999px;background:linear-gradient(90deg,var(--aurora-1),var(--aurora-2));
+  box-shadow:0 0 14px rgba(46,230,176,.6);
+}
+.loki-workspace progress::-moz-progress-bar{
+  border-radius:999px;background:linear-gradient(90deg,var(--aurora-1),var(--aurora-2));
+}
+
+/* ---------- loading shimmer ---------- */
+
+.loki-workspace [aria-busy="true"],.loki-workspace .is-loading{
+  position:relative;overflow:hidden;
+}
+.loki-workspace [aria-busy="true"]::after,.loki-workspace .is-loading::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(100deg,transparent 20%,rgba(126,168,184,.12) 48%,transparent 76%);
+  background-size:220% 100%;animation:aurora-shimmer 1.5s linear infinite;
+}
+.loki-workspace .skeleton{
+  border-radius:8px;background:linear-gradient(100deg,rgba(126,168,184,.08),rgba(126,168,184,.16),rgba(126,168,184,.08));
+  background-size:220% 100%;animation:aurora-shimmer 1.5s linear infinite;color:transparent!important;
+}
+.loki-workspace button[disabled],.loki-workspace .button[disabled],.loki-workspace [aria-disabled="true"]{
+  opacity:.52;cursor:not-allowed;transform:none!important;box-shadow:none!important;
+}
+.loki-workspace button[disabled]::after{display:none}
+
+/* ---------- focus, selection, accessibility ---------- */
+
+.loki-workspace :focus-visible{
+  outline:2px solid rgba(46,230,176,.85);outline-offset:2px;border-radius:8px;
+}
+.loki-workspace .button:focus-visible,.loki-workspace .primary:focus-visible{
+  outline:2px solid #d9ffef;outline-offset:3px;
+}
+.loki-workspace .skip-link{
+  background:linear-gradient(140deg,#cbffe4,#83ecc6);color:#052a1e;
+  border-radius:0 0 12px 0;padding:10px 16px;font-weight:700;
+  box-shadow:0 18px 40px -24px rgba(46,230,176,.9);
+}
+
+/* ---------- tooltips ---------- */
+
+.loki-workspace [data-tip]{position:relative}
+.loki-workspace [data-tip]::after{
+  content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);
+  transform:translate(-50%,4px);white-space:nowrap;pointer-events:none;
+  font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:0;
+  padding:6px 9px;border-radius:8px;color:#e9f8ff;
+  background:rgba(8,14,21,.97);border:1px solid rgba(126,168,184,.28);
+  box-shadow:0 18px 40px -22px rgba(0,0,0,.95);
+  opacity:0;transition:opacity .16s ease,transform .16s ease;z-index:60;
+}
+.loki-workspace [data-tip]:hover::after,.loki-workspace [data-tip]:focus-visible::after{
+  opacity:1;transform:translate(-50%,0);
+}
+
+/* ---------- chart surfaces, legends, sparklines ---------- */
+
+.loki-workspace .chart-panel .legend{letter-spacing:.02em}
+.loki-workspace .legend-key.equity{background:linear-gradient(90deg,#8ffcd0,#4fe0b0);box-shadow:0 0 10px rgba(46,230,176,.75)}
+.loki-workspace .legend-key.baseline{background:linear-gradient(90deg,rgba(160,182,196,.85),rgba(160,182,196,.35));height:2px}
+.loki-workspace canvas{image-rendering:auto}
+.loki-workspace .sparkline{
+  display:block;width:100%;height:34px;border-radius:6px;
+  background:linear-gradient(180deg,rgba(46,230,176,.10),transparent 85%);
+}
+.loki-workspace #chart-caption,.loki-workspace .chart-caption{
+  font-size:11.5px;line-height:1.6;color:#8fa4b3;
+  padding-top:10px;border-top:1px solid rgba(126,168,184,.10);
+}
+
+/* ---------- news / research cards: tighter rhythm ---------- */
+
+.loki-workspace .news-item{padding:13px 15px}
+.loki-workspace .news-item h3,.loki-workspace .news-item strong{letter-spacing:-.2px}
+.loki-workspace .news-item .news-source,.loki-workspace .news-item time{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;color:#7f97a9;
+}
+.loki-workspace .analyst-card,.loki-workspace .factor-card{padding:13px 15px}
+.loki-workspace .factor-card::after{
+  content:"";position:absolute;left:15px;right:15px;bottom:0;height:1px;
+  background:linear-gradient(90deg,rgba(46,230,176,.35),transparent);
+  opacity:0;transition:opacity .2s ease;
+}
+.loki-workspace .factor-card{position:relative}
+.loki-workspace .factor-card:hover::after{opacity:1}
+
+/* ---------- pills, tags, status ---------- */
+
+.loki-workspace .pill,.loki-workspace .tag{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  font-weight:600;
+}
+.loki-workspace .status-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+
+/* ---------- modal / drawer surfaces ---------- */
+
+.loki-workspace dialog,.loki-workspace [role="dialog"]{
+  border-radius:18px;border:1px solid rgba(126,168,184,.24);
+  background:linear-gradient(180deg,rgba(20,32,44,.98),rgba(9,15,22,.99));
+  box-shadow:0 50px 120px -50px rgba(0,0,0,1),0 0 0 1px rgba(46,230,176,.08) inset;
+  backdrop-filter:blur(24px) saturate(130%);
+}
+.loki-workspace dialog::backdrop{background:rgba(3,7,11,.72);backdrop-filter:blur(4px)}
+
+/* ---------- motion additions ---------- */
 
 .loki-workspace .workspace-view:not([hidden]){animation:aurora-view-in .34s ease both}
+@keyframes aurora-shimmer{from{background-position:180% 0}to{background-position:-80% 0}}
+@keyframes aurora-scan{from{transform:translateY(-100%)}to{transform:translateY(320%)}}
 .loki-workspace .aurora-reveal{opacity:0;transform:translateY(14px);transition:opacity .55s cubic-bezier(.2,.7,.2,1), transform .55s cubic-bezier(.2,.7,.2,1)}
 .loki-workspace .aurora-reveal.is-visible{opacity:1;transform:none}
 
@@ -532,6 +759,33 @@ body.loki-workspace::after{
 @keyframes aurora-sweep{from{left:-60%}to{left:120%}}
 @keyframes aurora-toast-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes aurora-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(168,240,198,.5)}50%{opacity:.55;box-shadow:0 0 0 5px rgba(168,240,198,0)}}
+
+/* ---------- scroll progress rail ---------- */
+
+.loki-workspace .aurora-progress{
+  position:fixed;top:0;left:0;right:0;height:2px;z-index:120;
+  transform-origin:0 50%;transform:scaleX(0);
+  background:linear-gradient(90deg,var(--aurora-1),var(--aurora-2) 55%,var(--aurora-3));
+  box-shadow:0 0 14px rgba(46,230,176,.55);
+  opacity:0;transition:opacity .3s ease;
+  pointer-events:none;
+}
+.loki-workspace .aurora-progress.is-scrolling{opacity:1}
+
+/* ---------- table row stagger ---------- */
+
+.loki-workspace tbody tr.aurora-row{
+  animation:aurora-row-in .34s cubic-bezier(.2,.7,.2,1) both;
+  animation-delay:calc(var(--row-i,0) * 14ms);
+}
+@keyframes aurora-row-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+@media(prefers-reduced-motion:reduce){
+  .loki-workspace .aurora-row,
+  .loki-workspace tbody tr.aurora-row{animation:none}
+  .loki-workspace .aurora-progress{transition:none;box-shadow:none}
+  .loki-workspace .workspace-view:not([hidden]){animation:none}
+}
 
 @media(max-width:760px){
   .loki-workspace .topbar{position:static;min-height:61px}

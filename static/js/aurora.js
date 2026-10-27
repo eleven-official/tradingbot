@@ -142,11 +142,76 @@
     }
   }
 
-  /* ---------- 4. boot ---------- */
+  /* ---------- 4. scroll progress rail ---------- */
+  function wireScrollProgress() {
+    const host = document.querySelector('.loki-workspace') || document.body;
+    if (!host || document.querySelector('.aurora-progress')) return;
+    const rail = document.createElement('div');
+    rail.className = 'aurora-progress';
+    rail.setAttribute('aria-hidden', 'true');
+    host.appendChild(rail);
+
+    let frame = 0;
+    const paint = () => {
+      frame = 0;
+      const doc = document.documentElement;
+      const max = doc.scrollHeight - doc.clientHeight;
+      const ratio = max > 0 ? Math.min(1, Math.max(0, doc.scrollTop / max)) : 0;
+      rail.style.transform = `scaleX(${ratio})`;
+      rail.classList.toggle('is-scrolling', doc.scrollTop > 8);
+    };
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(paint);
+    };
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule, { passive: true });
+    paint();
+  }
+
+  /* ---------- 5. table row stagger ---------- */
+  function wireTableRows() {
+    const paint = () => {
+      for (const body of document.querySelectorAll('.loki-workspace tbody')) {
+        if (body.closest('[hidden]')) continue;
+        const rows = body.rows;
+        const limit = Math.min(rows.length, 40);
+        for (let i = 0; i < limit; i += 1) {
+          const row = rows[i];
+          if (row.classList.contains('aurora-row')) continue;
+          row.classList.add('aurora-row');
+          row.style.setProperty('--row-i', String(Math.min(i, 12)));
+        }
+      }
+    };
+
+    let queued = 0;
+    const schedule = () => {
+      if (queued) return;
+      queued = requestAnimationFrame(() => {
+        queued = 0;
+        paint();
+      });
+    };
+
+    paint();
+    // Views toggle and tables fill in after their fetch resolves, so the class
+    // has to be applied on arrival, not only at boot. The animation itself is
+    // gated on prefers-reduced-motion in CSS.
+    document.addEventListener('loki:view', schedule);
+    if ('MutationObserver' in window) {
+      const observer = new MutationObserver(schedule);
+      observer.observe(document.body, { subtree: true, childList: true });
+    }
+  }
+
+  /* ---------- 6. boot ---------- */
   function boot() {
     wireReveal();
     wireCounters();
     wireHeroSpotlight();
+    wireScrollProgress();
+    wireTableRows();
   }
 
   if (document.readyState === 'loading') {

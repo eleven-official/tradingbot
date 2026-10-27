@@ -200,6 +200,8 @@ class SymbolReport:
     data_quality: str = ""  # e.g. "short history (412 bars)", "" when clean
     refine_round: int = 1
     regime_distribution: Dict[str, float] = field(default_factory=dict)
+    selection: str = "leaderboard"  # "leaderboard" | "walk_forward"
+    walk_forward: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
@@ -293,6 +295,7 @@ def _rank_key(entry: Dict[str, Any], objective: str = "sharpe"):
 
     Objectives:
       * ``sharpe``  — risk-adjusted return (default, most honest)
+      * ``expectancy`` — mean return per trade, profit-factor floor first
       * ``win_rate``— aggressive: hit-rate first, but only among candidates
         that at least break even (profit factor floor 1.0)
       * ``return``  — raw total return
@@ -305,6 +308,24 @@ def _rank_key(entry: Dict[str, Any], objective: str = "sharpe"):
     rich_trades = m["trades"] >= 20
     pf = min(m["profit_factor"], 5.0)
     months = m.get("month_profit_rate_pct", 0.0)
+    if objective == "expectancy":
+        # Mean return per trade is what actually compounds. It cannot be
+        # gamed by hit rate: a 92%-win profile with a 7:1 stop geometry scores
+        # worse than a 45%-win trend profile of the same total return, because
+        # the latter earns its return in fewer, larger pieces. The profit
+        # factor band sits ahead of it so a single outlier trade cannot carry
+        # an otherwise losing set, and the rich-trade floor kills
+        # "two trades, both lucky" winners.
+        expectancy = m["return_pct"] / max(1, m["trades"])
+        return (
+            enough_trades,
+            rich_trades,
+            pf >= 1.25,
+            expectancy,
+            pf,
+            months,
+            m["return_pct"],
+        )
     if objective == "win_rate":
         # Prefer high hit rates, but never prefer a money-losing profile.
         # Win% is graded in half-point buckets: inside the band that keeps
@@ -395,6 +416,122 @@ def _passed_all(checks: List[Dict[str, Any]]) -> bool:
     return bool(checks) and all(c["ok"] for c in checks)
 
 
+# ---------------------------------------------------------------------------
+# Walk-forward selection.
+#
+# The grid sweep ranks candidates on the training block, so the leaderboard
+# winner is by construction the best fit to *that* block. Ranking a handful of
+# finalists on forward slices instead is a different question: which of them
+# keeps working when the block it was fitted to is behind it. It costs a few
+# backtests, not a few hundred, and it replaces "highest in-sample rank wins"
+# with "best worst-fold wins".
+# ---------------------------------------------------------------------------
+
+
+def fold_bounds(
+    n_bars: int,
+    folds: int = 2,
+    first_frac: float = 0.7,
+) -> List[Tuple[int, int]]:
+    """Anchored forward slices of ``n_bars`` as ``(train_end, val_end)`` pairs.
+
+    ``first_frac`` defaults to the sweep's training fraction, so every fold
+    validates strictly after the data the grid was fitted to. Folds are
+    contiguous and time-ordered; there is no shuffle anywhere, ever.
+    """
+    folds = max(1, int(folds))
+    if n_bars < 4:
+        return []
+    start = int(n_bars * max(0.05, min(0.95, first_frac)))
+    start = max(2, min(start, n_bars - 2))
+    span = (n_bars - start) / folds
+    out: List[Tuple[int, int]] = []
+    for i in range(folds):
+        train_end = int(round(start + span * i))
+        val_end = int(round(start + span * (i + 1)))
+        if val_end <= train_end + 1:
+            continue
+        out.append((train_end, min(val_end, n_bars)))
+    return out
+
+
+def walk_forward_score(
+    entry: Dict[str, Any],
+    factors: pd.DataFrame,
+    df: pd.DataFrame,
+    base_cfg: LokiConfig,
+    strategy: Any,
+    split_idx: int,
+    warmup: int,
+    bars_per_year: int,
+    *,
+    symbol: str = "SYMBOL",
+    folds: int = 2,
+) -> Dict[str, Any]:
+    """Re-run one candidate across anchored folds and return its worst case.
+
+    Score ordering (best LAST): enough trades in every fold, then the worst
+    fold's profit factor, then mean return, then total trades. Using the worst
+    fold first is deliberate — one blow-up fold disqualifies a candidate no
+    matter how good the other folds looked.
+    """
+    cfg_i = _cfg_with(base_cfg, entry.get("params") or {})
+    if entry.get("factor_weights"):
+        cfg_i = dataclasses.replace(
+            cfg_i, factor_weights=normalize_weights(entry["factor_weights"])
+        )
+    frame = strategy.score_from_factors(factors, cfg_i.factor_weights)
+
+    runs: List[Dict[str, Any]] = []
+    for train_end, val_end in fold_bounds(len(df), folds=folds, first_frac=0.7):
+        start = max(0, train_end - warmup)
+        if val_end - train_end < 20:
+            continue
+        split_time = df.index[train_end]
+        try:
+            res = run_backtest(
+                df.iloc[start:val_end],
+                cfg_i,
+                symbol=symbol,
+                bars_per_year=bars_per_year,
+                frame=frame.iloc[start:val_end],
+            )
+        except Exception as exc:  # noqa: BLE001 - a broken fold is a failed fold
+            logger.warning("walk-forward fold failed for %s: %s", symbol, exc)
+            continue
+        trades = [t for t in res.trades if t.entry_time >= split_time]
+        metrics = _oos_metrics(trades, base_cfg.initial_cash)
+        metrics["start"] = str(split_time)
+        metrics["end"] = str(df.index[val_end - 1])
+        runs.append(metrics)
+
+    if not runs:
+        return {
+            "folds": [],
+            "score": (-1.0, -1.0, -1.0, -1.0),
+            "worst_fold_pf": 0.0,
+            "mean_return_pct": 0.0,
+            "worst_drawdown_pct": 0.0,
+            "trades": 0,
+            "min_fold_trades": 0,
+        }
+
+    worst_pf = min(float(r.get("profit_factor", 0.0)) for r in runs)
+    mean_return = sum(float(r.get("return_pct", 0.0)) for r in runs) / len(runs)
+    total_trades = sum(int(r.get("trades", 0)) for r in runs)
+    min_trades = min(int(r.get("trades", 0)) for r in runs)
+    worst_dd = min(float(r.get("max_drawdown_pct", 0.0)) for r in runs)
+    return {
+        "folds": runs,
+        "worst_fold_pf": round(worst_pf, 2),
+        "mean_return_pct": round(mean_return, 2),
+        "worst_drawdown_pct": round(worst_dd, 2),
+        "trades": total_trades,
+        "min_fold_trades": min_trades,
+        "score": (1.0 if min_trades >= 1 else 0.0, worst_pf, mean_return, float(total_trades)),
+    }
+
+
 def _refined_grid(grid: Dict[str, List[Any]], best_params: Dict[str, Any]) -> Dict[str, List[Any]]:
     """Build a narrow neighborhood grid around the best parameters found.
 
@@ -463,6 +600,8 @@ def train_symbol(
     regime_dist: Optional[Dict[str, float]] = None,
     objective: str = "sharpe",
     hurdle_targets: Optional[Dict[str, float]] = None,
+    walk_forward: bool = False,
+    folds: int = 2,
 ) -> SymbolReport:
     """Train execution parameters on historical bars for one symbol.
 
@@ -470,10 +609,17 @@ def train_symbol(
     When ``optimize_weights`` is set, the multi-factor weight presets are
     swept first and the top presets are combined with the execution grid.
 
-    ``objective`` selects the ranking metric ("sharpe" default, "win_rate"
-    for the aggressive hit-rate chase, "return" for raw growth) and
+    ``objective`` selects the ranking metric ("sharpe" default, "expectancy"
+    for mean return per trade with a profit-factor floor, "win_rate" for the
+    aggressive hit-rate chase, "return" for raw growth) and
     ``hurdle_targets`` overrides the good-trade hurdle thresholds (e.g.
     ``{"win_rate_pct": 90.0}`` for the 90% target mode).
+
+    ``walk_forward`` re-ranks the leaderboard finalists on anchored forward
+    folds after the sweep, so the winner is the candidate whose *worst* unseen
+    fold held up rather than the one that fit the training block hardest. It
+    costs ``folds`` extra backtests per finalist. The in-sample leaderboard is
+    left intact on the report either way.
     """
     report = SymbolReport(symbol=symbol, bars=len(df))
     if regime_dist:
@@ -557,7 +703,13 @@ def train_symbol(
         # board is only a proxy for post-grid performance, and dropping a
         # preset that matters (e.g. momentum on large-cap equity tapes) costs
         # more real winners than the extra sweep evaluations cost runtime.
-        preset_n = min(len(FACTOR_PRESETS), max(1, top_n + (2 if objective == "win_rate" else 0)))
+        # The expectancy grid is larger than the hit-rate grid was, so its
+        # preset fan-out stays capped at three: presets × combos is the whole
+        # runtime, and the finalists get a *forward* re-rank anyway.
+        if objective == "win_rate":
+            preset_n = min(len(FACTOR_PRESETS), max(1, top_n + 2))
+        else:
+            preset_n = min(len(FACTOR_PRESETS), max(1, min(top_n, 3)))
         top_presets = []
         for e in preset_board[:preset_n]:
             key = e["weight_preset"]
@@ -580,7 +732,7 @@ def train_symbol(
     # winning parameter set plus one upgrade, so it must outrank the plain
     # best to become the winner.
     # ------------------------------------------------------------------
-    if leaderboard and objective == "win_rate":
+    if leaderboard and objective in ("win_rate", "expectancy"):
         try:
             top0 = sorted(leaderboard, key=lambda e: _rank_key(e, objective), reverse=True)[0]
             base_params = dict(top0["params"])
@@ -655,6 +807,55 @@ def train_symbol(
             continue
         oos_trades = [t for t in res.trades if t.entry_time >= split_time]
         entry["validation"] = _oos_metrics(oos_trades, base_cfg.initial_cash)
+
+    # ------------------------------------------------------------------
+    # Walk-forward selection. The sweep ranked candidates on the training
+    # block, so its winner is the best fit to that block by construction.
+    # Re-ranking the finalists on anchored forward folds asks the different
+    # question — which one keeps working once the fitted block is behind it —
+    # and picks the candidate whose WORST fold survived.
+    # ------------------------------------------------------------------
+    if walk_forward and len(leaderboard) > 1:
+        finalists = leaderboard[: max(2, top_n)]
+        scored: List[Tuple[tuple, int, Dict[str, Any]]] = []
+        for idx, entry in enumerate(finalists):
+            wf = walk_forward_score(
+                entry,
+                factors,
+                df,
+                base_cfg,
+                strategy,
+                split_idx,
+                warmup,
+                bars_per_year,
+                symbol=symbol,
+                folds=folds,
+            )
+            entry["walk_forward"] = {
+                k: v for k, v in wf.items() if k != "score"
+            }
+            scored.append((wf["score"], idx, entry))
+
+        if scored:
+            # Best score wins; ties resolve to the higher in-sample rank,
+            # which is `scored` order (finalists are already sorted best-first).
+            scored.sort(key=lambda t: (t[0], -t[1]))
+            chosen_wf, _, chosen = scored[-1]
+            rest = [e for e in leaderboard if e is not chosen]
+            leaderboard = [chosen] + rest
+            report.leaderboard = leaderboard
+            report.selection = "walk_forward"
+            report.walk_forward = {
+                "folds": folds,
+                "finalists": len(finalists),
+                "min_fold_trades": int(chosen["walk_forward"].get("min_fold_trades", 0)),
+                "worst_fold_pf": chosen["walk_forward"].get("worst_fold_pf", 0.0),
+                "mean_return_pct": chosen["walk_forward"].get("mean_return_pct", 0.0),
+                "worst_drawdown_pct": chosen["walk_forward"].get("worst_drawdown_pct", 0.0),
+                "rank_promoted_from": next(
+                    (i for i, e in enumerate(finalists) if e is chosen), 0
+                ),
+            }
 
     best = leaderboard[0]
     report.best_params = dict(best["params"])
@@ -881,18 +1082,72 @@ def train(
     return report
 
 
+def _edge_weight(entry: Dict[str, Any]) -> float:
+    """Relative influence of one symbol's vote in the consensus.
+
+    A profile that made 3.2 profit factor and +11% out of sample is better
+    evidence about which parameters generalise than one that scraped +0.8% at
+    1.1. Symbols with no recorded out-of-sample metrics (fixtures, incompletely
+    trained entries) keep a weight of 1.0, so the old unweighted behaviour is
+    exactly what a metrics-free book still produces.
+    """
+    metrics = entry.get("validation_metrics") or {}
+    if not metrics:
+        return 1.0
+    try:
+        ret = float(metrics.get("return_pct", 0.0) or 0.0)
+        pf = float(metrics.get("profit_factor", 0.0) or 0.0)
+        trades = float(metrics.get("trades", 0) or 0)
+    except (TypeError, ValueError):  # noqa: BLE001 - malformed entry is a plain vote
+        return 1.0
+    if trades <= 0:
+        return 0.05  # trained but never traded out of sample: near-zero voice
+    # Floor the weight at 0.05 so a losing symbol still votes once, and cap
+    # the pf term so a single fat outlier cannot outvote the rest of the book.
+    return max(0.05, abs(ret)) * max(0.2, min(pf, 5.0))
+
+
+def _weighted_median(values: Sequence[float], weights: Sequence[float]) -> float:
+    """Median of ``values`` where each value carries ``weights[i]``.
+
+    Matches the plain median exactly when every weight is equal, including the
+    even-count case where the two central values are averaged.
+    """
+    pairs = sorted(zip(values, weights), key=lambda p: p[0])
+    total = sum(w for _, w in pairs)
+    if total <= 0:
+        return float(pd.Series(values).median())
+    half = total / 2.0
+    running = 0.0
+    for idx, (value, weight) in enumerate(pairs):
+        running += weight
+        if abs(running - half) <= 1e-12:
+            if idx + 1 < len(pairs):
+                return (float(value) + float(pairs[idx + 1][0])) / 2.0
+            return float(value)
+        if running > half:
+            return float(value)
+    return float(pairs[-1][0])
+
+
 def consensus_params(symbol_entries: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Cross-symbol majority/median of every symbol's best parameters.
 
     Numeric params use the median, booleans use the majority vote, and
-    factor weights use the most-common winning preset. ``support_pct`` is
-    the average share of symbols agreeing with the consensus per parameter.
+    factor weights use the most-common winning preset. Each symbol's vote is
+    weighted by its own out-of-sample edge (see ``_edge_weight``), so the
+    consensus leans on the profiles that actually survived validation instead
+    of counting a losing profile the same as a strong one. ``support_pct`` is
+    the weight-weighted average share agreeing with the consensus per
+    parameter.
     """
     entries = [e for e in symbol_entries if e.get("ok") and e.get("best_params")]
     if not entries:
         return None
 
-    # Dynamic key discovery: mediate whatever the winners actually carry —
+    weights = [_edge_weight(e) for e in entries]
+
+    # Dynamic key discovery: mediate whatever the winners actually carry -
     # the classic execution keys plus any smart-exit / sizing knobs.
     numeric_keys: List[str] = []
     bool_keys: List[str] = []
@@ -909,37 +1164,61 @@ def consensus_params(symbol_entries: Sequence[Dict[str, Any]]) -> Optional[Dict[
     supports: List[float] = []
 
     for key in numeric_keys:
-        values = [e["best_params"][key] for e in entries if key in e["best_params"]]
-        if not values:
+        pairs = [
+            (float(e["best_params"][key]), w)
+            for e, w in zip(entries, weights)
+            if key in e["best_params"]
+        ]
+        if not pairs:
             continue
-        med = float(pd.Series(values).median())
+        values = [v for v, _ in pairs]
+        w_pairs = [w for _, w in pairs]
+        med = _weighted_median(values, w_pairs)
         consensus[key] = round(med, 2)
-        supports.append(sum(1 for v in values if abs(float(v) - med) < 1e-9) / len(values))
+        total_w = sum(w_pairs)
+        agree_w = sum(w for v, w in pairs if abs(v - med) < 1e-9)
+        supports.append(agree_w / total_w if total_w > 0 else 0.0)
 
     for key in bool_keys:
-        values = [bool(e["best_params"][key]) for e in entries if key in e["best_params"]]
-        if not values:
+        pairs = [
+            (bool(e["best_params"][key]), w)
+            for e, w in zip(entries, weights)
+            if key in e["best_params"]
+        ]
+        if not pairs:
             continue
-        majority_true = sum(values) >= len(values) / 2
+        voted_true = sum(w for v, w in pairs if v)
+        total_w = sum(w for _, w in pairs)
+        majority_true = voted_true >= total_w / 2.0
         consensus[key] = bool(majority_true)
-        supports.append(sum(1 for v in values if v == majority_true) / len(values))
+        agree_w = voted_true if majority_true else total_w - voted_true
+        supports.append(agree_w / total_w if total_w > 0 else 0.0)
 
-    presets = [e.get("factor_preset") for e in entries if e.get("factor_preset")]
+    preset_pairs = [
+        (e.get("factor_preset"), w)
+        for e, w in zip(entries, weights)
+        if e.get("factor_preset")
+    ]
     preset_weights: Optional[Dict[str, float]] = None
     winning_preset = ""
-    if presets:
-        winning_preset = max(set(presets), key=presets.count)
+    if preset_pairs:
+        tallies: Dict[str, float] = {}
+        for name, w in preset_pairs:
+            tallies[name] = tallies.get(name, 0.0) + w
+        winning_preset = max(tallies, key=tallies.get)
         preset_weights = next((w for n, w in FACTOR_PRESETS if n == winning_preset), None)
         consensus["factor_preset"] = winning_preset
         if preset_weights:
             consensus["factor_weights"] = preset_weights
-            supports.append(presets.count(winning_preset) / len(presets))
+            total_w = sum(tallies.values())
+            supports.append(tallies[winning_preset] / total_w if total_w > 0 else 0.0)
 
     support = round(sum(supports) / len(supports) * 100.0, 1) if supports else 0.0
     return {
         "params": consensus,
         "symbols_used": len(entries),
         "support_pct": support,
+        "edge_weighted": any(abs(w - 1.0) > 1e-9 for w in weights),
     }
 
 

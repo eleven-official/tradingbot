@@ -63,17 +63,46 @@ CRYPTO_BARS_PER_YEAR = 365
 
 # Hurdles a crypto profile has to clear OUT OF SAMPLE before it is called a
 # good trade. Deliberately not the 90% equity target: on a tape this noisy
-# that number is only reachable by over-fitting the development window. A
-# 70% hit rate sustained with a 1.3 profit factor is a better description of
-# an edge that survives.
+# that number is only reachable by over-fitting the development window.
+#
+# The hit-rate bar sits low on purpose. Under the old 70% target the only way
+# to clear it was a 0.62-ATR take-profit against a 4.25-ATR stop — a geometry
+# that wins small and often, then gives several wins back on one loss. Win
+# rate is therefore a weak description of an edge, and profit factor plus a
+# survivable drawdown describe it better. Return still has to be positive and
+# the month coverage still has to clear a majority, so a profile cannot pass
+# on one lucky quarter.
 CRYPTO_HURDLES: Dict[str, float] = {
-    "trades": 8.0,
+    "trades": 10.0,
     "return_pct": 0.0,          # >0, comparison is "gt"
-    "profit_factor": 1.3,
+    "profit_factor": 1.5,
     "max_drawdown_pct": -30.0,
-    "win_rate_pct": 70.0,
-    "month_profit_rate_pct": 60.0,
+    "win_rate_pct": 45.0,
+    "month_profit_rate_pct": 55.0,
 }
+
+# Execution grid for crypto. Symmetric enough that neither side of the trade
+# is structurally favoured: the take-profit multiple can exceed the stop
+# multiple, so a 40% hit rate is allowed to be profitable. The hit-rate grid
+# this replaces capped take-profit at 1.0 ATR against 3.5–7.0 ATR stops, which
+# made the sweep a search for the smallest possible target rather than for an
+# edge. 24 combinations, swept against the factor presets.
+CRYPTO_GRID: Dict[str, List[Any]] = {
+    "signal_threshold": [8.0, 14.0, 20.0],
+    "stop_loss_atr": [2.0, 3.5, 5.0],
+    "take_profit_atr": [1.5, 2.5, 4.0],
+    "max_hold_bars": [30, 90],
+    "breakeven_atr": [0.0, 1.0],
+    "require_trend_filter": [True],
+}
+
+
+def _grid_size(grid: Dict[str, List[Any]]) -> int:
+    """Number of distinct parameter combinations a grid sweeps."""
+    size = 1
+    for values in grid.values():
+        size *= max(1, len(values))
+    return size
 
 SNAPSHOT_PATH = Path(__file__).parent / "training_report_snapshot.json"
 
@@ -85,6 +114,9 @@ class CryptoJob:
     grid: Optional[Dict[str, List[Any]]]
     optimization_period: str
     timeframe: str
+    windows: Tuple[int, ...] = (5, 7, 10)
+    synthetic_seeds: Tuple[int, ...] = (11, 23, 37, 53, 71)
+    robustness: bool = True
 
 
 def _train_job(job: CryptoJob) -> Dict[str, Any]:
@@ -100,7 +132,6 @@ def _train_job(job: CryptoJob) -> Dict[str, Any]:
     from loki_v8.regime import regime_distribution
     from loki_v8.strategy import EnsembleStrategy
     from loki_v8.train import (
-        AGGRESSIVE_GRID,
         SymbolReport,
         _cfg_with,
         _data_quality_note,
@@ -110,7 +141,7 @@ def _train_job(job: CryptoJob) -> Dict[str, Any]:
 
     symbol = job.symbol
     cfg = LokiConfig(period=job.optimization_period, timeframe=job.timeframe)
-    grid = job.grid or AGGRESSIVE_GRID
+    grid = job.grid or CRYPTO_GRID
     bpy = bars_per_year_for(job.timeframe, crypto=is_crypto(symbol))
 
     try:
@@ -137,12 +168,14 @@ def _train_job(job: CryptoJob) -> Dict[str, Any]:
         symbol,
         grid=grid,
         train_frac=0.7,
-        top_n=3,
+        top_n=4,
         bars_per_year=bpy,
         optimize_weights=True,
         regime_dist=regime_dist,
-        objective="win_rate",
+        objective="expectancy",
         hurdle_targets=CRYPTO_HURDLES,
+        walk_forward=True,
+        folds=2,
     )
     payload = report.to_dict()
     payload["refine_round"] = job.round_no
@@ -175,7 +208,97 @@ def _train_job(job: CryptoJob) -> Dict[str, Any]:
             }
         except Exception as exc:  # noqa: BLE001
             payload["final_holdout"] = {"error": str(exc), "used_for_selection": False}
+
+    # Robustness gate. Two checks that the optimizer's sample cannot fake:
+    # the same parameters re-run over shorter trailing windows, and the same
+    # parameters on bootstrapped tapes built from this symbol's own returns.
+    # ``good`` only survives if the hurdle set, both checks, and the data all
+    # agree — a profile that lives entirely in one decade is not a profile.
+    if job.robustness and report.ok and report.best_params:
+        from loki_v8 import synthetic as synth
+
+        hurdle_good = bool(payload.get("good"))
+        try:
+            window_check = synth.validate_windows(
+                history,
+                report.best_params,
+                cfg,
+                symbol,
+                bpy,
+                windows=job.windows,
+            )
+        except Exception as exc:  # noqa: BLE001 - a broken check is a failed check
+            window_check = {"windows": [], "passes": False, "error": str(exc)}
+        synthetic_bars = max(600, int(len(history) * 0.6))
+        try:
+            synthetic_check = synth.validate_synthetic(
+                history,
+                report.best_params,
+                cfg,
+                symbol,
+                bpy,
+                seeds=job.synthetic_seeds,
+                bars=synthetic_bars,
+            )
+        except Exception as exc:  # noqa: BLE001
+            synthetic_check = {"tapes": [], "passes": False, "error": str(exc), "reasons": [str(exc)]}
+
+        payload["hurdles_passed"] = hurdle_good
+        payload["window_validation"] = window_check
+        payload["synthetic_validation"] = synthetic_check
+        gate = gate_verdict(hurdle_good, window_check, synthetic_check)
+        payload["good"] = gate["good"]
+        payload["validation_gate"] = {k: v for k, v in gate.items() if k != "good"}
     return payload
+
+
+def gate_verdict(
+    hurdles: bool,
+    window: Optional[Dict[str, Any]],
+    synthetic: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Combine the hurdle set with both robustness checks into one verdict.
+
+    Pure and cheap so the composition itself can be tested without a sweep:
+    ``good`` survives only when all three agree. A missing check is a failed
+    check — silence is never a pass.
+
+    ``verdict`` distinguishes three states, because "the tapes lost money" and
+    "the tapes barely traded" are not the same finding and a wide exit geometry
+    produces the second one routinely:
+
+    - ``verified``   — all three checks passed.
+    - ``research only`` — a check ran and the edge failed it.
+    - ``untested``   — a check could not reach the fill floor, so it never got
+      to measure the edge. ``good`` is still False (thin evidence is never
+      promotion), but the label says why.
+    """
+    from loki_v8 import synthetic as synth
+
+    windows_ok = bool(window.get("passes")) if window else False
+    synthetic_ok = bool(synthetic.get("passes")) if synthetic else False
+    good = bool(hurdles and windows_ok and synthetic_ok)
+
+    # `powered` is only meaningfully absent on results produced before the
+    # flag existed; treat those as powered so old snapshots keep their label.
+    synthetic_powered = bool(synthetic.get("powered", True)) if synthetic else True
+    unpowered = bool(synthetic and not synthetic_ok and not synthetic_powered)
+    if good:
+        verdict = "verified"
+    elif unpowered:
+        verdict = "untested"
+    else:
+        verdict = "research only"
+
+    return {
+        "hurdles": bool(hurdles),
+        "windows": windows_ok,
+        "synthetic": synthetic_ok,
+        "synthetic_powered": synthetic_powered,
+        "good": good,
+        "verdict": verdict,
+        "detail": synth.summarise(window, synthetic),
+    }
 
 
 def _load_existing() -> Dict[str, Any]:
@@ -188,14 +311,28 @@ def _load_existing() -> Dict[str, Any]:
 
 
 def _merge(existing: Dict[str, Any], fresh: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Fresh entries win; everything the run did not touch is carried forward."""
+    """Fresh entries win — unless the fresh one failed and the stored one did not.
+
+    A crashed worker or a transient fetch error must never demote a verified
+    profile back to untrained: the published book only loses a symbol when the
+    new run genuinely failed to train it *and* there was nothing valid to keep.
+    """
     by_symbol: Dict[str, Dict[str, Any]] = {}
     for entry in existing.get("symbols", []) or []:
         symbol = str(entry.get("symbol") or "").upper()
         if symbol:
             by_symbol[symbol] = entry
     for entry in fresh:
-        by_symbol[str(entry.get("symbol") or "").upper()] = entry
+        symbol = str(entry.get("symbol") or "").upper()
+        if not symbol:
+            continue
+        previous = by_symbol.get(symbol)
+        if previous and previous.get("ok") and not entry.get("ok"):
+            kept = dict(previous)
+            kept["stale_reason"] = str(entry.get("error") or "re-run failed")[:160]
+            by_symbol[symbol] = kept
+            continue
+        by_symbol[symbol] = entry
     return [by_symbol[key] for key in sorted(by_symbol)]
 
 
@@ -214,6 +351,9 @@ def run(
     optimization_period: str = "10y",
     timeframe: str = "1d",
     write_snapshot: bool = True,
+    windows: Tuple[int, ...] = (5, 7, 10),
+    synthetic_seeds: Tuple[int, ...] = (11, 23, 37, 53, 71),
+    robustness: bool = True,
 ) -> Dict[str, Any]:
     """Train the crypto universe and write the merged snapshot."""
     from loki_v8.train import consensus_params
@@ -239,6 +379,7 @@ def run(
                     payload = {"symbol": job.symbol, "ok": False, "error": f"worker crashed: {exc}"}
                 results[job.symbol] = payload
                 metrics = payload.get("validation_metrics") or {}
+                gate = payload.get("validation_gate") or {}
                 print(
                     f"  {job.symbol:>10}  good={str(payload.get('good')):>5}  "
                     f"{_hurdle_summary(payload):<14} "
@@ -246,19 +387,38 @@ def run(
                     f"ret={metrics.get('return_pct', 0):>6}% "
                     f"win={metrics.get('win_rate_pct', 0):>5}% "
                     f"pf={metrics.get('profit_factor', 0):>5} "
-                    f"{payload.get('train_seconds', '?')}s",
+                    f"{payload.get('train_seconds', '?')}s  "
+                    f"[{gate.get('detail', 'no robustness check')}]",
                     flush=True,
                 )
 
-    sweep([CryptoJob(s, 1, None, optimization_period, timeframe) for s in symbols], "round 1")
+    sweep(
+        [
+            CryptoJob(
+                s,
+                1,
+                None,
+                optimization_period,
+                timeframe,
+                windows,
+                synthetic_seeds,
+                robustness,
+            )
+            for s in symbols
+        ],
+        "round 1",
+    )
 
     for round_no in range(2, rounds + 1):
-        from loki_v8.train import AGGRESSIVE_GRID, _refined_grid
+        from loki_v8.train import _refined_grid
 
+        # A symbol with no usable result is retried, not skipped: an `ok`
+        # profile that missed a hurdle gets a refined grid, and a symbol whose
+        # worker died gets another attempt instead of being quietly dropped.
         failing = [
             symbol
             for symbol in symbols
-            if results.get(symbol, {}).get("ok") and not results[symbol].get("good")
+            if not (results.get(symbol, {}).get("ok") and results[symbol].get("good"))
         ]
         if not failing:
             print(f"[round {round_no}] every symbol cleared its hurdles — stopping", flush=True)
@@ -267,9 +427,12 @@ def run(
             CryptoJob(
                 symbol,
                 round_no,
-                _refined_grid(AGGRESSIVE_GRID, results[symbol].get("best_params") or {}),
+                _refined_grid(CRYPTO_GRID, (results.get(symbol) or {}).get("best_params") or {}),
                 optimization_period,
                 timeframe,
+                windows,
+                synthetic_seeds,
+                robustness,
             )
             for symbol in failing
         ]
@@ -282,15 +445,23 @@ def run(
     crypto_trainable = [e for e in ordered if e.get("ok") and e.get("best_params")]
     all_trainable = [e for e in merged if e.get("ok") and e.get("best_params")]
 
+    # Consensus is built from crypto profiles that cleared EVERY gate when any
+    # did; otherwise from every trained profile, so the book still has a
+    # starting point. Which one it was is recorded — never implied.
+    verified = [e for e in crypto_trainable if e.get("good")]
+    consensus_source = "verified" if verified else ("trained" if crypto_trainable else "none")
+    consensus_pool = verified or crypto_trainable
+
     report: Dict[str, Any] = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "period": optimization_period,
         "timeframe": timeframe,
         "train_frac": 0.7,
-        "grid_size": 72,
+        "grid_size": _grid_size(CRYPTO_GRID),
         "weights_tested": 14,
         "optimize_weights": True,
-        "objective": "win_rate",
+        "objective": "expectancy",
+        "selection": "walk_forward",
         "hurdle_targets": dict(CRYPTO_HURDLES),
         "refine_rounds_target": rounds,
         "refine_rounds_used": rounds,
@@ -298,17 +469,38 @@ def run(
         "bars_per_year": CRYPTO_BARS_PER_YEAR,
         "symbols": merged,
         "consensus": consensus_params(all_trainable) if all_trainable else None,
-        "crypto_consensus": consensus_params(crypto_trainable) if crypto_trainable else None,
+        "crypto_consensus": consensus_params(consensus_pool) if consensus_pool else None,
+        "consensus_source": consensus_source,
+        "verified_symbols": [e.get("symbol") for e in verified],
+        "robustness": {
+            "enabled": bool(robustness),
+            "windows": list(windows),
+            "synthetic_seeds": list(synthetic_seeds),
+            "verified": len(verified),
+            "trained": len(crypto_trainable),
+            "gate": (
+                "good requires the OOS hurdle set AND every trailing window AND the "
+                "bootstrapped-tape check"
+            ),
+        },
         "evaluation_protocol": {
             "development_fraction": 0.8,
             "final_holdout_fraction": 0.2,
             "validation_used_for_refinement": True,
             "final_holdout_used_for_selection": False,
+            "cross_window_validation": bool(robustness),
+            "synthetic_tape_validation": bool(robustness),
+            "rank_objective": "expectancy",
+            "finalist_selection": "walk_forward",
             "note": (
                 "Crypto book trained on 80% of each symbol's daily history; the last 20% "
-                "is reported as final_holdout and never used for selection. Repeated runs "
-                "and shared symbols prevent treating any of this as independent proof of "
-                "future win rates."
+                "is reported as final_holdout and never used for selection. Candidates are "
+                "ranked on mean return per trade with a profit-factor floor, not hit rate, "
+                "then the finalists are re-run on two anchored forward folds and the winner "
+                "is the one whose worst fold survived. Profiles are then re-run on trailing "
+                "5/7/10y slices and on block-bootstrapped tapes of the same symbol's returns. "
+                "All of these reuse the same underlying history, so they measure regime "
+                "dependence and path dependence, not independent evidence of future returns."
             ),
         },
         "training_seconds": round(time.perf_counter() - started, 1),
@@ -320,7 +512,8 @@ def run(
 
     print(
         f"\ndone in {report['training_seconds']}s — "
-        f"{sum(1 for e in ordered if e.get('good'))}/{len(ordered)} crypto symbols cleared every hurdle",
+        f"{sum(1 for e in ordered if e.get('good'))}/{len(ordered)} crypto symbols cleared "
+        f"hurdles + windows + synthetic tapes",
         flush=True,
     )
     consensus = report.get("crypto_consensus") or {}
@@ -337,11 +530,28 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=0, help="processes (0 = auto)")
     parser.add_argument("--period", default="10y", help="yfinance history window (default 10y)")
     parser.add_argument("--timeframe", default="1d")
+    parser.add_argument(
+        "--windows",
+        default="5,7,10",
+        help="trailing year slices each profile is re-tested on (default 5,7,10)",
+    )
+    parser.add_argument(
+        "--synthetic-seeds",
+        default="11,23,37,53,71",
+        help="seeds for the bootstrapped tapes (default 11,23,37,53,71)",
+    )
+    parser.add_argument(
+        "--no-robustness",
+        action="store_true",
+        help="skip the window + synthetic gate (report the hurdle result only)",
+    )
     parser.add_argument("--no-write", action="store_true", help="report only, do not touch the snapshot")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     universe = tuple(s.strip().upper() for s in args.symbols.split(",") if s.strip()) or None
+    windows = tuple(int(v) for v in args.windows.split(",") if v.strip()) or (5, 7, 10)
+    seeds = tuple(int(v) for v in args.synthetic_seeds.split(",") if v.strip()) or (11, 23, 37, 53, 71)
     run(
         universe=universe,
         rounds=args.rounds,
@@ -349,6 +559,9 @@ def main() -> None:
         optimization_period=args.period,
         timeframe=args.timeframe,
         write_snapshot=not args.no_write,
+        windows=windows,
+        synthetic_seeds=seeds,
+        robustness=not args.no_robustness,
     )
 
 

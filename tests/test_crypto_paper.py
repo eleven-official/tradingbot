@@ -182,12 +182,16 @@ class TestSessionSummary:
         assert summary["profit_factor"] == pytest.approx(3.0)
         assert summary["avg_win"] == pytest.approx(60.0)
         assert summary["avg_loss"] == pytest.approx(40.0)
+        # Mean per fill: (100 - 40 + 20) / 3. This is the number the trainer
+        # ranks on, so the blotter reports it next to the hit rate.
+        assert summary["expectancy"] == pytest.approx(26.67, abs=0.01)
 
     def test_no_trades_does_not_divide_by_zero(self):
         curve = pd.Series([1000.0, 1000.0], index=pd.date_range("2026-01-01", periods=2))
         summary = cp._session_summary([], curve, 1000.0, 500.0, 2)
         assert summary["trades"] == 0
         assert summary["win_rate_pct"] == 0.0
+        assert summary["expectancy"] == 0.0
         assert summary["profit_factor"] == 0.0
 
     def test_drawdown_measured_from_running_peak(self):

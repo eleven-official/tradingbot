@@ -645,6 +645,10 @@ def research_book(response: Response):
         dev = entry.get("validation_metrics") or {}
         holdout = entry.get("final_holdout") or {}
         metrics = holdout.get("metrics") or {}
+        gate = entry.get("validation_gate") or {}
+        window = entry.get("window_validation") or {}
+        synthetic = entry.get("synthetic_validation") or {}
+        synthetic_pooled = synthetic.get("pooled") or {}
         summary.append(
             {
                 "symbol": entry.get("symbol"),
@@ -654,6 +658,31 @@ def research_book(response: Response):
                 "profitable_months_pct": dev.get("month_profit_rate_pct"),
                 "profit_factor": dev.get("profit_factor"),
                 "trades": dev.get("trades"),
+                "return_pct": dev.get("return_pct"),
+                # Robustness: same parameters re-run on trailing windows and on
+                # tapes bootstrapped from the symbol's own return distribution.
+                # Absent for profiles trained before the gate existed, so the
+                # UI has to treat "missing" differently from "passed".
+                "windows": [
+                    {
+                        "label": item.get("label"),
+                        "passes": bool(item.get("passes")),
+                        "trades": (item.get("metrics") or {}).get("trades"),
+                        "profit_factor": (item.get("metrics") or {}).get("profit_factor"),
+                    }
+                    for item in window.get("windows", [])
+                ],
+                "windows_passed": bool(window.get("passes")) if window else None,
+                "synthetic_passed": bool(synthetic.get("passes")) if synthetic else None,
+                "synthetic_powered": synthetic.get("powered") if synthetic else None,
+                "synthetic_profitable_share": synthetic.get("profitable_share"),
+                "synthetic_profit_factor": synthetic_pooled.get("profit_factor"),
+                "verdict": gate.get("verdict"),
+                # Selection: how this profile was chosen out of the grid sweep.
+                # "walk_forward" means the finalists were re-ranked on anchored
+                # forward folds and the winner is the one whose worst fold held.
+                "selection": entry.get("selection"),
+                "walk_forward": entry.get("walk_forward") or {},
                 "final_holdout": {
                     "start": holdout.get("start"),
                     "end": holdout.get("end"),
@@ -668,7 +697,10 @@ def research_book(response: Response):
     return {
         "generated_at": report.get("generated_at"),
         "period": report.get("period"),
+        "objective": report.get("objective"),
+        "hurdle_targets": report.get("hurdle_targets"),
         "evaluation_protocol": report.get("evaluation_protocol"),
+        "robustness": report.get("robustness"),
         "consensus_support_pct": consensus.get("support_pct"),
         "symbols": summary,
     }
