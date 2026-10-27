@@ -989,3 +989,47 @@ body.loki-workspace::after{
   .loki-workspace .strategy-book-details>summary .caption{display:block;margin:6px 0 0}
   .loki-workspace #overview>.workflow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Arrival scene: finite entrance, no loading gate or artificial market values. */
+@media screen {
+  .loki-workspace #overview>.arrival-scene{position:relative;isolation:isolate;min-height:430px;padding:48px 40px;border:1px solid #35554b;border-radius:20px;background:radial-gradient(ellipse at 75% 40%,#20554466,transparent 55%),linear-gradient(120deg,#10251f,#0a131c 70%);box-shadow:0 24px 80px #0004}
+  .loki-workspace #overview>.arrival-scene::after{background:linear-gradient(0deg,#0a131caa,transparent 35%);z-index:0}
+  .loki-workspace .arrival-scene>.hero-copy,.loki-workspace .arrival-scene>.signal-instrument{position:relative;z-index:2}
+  .loki-workspace #overview .arrival-scene h1{font-size:clamp(40px,4.4vw,72px);letter-spacing:-2.8px;line-height:1.04;margin:24px 0}
+  .loki-workspace #overview .arrival-scene h1 em{background:linear-gradient(100deg,#e1ffef,#a8f0c6 45%,#61cdb0);background-clip:text;-webkit-background-clip:text;color:transparent}
+  .loki-workspace #overview .arrival-scene .muted{font-size:14px;line-height:1.9;max-width:390px}
+  .loki-workspace #overview .arrival-scene .hero-actions{margin-top:28px;gap:18px}
+  .loki-workspace #overview .arrival-scene .button.primary{min-height:48px;padding:13px 22px;box-shadow:0 8px 36px #75e6b528}
+  .loki-workspace .arrival-principles{display:flex;gap:22px;flex-wrap:wrap;margin-top:32px;font-family:var(--mono);font-size:9px;letter-spacing:1px;color:#9ab6aa;text-transform:uppercase}
+  .loki-workspace .arrival-atmosphere{position:absolute;inset:0;overflow:hidden;z-index:0;pointer-events:none;background-image:radial-gradient(#a8f0c622 .7px,transparent .7px);background-size:24px 24px;mask-image:linear-gradient(90deg,transparent,black)}
+  .loki-workspace .arrival-atmosphere span{position:absolute;display:block;width:430px;height:430px;border-radius:50%;border:1px solid #a8f0c618;right:-30px;top:50%;transform:translateY(-50%)}
+  .loki-workspace .arrival-atmosphere span:nth-child(2){width:560px;height:560px;right:-95px;border-style:dashed;border-color:#a8f0c612}
+  .loki-workspace .arrival-atmosphere span:nth-child(3){width:280px;height:280px;right:45px;background:radial-gradient(circle,#55d9a712,transparent 65%);border-color:#a8f0c622}
+  .loki-workspace #overview .arrival-scene .signal-instrument{opacity:1;border:1px solid #7dba9e33;border-radius:14px;background:#0b171dbb;box-shadow:0 24px 60px #0004;transform:rotate(-3deg)}
+  .loki-workspace #overview .arrival-scene .signal-drawing{max-height:220px}
+  .loki-workspace #overview .arrival-scene .instrument-heading{padding:15px 14px;font-size:9px}
+  .loki-workspace #overview .arrival-scene .instrument-footer{padding:13px 14px}
+}
+@media screen and (prefers-reduced-motion:no-preference){
+  .loki-workspace .arrival-scene .hero-copy>.eyebrow{animation:arrival-rise .7s ease both}
+  .loki-workspace .arrival-scene h1{animation:arrival-rise .9s .08s cubic-bezier(.2,.7,.2,1) both}
+  .loki-workspace .arrival-scene .hero-copy>.muted{animation:arrival-rise .9s .16s ease both}
+  .loki-workspace .arrival-scene .hero-actions{animation:arrival-rise .9s .24s ease both}
+  .loki-workspace .arrival-scene .arrival-principles{animation:arrival-rise .9s .32s ease both}
+  .loki-workspace #overview .arrival-scene .signal-instrument{animation:arrival-instrument 1.2s .15s cubic-bezier(.2,.7,.2,1) both}
+  .loki-workspace .arrival-atmosphere{animation:arrival-light 3s ease both}
+  .loki-workspace .arrival-scene .signal-trace{stroke-dasharray:100;stroke-dashoffset:0;animation:arrival-trace 2s .5s ease both}
+  .loki-workspace .arrival-scene:has(#signal-motion-toggle[aria-pressed="true"]) .signal-trace{animation:none}
+  @keyframes arrival-rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+  @keyframes arrival-instrument{from{opacity:0;transform:translateY(25px) rotate(1deg)}to{opacity:1;transform:translateY(0) rotate(-3deg)}}
+  @keyframes arrival-light{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:scale(1)}}
+  @keyframes arrival-trace{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+}
+@media screen and (max-width:650px){
+  .loki-workspace #overview>.arrival-scene{min-height:0;padding:30px 24px;gap:28px}
+  .loki-workspace #overview .arrival-scene h1{font-size:43px;letter-spacing:-1.9px}
+  .loki-workspace #overview .arrival-scene .signal-instrument{display:block;transform:none;width:100%;animation:none}
+  .loki-workspace #overview .arrival-scene .signal-drawing{max-height:125px}
+  .loki-workspace .arrival-principles{gap:16px;margin-top:24px;font-size:8px}
+  .loki-workspace .arrival-atmosphere{mask-image:linear-gradient(180deg,transparent,black)}
+}
