@@ -920,3 +920,72 @@ body.loki-workspace::after{
   .loki-workspace .hero .button{white-space:normal;text-align:center}
   .loki-workspace .section-title .button{min-height:44px}
 }
+
+/* Desk layout: research evidence first, supporting detail progressively disclosed. */
+@media screen {
+  .loki-workspace #overview:not([hidden]){display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);gap:22px;align-items:start;padding-top:28px}
+  .loki-workspace #overview> *{min-width:0;margin:0}
+  .loki-workspace #overview>.hero{grid-column:1/-1;order:0;grid-template-columns:minmax(0,1.4fr) minmax(220px,.7fr);padding:30px 34px;border:0;border-left:3px solid #83d9bb;border-radius:0 16px 16px 0;background:linear-gradient(100deg,#172d2b,#101a2300);box-shadow:none}
+  .loki-workspace #overview .hero h1{font-size:clamp(34px,3.4vw,52px);line-height:1.06;letter-spacing:-1.8px;margin:14px 0}
+  .loki-workspace #overview .hero h1 br{display:none}
+  .loki-workspace #overview .hero h1 em{display:block}
+  .loki-workspace #overview .hero-actions{margin-top:20px}
+  .loki-workspace #overview .signal-instrument{border:0;background:transparent;box-shadow:none;opacity:.8}
+  .loki-workspace #overview .signal-drawing{max-height:145px}
+  .loki-workspace #overview .instrument-heading{padding:4px 10px 8px}
+  .loki-workspace #overview .instrument-footer{padding:8px 10px;font-size:9px}
+  .loki-workspace #overview>.workspace-launchers{grid-column:1/-1;order:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .loki-workspace #overview .workspace-launchers>a{padding:17px;background:#111c24;border-radius:10px;gap:12px}
+  .loki-workspace #overview .workspace-launchers strong{font-size:13px}
+  .loki-workspace #overview .workspace-launchers a>div>span{font-size:10px;line-height:1.5}
+  .loki-workspace #overview .launcher-icon{width:34px;height:34px;font-size:19px;flex-shrink:0}
+  .loki-workspace #overview>.metrics-heading{grid-column:1/-1;order:2;margin-top:10px;margin-bottom:-10px}
+  .loki-workspace #overview>.metrics-heading h2{font-size:20px}
+  .loki-workspace #overview>.metrics{grid-column:1/-1;order:3;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;background:#111e26;border:1px solid #30494c;border-radius:12px;overflow:hidden}
+  .loki-workspace #overview>.metrics>.metric{border:0;border-right:1px solid #30494c;border-radius:0;background:transparent;padding:22px;box-shadow:none;transform:none}
+  .loki-workspace #overview>.metrics>.metric:last-child{border-right:0}
+  .loki-workspace #overview>.metrics .metric strong{font-size:32px;color:#e7f9f1}
+  .loki-workspace #overview>.metrics .metric .small-value{font-size:19px;letter-spacing:-.4px;line-height:1.4}
+  .loki-workspace #overview>.chart-panel{grid-column:1;order:4;min-height:360px}
+  .loki-workspace #overview>#next-steps-panel{grid-column:2;order:5;min-height:360px;background:#12231f;border-color:#304c40}
+  .loki-workspace #overview .chart-panel .empty-state{min-height:235px;border:1px dashed #344f49;border-radius:10px;background:radial-gradient(ellipse at center,#16382b66,transparent 70%);margin-top:18px;padding:20px}
+  .loki-workspace #overview .empty-state>span{font-size:40px;line-height:1;color:#8fd7b9}
+  .loki-workspace #overview .empty-state h3{font-size:17px;margin-top:14px}
+  .loki-workspace #overview .steps-list{display:grid;gap:0;list-style:none;padding:0;margin:12px 0}
+  .loki-workspace #overview .steps-list li{display:flex;gap:12px;padding:15px 0;border-bottom:1px solid #2a4036;font-size:12px;line-height:1.6}
+  .loki-workspace #overview .step-check{display:grid;place-items:center;border:1px solid #456052;border-radius:50%;width:25px;height:25px;flex-shrink:0;color:#b9ebd2}
+  .loki-workspace #overview>#market-floor{grid-column:1/-1;order:6}
+  .loki-workspace #overview>#trained-book-panel{grid-column:1/-1;order:7}
+  .loki-workspace .strategy-book-details{border:1px solid #365048;background:#0c191d;border-radius:10px;margin:20px 0;overflow:hidden}
+  .loki-workspace .strategy-book-details>summary{cursor:pointer;padding:18px 20px;color:#c9ffe2;font-size:13px;font-weight:600}
+  .loki-workspace .strategy-book-details>summary .caption{margin-left:16px;font-weight:400}
+  .loki-workspace .strategy-book-details>summary:hover{background:#182c28}
+  .loki-workspace .strategy-book-details>summary:focus-visible{outline:2px solid #a8f0c6;outline-offset:-4px}
+  .loki-workspace .strategy-book-details[open]>summary{border-bottom:1px solid #365048}
+  .loki-workspace .strategy-book-details #trained-book-grid{padding:16px;margin:0!important;box-sizing:border-box}
+  .loki-workspace #overview>.workflow-heading{grid-column:1/-1;order:8;margin-top:8px}
+  .loki-workspace #overview>.workflow-grid{grid-column:1/-1;order:9;gap:12px}
+  .loki-workspace #overview .workflow-card{background:#111c24;border-radius:10px;padding:20px;border-color:#2b4144;box-shadow:none}
+  .loki-workspace #overview .workflow-card h3{font-size:17px}
+  .loki-workspace #overview .workflow-card p{font-size:12px;line-height:1.65;min-height:0}
+  .loki-workspace #overview>.goal-note{grid-column:1/-1;order:10}
+}
+@media screen and (max-width:1150px){
+  .loki-workspace #overview:not([hidden]){grid-template-columns:minmax(0,1fr)}
+  .loki-workspace #overview>.chart-panel,.loki-workspace #overview>#next-steps-panel{grid-column:1;min-height:0}
+  .loki-workspace #overview>.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .loki-workspace #overview>.metrics>.metric:nth-child(2){border-right:0}
+  .loki-workspace #overview>.metrics>.metric:nth-child(-n+2){border-bottom:1px solid #30494c}
+}
+@media screen and (max-width:650px){
+  .loki-workspace #overview:not([hidden]){gap:18px;padding-top:18px}
+  .loki-workspace #overview>.hero{grid-template-columns:1fr;padding:20px}
+  .loki-workspace #overview .signal-instrument{display:none}
+  .loki-workspace #overview>.workspace-launchers{grid-template-columns:1fr}
+  .loki-workspace #overview .workspace-launchers>a{padding:14px 16px}
+  .loki-workspace #overview>.metrics>.metric{padding:16px}
+  .loki-workspace #overview>.metrics .metric strong{font-size:26px}
+  .loki-workspace #overview>.metrics .metric .small-value{font-size:16px}
+  .loki-workspace .strategy-book-details>summary .caption{display:block;margin:6px 0 0}
+  .loki-workspace #overview>.workflow-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

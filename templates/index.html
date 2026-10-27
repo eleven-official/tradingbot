@@ -41,7 +41,7 @@
     <header class="topbar"><span>Trading intelligence <span class="slash">/</span> <strong id="page-name">Overview</strong></span><div class="topbar-status"><button class="palette-chip" id="open-palette" type="button" aria-haspopup="dialog" aria-controls="command-palette" aria-label="Open the command palette (Control or Command K)">⌘K</button><div class="mode-switch" role="group" aria-label="Trading mode"><button id="mode-paper" type="button" aria-pressed="true">Paper</button><button id="mode-real" type="button" aria-pressed="false">Real</button></div><span class="context-chip" id="context-status">No dataset</span><span class="pill" id="mode-pill"><span class="status-dot"></span> PAPER / RESEARCH</span></div></header>
     <div class="workspace-context" id="workspace-context" hidden><div><span class="status-dot"></span><strong id="context-symbol"></strong><span id="context-detail"></span></div><a href="#strategy-lab">Change dataset ↗</a></div>
     <section id="overview" class="workspace-view" aria-label="Overview">
-      <div class="hero"><div class="hero-copy"><p class="eyebrow hero-greeting" id="hero-greeting" hidden></p><p class="eyebrow">THE LOKI WORKSPACE</p><h1>A clearer view.<br><em>A considered move.</em></h1><p class="muted">Your markets, research and paper trading.<br>One place to turn a signal into a plan.</p><div class="hero-actions"><a class="button primary" href="#ai-trading">Open trading workspace <span aria-hidden="true">↗</span></a><a class="text-link" href="#strategy-lab">Explore the research lab <span aria-hidden="true">→</span></a></div></div>
+      <div class="hero"><div class="hero-copy"><p class="eyebrow hero-greeting" id="hero-greeting" hidden></p><p class="eyebrow">YOUR RESEARCH &amp; TRADING DESK</p><h1>Less noise.<br><em>More perspective.</em></h1><p class="muted">Follow the market. Test your edge. Track every decision.</p><div class="hero-actions"><a class="button primary" href="#ai-trading">Open trading workspace <span aria-hidden="true">↗</span></a><a class="text-link" href="#strategy-lab">Explore the research lab <span aria-hidden="true">→</span></a></div></div>
         <div class="signal-instrument">
           <div class="instrument-heading"><span>SIGNAL STUDY</span><button id="signal-motion-toggle" type="button" aria-pressed="false">Pause motion</button></div>
           <svg class="signal-drawing" viewBox="0 0 360 240" aria-hidden="true">
@@ -66,13 +66,13 @@
         <div id="floor-categories" class="floor-grid" aria-live="polite"></div>
         <p class="caption" id="floor-note">A fixed public basket answered by Binance Spot (crypto pairs) and Yahoo Finance (equities, indices, commodities, FX), cached for about a minute per symbol. Numbers can be minutes old and instruments can be honestly unavailable — context, never advice.</p>
       </section>
+      <div class="section-title metrics-heading"><div><p class="eyebrow">YOUR LATEST RUN / UNSEEN WINDOWS</p><h2>The evidence you produced.</h2></div><span class="caption">Separate from the trained book below.</span></div>
       <div class="metrics" aria-live="polite">
         <article class="metric"><p>Out-of-sample return</p><strong id="return-metric">—</strong><small>After estimated trading costs</small></article>
         <article class="metric"><p>Maximum drawdown</p><strong id="drawdown-metric">—</strong><small>Measured across unseen test windows</small></article>
         <article class="metric"><p>Closed-trade win rate</p><strong id="winrate-metric">—</strong><small id="trades-metric">Target: 70% · not yet measured</small></article>
         <article class="metric"><p>Research verdict</p><strong id="verdict-metric" class="small-value">Awaiting evidence</strong><small>Historical evidence, never a guarantee</small></article>
       </div>
-      <div class="section-title metrics-heading"><div><p class="eyebrow">YOUR LATEST RUN / UNSEEN WINDOWS</p><h2>The evidence you produced.</h2></div><span class="caption">Separate from the trained book below.</span></div>
       <section class="panel next-steps" id="next-steps-panel">
         <div class="section-title"><div><p class="eyebrow">GET GOING / FOUR STEPS</p><h2>Next steps.</h2></div><span class="tag" id="next-steps-score">0 of 4 done</span></div>
         <ol class="steps-list">
@@ -86,7 +86,7 @@
       <section class="panel" id="trained-book-panel">
         <div class="section-title"><div><p class="eyebrow">TRAINED STRATEGY BOOK</p><h2>Signed off on unseen data.</h2></div><span class="tag">Out-of-sample, per symbol</span></div>
         <p class="muted">Loki's live strategy book: per-asset parameters trained on years of history, verified on out-of-sample windows, then measured once more on the final 20% of history that no training step ever touched.</p>
-        <div id="trained-book-grid" aria-live="polite"></div>
+        <details class="strategy-book-details"><summary><span>Explore asset-by-asset research</span><span class="caption">Parameters, validation &amp; holdout results</span></summary><div id="trained-book-grid" aria-live="polite"></div></details>
         <p class="caption" id="trained-book-note">Loaded from the shipped report snapshot.</p>
         <p class="caption" id="visit-note" hidden></p>
         <div class="button-row"><a class="button primary" href="#ai-trading">Trade this with the AI →</a></div>
