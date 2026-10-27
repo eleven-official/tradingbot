@@ -64,14 +64,26 @@ def _get_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
     from loki_v8.agents import LokiAgentPipeline
     from loki_v8.broker import PaperBroker
     from loki_v8.config import LokiConfig
-    from loki_v8.train import apply_best, load_report
+    from loki_v8.data import is_crypto
+    from loki_v8.train import apply_best, apply_crypto_consensus, load_report
 
-    cfg = LokiConfig(period="1y")
+    # The strategy refuses to signal below ``lookback_bars`` (250). A 1y daily
+    # window is 365 crypto bars or ~250 equity bars — no slack at all, and a
+    # single missing session leaves the symbol permanently HOLD. Two years of
+    # equity tape and three of crypto keep the warmup clear of the edge.
+    crypto = is_crypto(symbol)
+    cfg = LokiConfig(period="3y" if crypto else "2y")
     applied: Dict[str, Any] = {}
     try:
         report = load_report()
         if report:
             applied = apply_best(report, symbol, cfg) or {}
+            if not applied and crypto:
+                # No verified per-symbol profile: trade the crypto consensus
+                # rather than the shipped defaults. ``applied`` stays empty so
+                # the response still reports trained_profile_applied=False —
+                # consensus is not a per-symbol verification.
+                apply_crypto_consensus(report, cfg)
     except Exception as exc:  # noqa: BLE001 - degrade to default config
         logger.warning("trained profile unavailable for %s: %s", symbol, exc.__class__.__name__)
     pipeline = LokiAgentPipeline(cfg, broker=PaperBroker(cfg))

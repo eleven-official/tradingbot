@@ -43,9 +43,16 @@
            <span style="color:#e7f0ff;font-size:12.5px">${escapeHtml(num(holdout.win_rate_pct))} win · ${escapeHtml(num(holdout.profitable_months_pct))} months · PF ${escapeHtml(num(holdout.profit_factor, 2, ''))}</span>` :
           '<span style="color:#7f93a8;font-size:12px">Holdout audit pending</span>';
       const badge = holdout.trades ? holdoutBadge(holdout) : '';
+      // A profile can train cleanly and still miss a hurdle (too few
+      // out-of-sample trades, profit factor under the floor). Saying so is the
+      // difference between a research artifact and a claim.
+      const hurdleLine = entry.good === false
+        ? '<span style="color:#f0b8b8;font-size:12px">missed hurdles — research only, not a verified edge</span>'
+        : '';
       return `<article style="${cardStyle}">
         <strong style="font-size:15px;color:#b8f0d8">${escapeHtml(entry.symbol)}</strong>
         ${badge}
+        ${hurdleLine}
         <span style="font-size:13.5px"><strong>${escapeHtml(num(entry.win_rate_pct))}</strong> winning trades</span>
         <span style="font-size:13.5px"><strong>${escapeHtml(num(entry.profitable_months_pct))}</strong> profitable months</span>
         <span style="font-size:13px;color:#9fb0c2">profit factor ${escapeHtml(num(entry.profit_factor, 2, ''))} · ${escapeHtml(String(entry.trades ?? '—'))} verified trades</span>

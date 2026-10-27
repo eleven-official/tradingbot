@@ -648,6 +648,8 @@ def research_book(response: Response):
         summary.append(
             {
                 "symbol": entry.get("symbol"),
+                "good": bool(entry.get("good")),
+                "preset": entry.get("factor_preset"),
                 "win_rate_pct": dev.get("win_rate_pct"),
                 "profitable_months_pct": dev.get("month_profit_rate_pct"),
                 "profit_factor": dev.get("profit_factor"),

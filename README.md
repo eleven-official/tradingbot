@@ -23,6 +23,27 @@ Optional environment variables: `LOKI_SITE_GATE=1` enables the gate, `SUPABASE_U
 - The "Bored?" game is entirely local: scores and dive history never leave the browser, and its rarity tiers are hand-written bank data, not measurements from other players.
 - `pytest` (all Python tests), plus `node --test` for the two JavaScript test modules. The CI workflows in `.github/` run both on every push.
 
+## Strategy book and paper sessions
+
+The ensemble's execution parameters are trained walk-forward per symbol and verified out of sample (`loki_v8/train.py`). The verified profiles ship in `loki_v8/training_report_snapshot.json`, and that snapshot is what the server applies to a symbol before it emits a decision.
+
+Crypto has its own pass, because a 24/7 tape is not an equity tape: 365 bars a year instead of 252, higher realised volatility, and hurdle targets scaled to crypto noise.
+
+```powershell
+python -m loki_v8.train_crypto --rounds 2 --workers 6 --period 10y
+```
+
+That pass writes a crypto-only `crypto_consensus` next to the mixed one, and merges forward any symbol it did not evaluate, so nothing already verified is dropped.
+
+Simulated crypto trading runs off the same book:
+
+```powershell
+python -m loki_v8.crypto_paper                 # 180-bar replay blotter
+python -m loki_v8.crypto_paper --mode step     # one decision on the latest bar
+```
+
+`replay` fills at historical prices with slippage and writes a session ledger; `step` persists fills to an isolated crypto paper account. Neither places a real order. `--mode step --mirror` forwards fills to Alpaca's paper endpoint when `ALPACA_PAPER_API_KEY` and `ALPACA_PAPER_API_SECRET` are set; without them it reports the missing keys instead of ordering. A replay cannot be mirrored, because Alpaca only fills at live prices.
+
 ## Layout
 
 - `main.py` — Vercel/uvicorn entry point; `loki/api/` — the HTTP surface (server, gate, Supabase auth, news desk, market feed, Alpaca relay, fusion research, watchtower, terminal).

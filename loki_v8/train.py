@@ -80,6 +80,27 @@ TRAINABLE_PARAMS: Tuple[str, ...] = tuple(DEFAULT_GRID) + (
     "vol_target_sizing",
 )
 
+# Config fields a training report may NEVER override. A report is data that
+# ships in the repo; it can tune the strategy, never the account, the mode,
+# the universe, the history window or credentials.
+UNSAFE_REPORT_FIELDS: Tuple[str, ...] = (
+    "mode",
+    "symbols",
+    "initial_cash",
+    "state_dir",
+    "period",
+    "timeframe",
+    "lookback_bars",
+    "commission_per_trade",
+    "slippage_bps",
+    "log_level",
+    "alpaca_api_key",
+    "alpaca_api_secret",
+    "binance_api_key",
+    "binance_api_secret",
+    "alpaca_api_key_id",
+)
+
 # Parameter ladders used when auto-refining a neighborhood around the best
 # parameters found so far ("train until it makes good trades"). The extremes
 # (very small take-profit multiples, very wide stops) matter for the
@@ -962,6 +983,30 @@ def load_report(cfg: Optional[LokiConfig] = None) -> Optional[Dict[str, Any]]:
         return None
 
 
+def apply_params(cfg: LokiConfig, params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Copy a trained parameter block into ``cfg`` (in place).
+
+    A trained block is *strategy* data and is allowed to tune any strategy
+    field on the config — including the ones the aggressive search tunes that
+    predate ``TRAINABLE_PARAMS`` (``max_hold_bars``, ``max_atr_pct``). It is
+    never allowed to touch the account, the execution mode, the universe, the
+    data window or credentials: the report ships inside the repo, so a report
+    that could flip ``mode`` to ``live`` would be a remote-control switch for
+    the paper engine. Those fields are denied explicitly rather than relying
+    on an allowlist that silently drops newly-tuned knobs.
+    """
+    applied: Dict[str, Any] = {}
+    fields = cfg.__dataclass_fields__
+    for k, v in (params or {}).items():
+        if k == "factor_weights" and isinstance(v, dict):
+            cfg.factor_weights = normalize_weights(v)
+            applied["factor_weights"] = cfg.factor_weights
+        elif k in fields and k not in UNSAFE_REPORT_FIELDS:
+            setattr(cfg, k, v)
+            applied[k] = v
+    return applied
+
+
 def apply_best(report: Dict[str, Any], symbol: str, cfg: LokiConfig) -> Dict[str, Any]:
     """Copy a symbol's best trained parameters into ``cfg`` (in place).
 
@@ -972,16 +1017,7 @@ def apply_best(report: Dict[str, Any], symbol: str, cfg: LokiConfig) -> Dict[str
     for entry in report.get("symbols", []):
         if entry.get("symbol", "").upper() != symbol.upper() or not entry.get("ok"):
             continue
-        params: Dict[str, Any] = {}
-        for k, v in (entry.get("best_params") or {}).items():
-            if k in TRAINABLE_PARAMS:
-                params[k] = v
-            elif k == "factor_weights" and isinstance(v, dict):
-                params[k] = normalize_weights(v)
-        applied = {}
-        for k, v in params.items():
-            setattr(cfg, k, v)
-            applied[k] = v
+        applied = apply_params(cfg, entry.get("best_params"))
         if applied:
             logger.info("applied trained params for %s: %s", symbol, applied)
         return applied
@@ -993,14 +1029,23 @@ def apply_consensus(report: Dict[str, Any], cfg: LokiConfig) -> Dict[str, Any]:
     consensus = (report or {}).get("consensus")
     if not consensus or not consensus.get("params"):
         return {}
-    applied: Dict[str, Any] = {}
-    params = consensus["params"]
-    for k in TRAINABLE_PARAMS:
-        if k in params:
-            setattr(cfg, k, params[k])
-            applied[k] = params[k]
-    if isinstance(params.get("factor_weights"), dict):
-        cfg.factor_weights = normalize_weights(params["factor_weights"])
-        applied["factor_weights"] = cfg.factor_weights
+    applied = apply_params(cfg, consensus["params"])
     logger.info("applied consensus params: %s", applied)
+    return applied
+
+
+def apply_crypto_consensus(report: Dict[str, Any], cfg: LokiConfig) -> Dict[str, Any]:
+    """Apply the crypto-only consensus parameters to ``cfg`` (in place).
+
+    ``train_crypto`` writes a ``crypto_consensus`` block trained exclusively
+    on the crypto universe. Falling back to it — rather than to the mixed
+    equity/crypto ``consensus`` — keeps crypto decisions from inheriting an
+    equity-calibrated stop distance. When the crypto block is absent (older
+    snapshots) this degrades to :func:`apply_consensus`.
+    """
+    consensus = (report or {}).get("crypto_consensus")
+    if not consensus or not consensus.get("params"):
+        return apply_consensus(report, cfg)
+    applied = apply_params(cfg, consensus["params"])
+    logger.info("applied crypto consensus params: %s", applied)
     return applied

@@ -113,6 +113,7 @@ function navigate(){const aliases={'risk-studio':'portfolio'};const hash=locatio
   const moreGroup=$('#nav-more-group'),moreBtn=$('#nav-more-toggle');
   if(moreGroup&&moreBtn&&moreGroup.querySelector(`a[data-view="${view}"]`)){moreGroup.hidden=false;moreBtn.setAttribute('aria-expanded','true');}
   $('#page-name').textContent=$(`.sidebar nav a[data-view="${view}"]`).textContent.trim().replace(/^\S+\s+/,'');document.title=`Loki · ${$('#page-name').textContent}`;
+  document.dispatchEvent(new CustomEvent('loki:view',{detail:{view}}));
   requestAnimationFrame(()=>{if(hash==='risk-studio')$('#risk-studio').scrollIntoView();else window.scrollTo({top:0,behavior:'instant'});drawChart();});
 }
 window.addEventListener('hashchange',navigate);
@@ -143,7 +144,105 @@ function renderReport(){const metrics=report.summary;$('#return-metric').textCon
   $('#report-statistics').textContent=`Expectancy: ${number(metrics.expectancy)} / trade · Profit factor: ${metrics.profit_factor==null?'not estimable':number(metrics.profit_factor)} · Fees: ${number(metrics.total_fees)} · Slippage: ${number(metrics.total_slippage)} · ${report.trial_count} training trials`;
   $('#chart-empty').hidden=true;$('#equity-chart').hidden=false;$('#chart-caption').textContent=`Historical forward tests: ${report.test_start.slice(0,10)} → ${report.test_end.slice(0,10)} · ${report.bars} supplied bars · Fingerprint ${report.data_fingerprint.slice(0,16)}… · Input quote currency · Benchmarks use the same dates and the same cost assumptions: buy-and-hold (dashed line) and cash (flat at start). Every result carries its window, config, fees, slippage and fingerprint — export it any time.`;drawChart();renderRunSummary();renderPinStrip();
 }
-function drawChart(){if(!report||$('#overview').hidden)return;const canvas=$('#equity-chart'),width=canvas.clientWidth;if(!width)return;const height=280,scale=window.devicePixelRatio||1;canvas.width=width*scale;canvas.height=height*scale;const ctx=canvas.getContext('2d');ctx.scale(scale,scale);const points=[{timestamp:report.test_start,equity:report.config.initial_capital,benchmark_equity:report.config.initial_capital},...report.equity_curve];const values=points.flatMap(point=>[point.equity,point.benchmark_equity]);const min=Math.min(...values),max=Math.max(...values),padding=Math.max((max-min)*.12,max*.005,1),low=min-padding,high=max+padding;const left=width<500?48:60,right=12,top=14,bottom=30;const x=i=>left+i/Math.max(1,points.length-1)*(width-left-right),y=v=>top+(high-v)/(high-low)*(height-top-bottom);ctx.font='10px Segoe UI';ctx.lineWidth=1;for(let i=0;i<5;i++){const value=low+(high-low)*i/4;ctx.strokeStyle='#26363d';ctx.beginPath();ctx.moveTo(left,y(value));ctx.lineTo(width-right,y(value));ctx.stroke();ctx.fillStyle='#9aafbb';ctx.fillText(number(value,0),0,y(value)+3);}for(const[key,color]of[['benchmark_equity','#8095a3'],['equity','#a4e6bc']]){ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=key==='equity'?2:1.5;ctx.setLineDash(key==='equity'?[]:[5,4]);points.forEach((point,i)=>i?ctx.lineTo(x(i),y(point[key])):ctx.moveTo(x(i),y(point[key])));ctx.stroke();}ctx.setLineDash([]);ctx.fillStyle='#9aafbb';ctx.fillText(points[0].timestamp.slice(0,10),left,height-7);ctx.textAlign='right';ctx.fillText(points.at(-1).timestamp.slice(0,10),width-right,height-7);}
+function drawChart(){
+  if(!report||$('#overview').hidden)return;
+  const canvas=$('#equity-chart'),width=canvas.clientWidth;if(!width)return;
+  const height=canvas.clientHeight||280,scale=window.devicePixelRatio||1;
+  canvas.width=Math.round(width*scale);canvas.height=Math.round(height*scale);
+  const ctx=canvas.getContext('2d');ctx.setTransform(scale,0,0,scale,0,0);
+  ctx.clearRect(0,0,width,height);
+  const points=[{timestamp:report.test_start,equity:report.config.initial_capital,benchmark_equity:report.config.initial_capital},...report.equity_curve];
+  const values=points.flatMap(point=>[point.equity,point.benchmark_equity]);
+  const min=Math.min(...values),max=Math.max(...values),padding=Math.max((max-min)*.12,max*.005,1),low=min-padding,high=max+padding;
+  const left=width<520?52:64,right=54,top=16,bottom=30;
+  const plotW=Math.max(1,width-left-right),plotH=Math.max(1,height-top-bottom);
+  const x=i=>left+(points.length<=1?0:i/Math.max(1,points.length-1))*plotW;
+  const y=value=>top+(high-value)/(high-low)*plotH;
+  const mono='"JetBrains Mono","Cascadia Code",Consolas,monospace';
+  const roundRect=(x0,y0,w,h,r)=>{ctx.beginPath();ctx.moveTo(x0+r,y0);ctx.arcTo(x0+w,y0,x0+w,y0+h,r);ctx.arcTo(x0+w,y0+h,x0,y0+h,r);ctx.arcTo(x0,y0+h,x0,y0,r);ctx.arcTo(x0,y0,x0+w,y0,r);ctx.closePath();};
+
+  function paint(hover){
+    ctx.clearRect(0,0,width,height);
+    ctx.save();
+    ctx.font='10px '+mono;ctx.textAlign='left';ctx.textBaseline='middle';
+    for(let i=0;i<=4;i++){
+      const value=low+(high-low)*i/4,yy=y(value);
+      ctx.strokeStyle=i===0?'rgba(126,168,184,.22)':'rgba(126,168,184,.11)';
+      ctx.lineWidth=1;ctx.setLineDash(i===0?[]:[2,5]);
+      ctx.beginPath();ctx.moveTo(left,yy);ctx.lineTo(width-right,yy);ctx.stroke();
+      ctx.fillStyle='rgba(154,175,187,.85)';ctx.fillText(number(value,0),0,yy);
+    }
+    ctx.setLineDash([]);
+
+    const area=ctx.createLinearGradient(0,top,0,height-bottom);
+    area.addColorStop(0,'rgba(46,230,176,.30)');
+    area.addColorStop(.55,'rgba(46,230,176,.09)');
+    area.addColorStop(1,'rgba(46,230,176,0)');
+    ctx.beginPath();ctx.moveTo(x(0),y(points[0].equity));
+    points.forEach((point,i)=>ctx.lineTo(x(i),y(point.equity)));
+    ctx.lineTo(x(points.length-1),height-bottom);ctx.lineTo(x(0),height-bottom);ctx.closePath();
+    ctx.fillStyle=area;ctx.fill();
+
+    ctx.beginPath();ctx.strokeStyle='rgba(160,182,196,.55)';ctx.lineWidth=1.4;ctx.setLineDash([5,5]);
+    points.forEach((point,i)=>i?ctx.lineTo(x(i),y(point.benchmark_equity)):ctx.moveTo(x(i),y(point.benchmark_equity)));
+    ctx.stroke();ctx.setLineDash([]);
+
+    const line=ctx.createLinearGradient(left,0,width-right,0);
+    line.addColorStop(0,'#8ffcd0');line.addColorStop(.55,'#4fe0b0');line.addColorStop(1,'#7fd8ff');
+    ctx.save();ctx.shadowColor='rgba(46,230,176,.55)';ctx.shadowBlur=16;
+    ctx.beginPath();ctx.strokeStyle=line;ctx.lineWidth=2.2;ctx.lineJoin='round';ctx.lineCap='round';
+    points.forEach((point,i)=>i?ctx.lineTo(x(i),y(point.equity)):ctx.moveTo(x(i),y(point.equity)));
+    ctx.stroke();ctx.restore();
+
+    const last=points[points.length-1];
+    ctx.beginPath();ctx.fillStyle='rgba(46,230,176,.20)';ctx.arc(x(points.length-1),y(last.equity),8,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.fillStyle='#d8fff0';ctx.arc(x(points.length-1),y(last.equity),3.2,0,Math.PI*2);ctx.fill();
+
+    ctx.fillStyle='rgba(154,175,187,.8)';ctx.textBaseline='alphabetic';
+    ctx.textAlign='left';ctx.fillText(String(points[0].timestamp).slice(0,10),left,height-8);
+    ctx.textAlign='right';ctx.fillText(String(last.timestamp).slice(0,10),width-right,height-8);
+
+    if(Number.isInteger(hover)&&hover>=0&&hover<points.length){
+      const hx=x(hover),point=points[hover];
+      ctx.strokeStyle='rgba(200,255,232,.35)';ctx.lineWidth=1;ctx.setLineDash([3,4]);
+      ctx.beginPath();ctx.moveTo(hx,top);ctx.lineTo(hx,height-bottom);ctx.stroke();ctx.setLineDash([]);
+      for(const [key,color] of [['benchmark_equity','#a0b6c4'],['equity','#8ffcd0']]){
+        ctx.beginPath();ctx.fillStyle=color;ctx.arc(hx,y(point[key]),3,0,Math.PI*2);ctx.fill();
+      }
+      const text=String(point.timestamp).slice(0,10)+'  |  '+number(point.equity,0);
+      ctx.font='11px '+mono;
+      const boxW=ctx.measureText(text).width+18;
+      const boxX=Math.min(Math.max(left,hx-boxW/2),width-right-boxW);
+      const boxY=Math.max(top+2,Math.min(y(point.equity)-40,height-bottom-28));
+      ctx.fillStyle='rgba(9,16,23,.94)';ctx.strokeStyle='rgba(46,230,176,.42)';ctx.lineWidth=1;
+      roundRect(boxX,boxY,boxW,24,8);ctx.fill();ctx.stroke();
+      ctx.fillStyle='#d8fff0';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(text,boxX+9,boxY+12);
+    }
+    ctx.restore();
+  }
+
+  canvas._auroraChart={points,width,height,left,right,top,bottom,x,y};
+  canvas._auroraPaint=paint;
+  if(!canvas._auroraBound){
+    canvas._auroraBound=true;
+    canvas.addEventListener('pointermove',event=>{
+      const geo=canvas._auroraChart;
+      if(!geo||!canvas._auroraPaint)return;
+      const box=canvas.getBoundingClientRect();
+      if(!box.width)return;
+      const px=(event.clientX-box.left)*(geo.width/box.width);
+      let best=0,bestDelta=Infinity;
+      for(let i=0;i<geo.points.length;i++){const delta=Math.abs(geo.x(i)-px);if(delta<bestDelta){bestDelta=delta;best=i;}}
+      canvas._auroraPaint(best);
+    });
+    canvas.addEventListener('pointerleave',()=>{if(canvas._auroraPaint)canvas._auroraPaint(null);});
+  }
+  if(!canvas._auroraResize){
+    canvas._auroraResize=true;let pending=null;
+    window.addEventListener('resize',()=>{clearTimeout(pending);pending=setTimeout(()=>{try{drawChart();}catch{}},150);});
+  }
+  paint(null);
+}
 $('#research-form').addEventListener('submit',async event=>{event.preventDefault();const file=$('#data-file').files[0];if(!file)return;const button=$('#run-research');button.disabled=true;message('#research-message','Reading the file locally and checking it before any replay…');
   try{if(file.size>3_000_000)throw new Error('Choose a CSV smaller than 3 MB.');const stats=previewCsv(await file.text());pendingImportFile=file;renderCsvPreview(stats,file.name);$('#preview-apply').disabled=!stats.ok;message('#research-message',stats.ok?(practiceDataset?`Practice dataset generated in your browser${practiceSeed!==null?` · seed ${practiceSeed}`:''}. A flight simulator for the workflow — synthetic bars prove nothing about real markets. Read the preview, then apply.`:'The file checks out. Read the preview, then apply it to start the walk-forward evaluation.'):'The file has fixable problems — details below. Loki has not started a replay.',!stats.ok);}
   catch(error){pendingImportFile=null;$('#quant-csv-preview')&&($('#quant-csv-preview').hidden=true);message('#research-message',error.message,true);}
