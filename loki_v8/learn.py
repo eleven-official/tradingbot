@@ -456,12 +456,17 @@ def print_report(report: Dict[str, Any]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Learn from paper trading mistakes")
     parser.add_argument("--session", help="Specific session ID to analyse")
-    parser.add_argument("--symbols", nargs="+", help="Symbols to focus on")
+    parser.add_argument("--symbols", nargs="+", help="Symbols to focus on (space-separated, e.g. BTC-USD ETH-USD)")
     parser.add_argument("--retrain", action="store_true", help="Print train_crypto CLI for focused grid")
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     args = parser.parse_args()
 
-    report = run_learning_cycle(session_id=args.session, symbols=args.symbols)
+    # Support both space-separated and comma-separated symbols
+    symbols = args.symbols
+    if symbols and len(symbols) == 1 and "," in symbols[0]:
+        symbols = [s.strip() for s in symbols[0].split(",") if s.strip()]
+
+    report = run_learning_cycle(session_id=args.session, symbols=symbols)
 
     if args.json:
         print(json.dumps(report, indent=2, default=str))
