@@ -4,6 +4,18 @@ One FastAPI application: the information workspace at the gate, a Supabase-gated
 
 Everything ships over Vercel: every push to `main` reaches https://loki-joshua-5183.vercel.app through the connected Vercel project. Access is code-gated; the gate code lives in the deployment env, not in this repository.
 
+## Integrated cloud research
+
+The current workspace includes **Cloud research** at `/#cloud-research`, using
+the existing Loki login through a signed server bridge. The Next.js optimizer
+in `cloud/` runs separately on Vercel and shares the same Supabase Auth project.
+Existing paper accounts, local models and broker controls are preserved; cloud
+certification does not enable orders. This addition still requires deployment,
+reviewed database setup and server environment configuration.
+
+See [docs/CLOUD_INTEGRATION.md](docs/CLOUD_INTEGRATION.md) for the combined setup
+and [cloud/README.md](cloud/README.md) for the worker and research protocol.
+
 ## Run locally
 
 Requires Python 3.12. From the repository root:

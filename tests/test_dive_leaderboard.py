@@ -113,7 +113,8 @@ class TestSharedBoard:
         monkeypatch.setenv("SUPABASE_SERVICE_KEY", "sb_secret_the-key-would-go-here")
         calls = []
 
-        def fake_request(method, url, json=None, headers=None, timeout=None):
+        def fake_request(method, url, json=None, headers=None, timeout=None, allow_redirects=None):
+            assert allow_redirects is False
             calls.append({"method": method, "url": url, "json": json, "headers": headers})
             if method == "GET":
                 return FakeResponse(200, [{"nickname": "Champ", "best_score": 300, "dives": 2}])

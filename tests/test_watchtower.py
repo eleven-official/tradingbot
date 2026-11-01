@@ -243,7 +243,7 @@ def test_watchtower_pages_and_backup_are_wired():
         'id="market-floor"',
         'id="floor-categories"',
         'id="floor-refresh"',
-        "MARKET FLOOR",
+        'aria-label="Market floor"',
     ):
         assert needle in index, needle
     backup = (ROOT / "static" / "js" / "backup.js").read_text(encoding="utf-8")

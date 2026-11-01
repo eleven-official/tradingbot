@@ -26,6 +26,7 @@ import secrets
 import threading
 import time
 import unicodedata
+from urllib.parse import urlsplit
 from typing import Any, Dict, Optional
 
 import requests
@@ -269,7 +270,16 @@ def _supabase_key() -> str:
 def _supabase_config() -> tuple[str, str]:
     url = (os.environ.get("SUPABASE_URL") or "").strip().rstrip("/")
     key = _supabase_key()
-    if not url or not key or not url.endswith(".supabase.co"):
+    try:
+        parsed = urlsplit(url)
+        valid = (parsed.scheme == "https" and parsed.hostname is not None
+                 and parsed.hostname.endswith(".supabase.co")
+                 and parsed.username is None and parsed.password is None
+                 and parsed.port in (None, 443) and not parsed.path
+                 and not parsed.query and not parsed.fragment)
+    except ValueError:
+        valid = False
+    if not url or not key or not valid:
         raise HTTPException(
             503,
             "Accounts are not configured on this deployment; the workspace still works as a guest.",
@@ -294,6 +304,7 @@ def _supa_request(method: str, path: str, *, json_body: Optional[dict] = None) -
             json=json_body,
             headers=_supa_headers(key),
             timeout=15,
+            allow_redirects=False,
         )
     except requests.RequestException as exc:
         logger.warning("Supabase auth network failure: %s", exc.__class__.__name__)
@@ -321,7 +332,7 @@ def _supa_request(method: str, path: str, *, json_body: Optional[dict] = None) -
         raise HTTPException(400, detail)
     if response.status_code == 401:
         raise HTTPException(401, "Wrong email or password.")
-    logger.warning("Supabase auth %s %s -> %s", method, response.status_code, response.text[:120])
+    logger.warning("Supabase auth %s -> HTTP %s", method, response.status_code)
     raise HTTPException(503, "The account service had a hiccup; try again shortly.")
 
 

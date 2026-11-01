@@ -10,6 +10,11 @@
  */
 "use strict";
 (function () {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initWordle, { once: true });
+  } else {
+    initWordle();
+  }
   const bank = window.LokiDiveBank;
   if (!bank || !Array.isArray(bank.prompts) || bank.prompts.length < 7) return;
 
@@ -70,6 +75,262 @@
     running: false,
     rafId: 0
   };
+
+  // Wordle game
+  function initWordle() {
+    const wordleGame = document.getElementById('wordle-game');
+    if (!wordleGame) return;
+
+    const WORDS = [
+      'SLATE', 'CRANE', 'ADIEU', 'ARISE', 'RAISE', 'IRATE', 'ABOUT', 'ABOVE', 'ABUSE', 'ACTOR',
+      'ACUTE', 'ADMIT', 'ADOPT', 'ADORE', 'ADULT', 'AFTER', 'AGAIN', 'AGENT', 'AGREE', 'AHEAD',
+      'ALARM', 'ALBUM', 'ALERT', 'ALIKE', 'ALIVE', 'ALLOW', 'ALONE', 'ALONG', 'ALTER', 'AMBER',
+      'AMEND', 'AMONG', 'ANGER', 'ANGLE', 'ANGRY', 'APART', 'APPLE', 'APPLY', 'ARENA', 'ARGUE',
+      'ARISE', 'ARMOR', 'ARRAY', 'ASIDE', 'ASSET', 'AVOID', 'AWAKE', 'AWFUL', 'BADGE', 'BAKER',
+      'BASIS', 'BEACH', 'BEGAN', 'BEGIN', 'BEGUN', 'BEING', 'BELOW', 'BENCH', 'BILLY', 'BIRTH',
+      'BLACK', 'BLAME', 'BLANK', 'BLAST', 'BLEAK', 'BLEND', 'BLESS', 'BLIND', 'BLINK', 'BLISS',
+      'BLOCK', 'BLOOD', 'BLOOM', 'BLOWN', 'BLUER', 'BLUNT', 'BOARD', 'BOAST', 'BONUS', 'BOOST',
+      'BOOTH', 'BOUND', 'BRAIN', 'BRAKE', 'BRAND', 'BRASS', 'BRAVE', 'BREAD', 'BREAK', 'BREED',
+      'BRIEF', 'BRING', 'BRINK', 'BRISK', 'BROAD', 'BROKE', 'BROWN', 'BUILD', 'BUILT', 'BUYER',
+      'CABLE', 'CALIF', 'CARRY', 'CATCH', 'CAUSE', 'CHAIN', 'CHAIR', 'CHART', 'CHASE', 'CHEAP',
+      'CHECK', 'CHEEK', 'CHEER', 'CHESS', 'CHEST', 'CHICK', 'CHIEF', 'CHILD', 'CHINA', 'CHOSE',
+      'CIVIL', 'CLAIM', 'CLASS', 'CLEAN', 'CLEAR', 'CLICK', 'CLIMB', 'CLOCK', 'CLOSE', 'CLOUD',
+      'COACH', 'COAST', 'COULD', 'COUNT', 'COURT', 'COVER', 'CRAFT', 'CRASH', 'CREAM', 'CRIME',
+      'CROSS', 'CROWD', 'CROWN', 'CRUDE', 'CURVE', 'CYCLE', 'DAILY', 'DANCE', 'DATED', 'DEALT',
+      'DEATH', 'DEBUT', 'DELAY', 'DEPTH', 'DOING', 'DOUBT', 'DOZEN', 'DRAFT', 'DRAMA', 'DRAWN',
+      'DREAM', 'DRESS', 'DRILL', 'DRINK', 'DRIVE', 'DROVE', 'DYING', 'EAGER', 'EARLY', 'EARTH',
+      'EIGHT', 'ELITE', 'EMPTY', 'ENEMY', 'ENJOY', 'ENTER', 'ENTRY', 'EQUAL', 'ERROR', 'EVENT',
+      'EVERY', 'EXACT', 'EXIST', 'EXTRA', 'FAITH', 'FALSE', 'FAULT', 'FIBER', 'FIELD', 'FIFTH',
+      'FIFTY', 'FIGHT', 'FINAL', 'FIRST', 'FIXED', 'FLAME', 'FLASH', 'FLEET', 'FLOOR', 'FLUID',
+      'FOCUS', 'FORCE', 'FORTH', 'FORTY', 'FORUM', 'FOUND', 'FRAME', 'FRANK', 'FRAUD', 'FRESH',
+      'FRONT', 'FRUIT', 'FULLY', 'FUNNY', 'GIANT', 'GIVEN', 'GLASS', 'GLOBE', 'GOING', 'GRACE',
+      'GRADE', 'GRAND', 'GRANT', 'GRASS', 'GREAT', 'GREEN', 'GROSS', 'GROUP', 'GROWN', 'GUARD',
+      'GUESS', 'GUEST', 'GUIDE', 'HAPPY', 'HARRY', 'HEART', 'HEAVY', 'HENCE', 'HENRY', 'HORSE',
+      'HOTEL', 'HOUSE', 'HUMAN', 'IDEAL', 'IMAGE', 'INDEX', 'INNER', 'INPUT', 'ISSUE', 'JAPAN',
+      'JIMMY', 'JOINT', 'JONES', 'JUDGE', 'KNOWN', 'LABEL', 'LARGE', 'LASER', 'LATER', 'LAUGH',
+      'LAYER', 'LEARN', 'LEASE', 'LEAST', 'LEAVE', 'LEGAL', 'LEVEL', 'LEWIS', 'LIGHT', 'LIMIT',
+      'LINKS', 'LIVES', 'LOCAL', 'LOGIC', 'LOOSE', 'LOWER', 'LUCKY', 'LUNCH', 'LYING', 'MAGIC',
+      'MAJOR', 'MAKER', 'MARCH', 'MARIA', 'MATCH', 'MAYBE', 'MAYOR', 'MEANT', 'MEDIA', 'METAL',
+      'MIGHT', 'MINOR', 'MINUS', 'MIXED', 'MODEL', 'MONEY', 'MONTH', 'MORAL', 'MOTOR', 'MOUNT',
+      'MOUSE', 'MOUTH', 'MOVIE', 'MUSIC', 'NEEDS', 'NEVER', 'NEWLY', 'NIGHT', 'NOISE', 'NORTH',
+      'NOTED', 'NOVEL', 'NURSE', 'OCCUR', 'OCEAN', 'OFFER', 'OFTEN', 'ORDER', 'OTHER', 'OUGHT',
+      'PAINT', 'PANEL', 'PAPER', 'PARTY', 'PEACE', 'PETER', 'PHASE', 'PHONE', 'PHOTO', 'PIECE',
+      'PILOT', 'PITCH', 'PLACE', 'PLAIN', 'PLANE', 'PLANT', 'PLATE', 'POINT', 'POUND', 'POWER',
+      'PRESS', 'PRICE', 'PRIDE', 'PRIME', 'PRINT', 'PRIOR', 'PRIZE', 'PROOF', 'PROUD', 'PROVE',
+      'QUEEN', 'QUICK', 'QUIET', 'QUITE', 'RADIO', 'RAISE', 'RANGE', 'RAPID', 'RATIO', 'REACH',
+      'READY', 'REALM', 'REBEL', 'REFER', 'RELAX', 'REPAY', 'REPLY', 'RIGHT', 'RIGID', 'RIVAL',
+      'RIVER', 'ROBIN', 'ROGER', 'ROMAN', 'ROUGH', 'ROUND', 'ROUTE', 'ROYAL', 'RURAL', 'SCALE',
+      'SCENE', 'SCOPE', 'SCORE', 'SENSE', 'SERVE', 'SETUP', 'SEVEN', 'SHALL', 'SHAPE', 'SHARE',
+      'SHARP', 'SHEET', 'SHELF', 'SHELL', 'SHIFT', 'SHIRT', 'SHOCK', 'SHOOT', 'SHORT', 'SHOWN',
+      'SIGHT', 'SINCE', 'SIXTH', 'SIXTY', 'SIZED', 'SKILL', 'SLEEP', 'SLIDE', 'SMALL', 'SMART',
+      'SMILE', 'SMITH', 'SMOKE', 'SOLID', 'SOLVE', 'SORRY', 'SOUND', 'SOUTH', 'SPACE', 'SPARE',
+      'SPEAK', 'SPEED', 'SPEND', 'SPENT', 'SPLIT', 'SPOKE', 'SPORT', 'STAFF', 'STAGE', 'STAKE',
+      'STAND', 'START', 'STATE', 'STEAM', 'STEEL', 'STEEP', 'STEER', 'STICK', 'STILL', 'STOCK',
+      'STONE', 'STOOD', 'STORE', 'STORM', 'STORY', 'STRIP', 'STUCK', 'STUDY', 'STUFF', 'STYLE',
+      'SUGAR', 'SUITE', 'SUPER', 'SWEET', 'TABLE', 'TAKEN', 'TASTE', 'TAXES', 'TEACH', 'TEETH',
+      'TERRY', 'TEXAS', 'THANK', 'THEFT', 'THEIR', 'THEME', 'THERE', 'THESE', 'THICK', 'THING',
+      'THINK', 'THIRD', 'THOSE', 'THREE', 'THREW', 'THROW', 'THUMB', 'TIGHT', 'TIRED', 'TITLE',
+      'TODAY', 'TOPIC', 'TOTAL', 'TOUCH', 'TOUGH', 'TOWER', 'TRACK', 'TRADE', 'TRAIN', 'TREAT',
+      'TREND', 'TRIAL', 'TRIED', 'TRIES', 'TRUCK', 'TRULY', 'TRUST', 'TRUTH', 'TWICE', 'UNDER',
+      'UNDUE', 'UNION', 'UNITY', 'UNTIL', 'UPPER', 'UPSET', 'URBAN', 'USAGE', 'USUAL', 'VALID',
+      'VALUE', 'VIDEO', 'VIRUS', 'VISIT', 'VITAL', 'VOCAL', 'WASTE', 'WATCH', 'WATER', 'WHEEL',
+      'WHERE', 'WHICH', 'WHILE', 'WHITE', 'WHOLE', 'WHOSE', 'WOMAN', 'WOMEN', 'WORLD', 'WORRY',
+      'WORSE', 'WORST', 'WORTH', 'WOULD', 'WRITE', 'WRONG', 'WROTE', 'YIELD', 'YOUNG', 'YOUTH'
+    ];
+
+    const boardEl = document.getElementById('wordle-board');
+    const keyboardEl = document.getElementById('wordle-keyboard');
+    const messageEl = document.getElementById('wordle-message');
+    const newGameBtn = document.getElementById('wordle-new-game');
+
+    if (!boardEl || !keyboardEl || !messageEl || !newGameBtn) return;
+
+    let solution = WORDS[Math.floor(Math.random() * WORDS.length)];
+    let currentRow = 0;
+    let currentCol = 0;
+    let gameOver = false;
+    const guesses = Array(6).fill().map(() => Array(5).fill(''));
+
+    // Create board
+    boardEl.innerHTML = '';
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 5; j++) {
+        const tile = document.createElement('div');
+        tile.className = 'wordle-tile';
+        tile.setAttribute('data-row', i);
+        tile.setAttribute('data-col', j);
+        tile.setAttribute('aria-label', `Row ${i + 1}, letter ${j + 1}: empty`);
+        boardEl.appendChild(tile);
+      }
+    }
+
+    // Create keyboard
+    const keys = [
+      ['Q','W','E','R','T','Y','U','I','O','P'],
+      ['A','S','D','F','G','H','J','K','L'],
+      ['ENTER','Z','X','C','V','B','N','M','BACK']
+    ];
+    keyboardEl.innerHTML = '';
+    keys.forEach(row => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'wordle-key-row';
+      row.forEach(key => {
+        const keyEl = document.createElement('button');
+        keyEl.type = 'button';
+        keyEl.className = 'wordle-key';
+        keyEl.textContent = key === 'BACK' ? '⌫' : key;
+        keyEl.dataset.key = key;
+        keyEl.setAttribute('aria-label', key === 'BACK' ? 'Delete letter' : key);
+        keyEl.addEventListener('click', () => {
+          handleKey(key);
+          wordleGame.focus({ preventScroll: true });
+        });
+        rowEl.appendChild(keyEl);
+      });
+      keyboardEl.appendChild(rowEl);
+    });
+
+    function updateBoard() {
+      for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 5; j++) {
+          const tile = boardEl.querySelector(`.wordle-tile[data-row="${i}"][data-col="${j}"]`);
+          if (tile) {
+            tile.textContent = guesses[i][j];
+            if (i >= currentRow) tile.setAttribute('aria-label', `Row ${i + 1}, letter ${j + 1}: ${guesses[i][j] || 'empty'}`);
+          }
+        }
+      }
+    }
+
+    function handleKey(key) {
+      if (gameOver) return;
+      messageEl.textContent = '';
+      if (key === 'ENTER') {
+        submitGuess();
+      } else if (key === 'BACK') {
+        if (currentCol > 0) {
+          currentCol--;
+          guesses[currentRow][currentCol] = '';
+          updateBoard();
+        }
+      } else if (currentCol < 5 && /^[A-Z]$/.test(key)) {
+        guesses[currentRow][currentCol] = key;
+        currentCol++;
+        updateBoard();
+      }
+    }
+
+    function submitGuess() {
+      if (currentCol < 5) {
+        messageEl.textContent = 'Not enough letters';
+        return;
+      }
+      const guess = guesses[currentRow].join('');
+      if (!WORDS.includes(guess)) {
+        messageEl.textContent = 'Not in word list';
+        return;
+      }
+
+      const solutionArray = solution.split('');
+      const guessArray = guess.split('');
+      const result = Array(5).fill('absent');
+      const solutionCopy = [...solutionArray];
+
+      // Check correct positions
+      for (let i = 0; i < 5; i++) {
+        if (guessArray[i] === solutionCopy[i]) {
+          result[i] = 'correct';
+          solutionCopy[i] = null;
+        }
+      }
+      // Check present positions
+      for (let i = 0; i < 5; i++) {
+        if (result[i] === 'correct') continue;
+        const idx = solutionCopy.indexOf(guessArray[i]);
+        if (idx !== -1) {
+          result[i] = 'present';
+          solutionCopy[idx] = null;
+        }
+      }
+
+      // Apply colors
+      for (let i = 0; i < 5; i++) {
+        const tile = boardEl.querySelector(`.wordle-tile[data-row="${currentRow}"][data-col="${i}"]`);
+        if (tile) {
+          tile.classList.add(result[i]);
+          tile.setAttribute('aria-label', `${guessArray[i]}: ${result[i]}`);
+        }
+        const keyEl = keyboardEl.querySelector(`.wordle-key[data-key="${guessArray[i]}"]`);
+        if (keyEl) {
+          if (result[i] === 'correct') {
+            keyEl.classList.add('correct');
+            keyEl.classList.remove('present', 'absent');
+          } else if (result[i] === 'present' && !keyEl.classList.contains('correct')) {
+            keyEl.classList.remove('absent');
+            keyEl.classList.add('present');
+          } else if (result[i] === 'absent' && !keyEl.classList.contains('correct') && !keyEl.classList.contains('present')) {
+            keyEl.classList.add('absent');
+          }
+        }
+      }
+
+      if (guess === solution) {
+        messageEl.textContent = 'You got it!';
+        gameOver = true;
+        return;
+      }
+
+      currentRow++;
+      currentCol = 0;
+      messageEl.textContent = `${guess}: ${result.map((status, i) => `${guessArray[i]} ${status}`).join(', ')}. Guess ${currentRow + 1} of 6.`;
+      if (currentRow >= 6) {
+        messageEl.textContent = `The word was ${solution}`;
+        gameOver = true;
+      }
+    }
+
+    // Keep typing in the Dive, command palette and account forms independent.
+    wordleGame.addEventListener('keydown', (e) => {
+      if (wordleGame.closest('[hidden]') || gameOver || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (e.key === 'Enter' && e.target.closest('button')) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleKey('ENTER');
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        handleKey('BACK');
+      } else if (/^[A-Za-z]$/.test(e.key)) {
+        e.preventDefault();
+        handleKey(e.key.toUpperCase());
+      }
+    });
+    boardEl.addEventListener('click', () => wordleGame.focus({ preventScroll: true }));
+
+    newGameBtn.addEventListener('click', () => {
+      const choices = WORDS.filter(word => word !== solution);
+      solution = choices[Math.floor(Math.random() * choices.length)];
+      currentRow = 0;
+      currentCol = 0;
+      gameOver = false;
+      for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 5; j++) {
+          guesses[i][j] = '';
+          const tile = boardEl.querySelector(`.wordle-tile[data-row="${i}"][data-col="${j}"]`);
+          if (tile) {
+            tile.textContent = '';
+            tile.classList.remove('correct', 'present', 'absent');
+            tile.setAttribute('aria-label', `Row ${i + 1}, letter ${j + 1}: empty`);
+          }
+        }
+      }
+      keyboardEl.querySelectorAll('.wordle-key').forEach(keyEl => {
+        keyEl.classList.remove('correct', 'present', 'absent');
+      });
+      messageEl.textContent = '';
+      wordleGame.focus({ preventScroll: true });
+    });
+  }
 
   /* ---------- helpers ---------- */
   function $(id) { return document.getElementById(id); }
@@ -996,7 +1257,7 @@
     if (els["dive-form"]) els["dive-form"].addEventListener("submit", submit);
     els["dive-next"].addEventListener("click", () => { if (state.phase === "between") nextRound(); });
     els["dive-pause"].addEventListener("click", togglePause);
-    state.sectionEl = els["dive-start"].closest(".workspace-view");
+    state.sectionEl = els["dive-start"] ? els["dive-start"].closest(".workspace-view") : null;
     updatePause();
     document.addEventListener("visibilitychange", updatePause);
     window.addEventListener("hashchange", updatePause);

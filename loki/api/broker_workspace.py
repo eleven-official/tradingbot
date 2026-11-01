@@ -8,6 +8,9 @@ import json
 from loki.api.fusion import StrictModel, _call, _require_local_action, _private_response
 from core.fusion import broker_link, paper_models, paper_agent
 from core.fusion import live_agent
+from core.fusion import paper_research
+from core.fusion.paper_evidence import assess
+from core.fusion.instrument_history import yahoo_history, YAHOO_SOURCE
 
 router = APIRouter(prefix="/api/fusion/broker", tags=["Private broker workspace"])
 
@@ -122,28 +125,32 @@ def disconnect(request: Request, response: Response):
 
 class HistoryRequest(StrictModel):
     symbol: str = Field(default="SPY", pattern=r"^[A-Z][A-Z0-9.]{0,9}$")
-    years: Literal[5, 10] = 10
+    years: Literal[5, 10, 15, 20] = 10
+    source: Literal["alpaca", "yahoo"] = "alpaca"
 
 
 class UploadTrainingRequest(StrictModel):
     symbol: str = Field(min_length=1, max_length=16, pattern=r"^[A-Z][A-Z0-9./-]{0,15}$")
-    years: Literal[5, 10] = 10
-    bars: list[dict] = Field(min_length=500, max_length=5000)
+    years: Literal[5, 10, 15, 20] = 10
+    bars: list[dict] = Field(min_length=500, max_length=10000)
 
 
 @router.post("/train-history")
 def train_history(payload: HistoryRequest, request: Request, response: Response):
     _private(request, response)
     profile, _ = _session(request)
-    rows = _call(
-        lambda: broker_link.AlpacaClient(profile).historical_bars(payload.symbol, payload.years)
-    )
+    if payload.source == "yahoo":
+        rows = _call(yahoo_history, payload.symbol, payload.years)
+    else:
+        rows = _call(
+            lambda: broker_link.AlpacaClient(profile).historical_bars(payload.symbol, payload.years)
+        )
     report = _call(
         paper_models.train_instrument,
         rows,
         payload.symbol,
         payload.years,
-        source={
+        source=dict(YAHOO_SOURCE) if payload.source == "yahoo" else {
             "provider": "Alpaca",
             "feed": "IEX",
             "adjustment": "split",
@@ -175,7 +182,8 @@ def train_upload(payload: UploadTrainingRequest, request: Request, response: Res
 def model(identifier: str, request: Request, response: Response):
     _private(request, response)
     profile, _ = _session(request)
-    return _call(paper_models.load_model, profile.scope, identifier)
+    report = _call(paper_models.load_model, profile.scope, identifier)
+    return dict(report, execution_readiness=assess(report))
 
 
 @router.get("/models")
@@ -184,7 +192,7 @@ def models(request: Request, response: Response):
     profile, _ = _session(request)
     with paper_models.database() as db:
         rows = db.execute(
-            "SELECT report FROM models WHERE owner=? ORDER BY rowid DESC LIMIT 10", (profile.scope,)
+            "SELECT report FROM models WHERE owner=? ORDER BY rowid DESC LIMIT 30", (profile.scope,)
         ).fetchall()
     return {
         "models": [
@@ -204,6 +212,20 @@ def dataset(identifier: str, request: Request, response: Response):
 class StartRequest(StrictModel):
     model_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     max_notional: float = Field(default=1000.0, ge=1, le=1000)
+
+
+class CompareRequest(StrictModel):
+    model_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+@router.post("/compare-strategies")
+def compare_strategies(payload: CompareRequest, request: Request, response: Response):
+    _private(request, response)
+    profile, _ = _session(request)
+    base = _call(paper_models.load_model, profile.scope, payload.model_id)
+    snapshot = _call(paper_models.load_dataset, profile.scope, payload.model_id)
+    report = _call(paper_research.compare, base, snapshot["bars"])
+    return _call(paper_models.save_model, profile.scope, report, snapshot["bars"])
 
 
 @router.post("/paper-ai/start")

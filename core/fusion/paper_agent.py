@@ -18,7 +18,9 @@ import uuid
 
 from core.fusion.broker_link import AlpacaClient, BrokerUnavailable, finite, refresh_account
 from core.fusion.learning import predict
-from core.fusion.paper_models import database, load_model, feature_vector
+from core.fusion.paper_models import database, load_model, feature_vector, POLICY
+from core.fusion import paper_rules
+from core.fusion.paper_evidence import assess
 from core.strategy_lab import validate_bars
 
 _locks, _guard = {}, threading.Lock()
@@ -111,6 +113,7 @@ def start(profile, identifier, model_id, max_notional=1000.0):
     if not 1 <= finite(max_notional) <= 1000:
         raise ValueError("Paper order budget must be 1–1000 USD")
     report = load_model(profile.scope, model_id)
+    readiness = assess(report)
     if "/" in report["symbol"]:
         raise ValueError(
             "The Alpaca AI runner currently supports US equities; crypto models remain local research"
@@ -137,6 +140,8 @@ def start(profile, identifier, model_id, max_notional=1000.0):
                 and owner != _owner(identifier)
             ):
                 raise ValueError("Another browser session is controlling this paper account")
+        if not readiness["can_start"]:
+            raise ValueError("Paper entries blocked: " + " ".join(readiness["reasons"]))
         refresh_account(profile)
         if (
             profile.account["trading_blocked"]
@@ -178,8 +183,10 @@ def start(profile, identifier, model_id, max_notional=1000.0):
             "peak_equity": profile.account["equity"],
             "probability": None,
             "threshold": report["artifact"]["threshold"],
+            "signal_kind": "rule" if report["artifact"].get("version") == paper_rules.VERSION else "direction_score",
             "message": "Paper AI started. Waiting for a fresh market/account decision.",
             "events": [],
+            "execution_readiness": readiness,
         }
         _save(db, profile, _owner(identifier), state)
     return status(profile, identifier)
@@ -383,6 +390,13 @@ def tick(profile, identifier):
                     _save(db, profile, owner, state)
                     return status(profile, identifier)
             report = load_model(profile.scope, state["model_id"])
+            artifact = report["artifact"]
+            rule_based = artifact.get("version") == paper_rules.VERSION
+            if rule_based:
+                paper_rules.validate_artifact(artifact)
+            policy = artifact.get("policy", POLICY)
+            readiness = assess(report)
+            state["execution_readiness"] = readiness
             clock = client.request("GET", "/v2/clock")
             if clock.get("is_open") is not True:
                 state["message"] = "Market closed. Paper AI waits; no order was sent."
@@ -429,10 +443,16 @@ def tick(profile, identifier):
             ):
                 raise ValueError("Paper quote is missing, stale, crossed or too wide")
             if state["decision_day"] != day:
-                bars = validate_bars(client.recent_bars(state["symbol"]))
+                bars = validate_bars(client.recent_bars(state["symbol"], lookback=201) if rule_based
+                                     else client.recent_bars(state["symbol"]))
                 if not bars or (stamp.date() - bars[-1].timestamp.date()).days > 5:
                     raise ValueError("Recent completed daily history is stale")
-                state["probability"] = predict(report["artifact"]["model"], feature_vector(bars))
+                if rule_based:
+                    decision = paper_rules.decision(artifact, bars)
+                    state["probability"] = float(decision["enter"])
+                    state["hold_signal"] = decision["hold"]
+                else:
+                    state["probability"] = predict(artifact["model"], feature_vector(bars))
                 state["decision_day"] = day
                 if state["owned_qty"] and state["last_held_day"] != day:
                     state["held_sessions"] += 1
@@ -442,10 +462,10 @@ def tick(profile, identifier):
             if state["owned_qty"]:
                 entry = state["entry_price"]
                 exit_needed = (
-                    not signal
-                    or bid <= entry * 0.98
-                    or bid >= entry * 1.04
-                    or state["held_sessions"] >= 5
+                    not (state.get("hold_signal", False) if rule_based else signal)
+                    or bid <= entry * (1 - policy["stop_pct"])
+                    or bid >= entry * (1 + policy["take_profit_pct"])
+                    or state["held_sessions"] >= policy["max_holding_sessions"]
                 )
                 if exit_needed:
                     _submit(
@@ -459,8 +479,15 @@ def tick(profile, identifier):
                     )
                 else:
                     state["message"] = (
-                        "Holding AI-owned paper units; monitoring the 2% stop, 4% take-profit and five-session limit."
+                        f"Holding AI-owned paper units; monitoring the {policy['stop_pct']:.0%} stop, "
+                        f"{policy['take_profit_pct']:.0%} take-profit and {policy['max_holding_sessions']}-session limit."
                     )
+            elif not readiness["entry_allowed"]:
+                state["message"] = ("Waiting in paper cash: " + (" ".join(readiness["reasons"]) or "The frozen policy has no eligible entry."))
+            elif signal and (ask - bid) / ((ask + bid) / 2) * 10000 > policy["slippage_bps"] * 2:
+                # Half the spread alone must not exceed modeled per-side slippage.
+                # This gate applies only to entries; it must never block an exit.
+                state["message"] = "Waiting in paper cash: the current spread exceeds the replay slippage budget."
             elif signal and state["last_entry_day"] != day:
                 asset = client.request("GET", "/v2/assets/" + quote(state["symbol"], safe=""))
                 if (
@@ -474,6 +501,10 @@ def tick(profile, identifier):
                 budget = min(
                     state["max_notional"], equity * 0.10, max(0, profile.account["cash"]) / 1.01
                 )
+                if rule_based:
+                    budget = paper_rules.notional_budget(policy, equity,
+                                                        max(0, profile.account["cash"]) / 1.01,
+                                                        state["max_notional"])
                 qty = math.floor(budget / float(price))
                 state["last_entry_day"] = day
                 if qty:

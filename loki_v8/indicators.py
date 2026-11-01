@@ -43,6 +43,17 @@ def atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14) -> 
     return wilder(true_range(high, low, close), length)
 
 
+def rolling_slope(series: pd.Series, length: int) -> pd.Series:
+    """Rolling linear regression slope (per bar)."""
+    x = np.arange(length)
+    x_mean = x.mean()
+    x_var = ((x - x_mean) ** 2).sum()
+    return series.rolling(length).apply(
+        lambda y: np.sum((x - x_mean) * (y - y.mean())) / x_var if np.sum((y - y.mean()) ** 2) > 0 else 0.0,
+        raw=True
+    )
+
+
 # ---------------------------------------------------------------------------
 # Momentum oscillators
 # ---------------------------------------------------------------------------

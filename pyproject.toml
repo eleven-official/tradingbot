@@ -13,6 +13,7 @@ dependencies = [
     "structlog>=24.1.0",
     "yfinance>=0.2.40",
     "requests>=2.31.0",
+    "numpy>=1.26.0",
 ]
 name = "loki-trading-platform"
 dynamic = ["version"]

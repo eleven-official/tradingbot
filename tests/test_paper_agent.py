@@ -108,6 +108,7 @@ def setup(monkeypatch, tmp_path):
             "id": "a" * 64,
             "symbol": "SPY",
             "artifact": {
+                "version": models.MODEL_VERSION,
                 "threshold": 0.6,
                 "model": {
                     "intercept": 10.0,
@@ -116,6 +117,8 @@ def setup(monkeypatch, tmp_path):
                     "scales": [1.0] * 5,
                 },
             },
+            "test": {"closed_trades": 20, "net_return": 0.01, "expectancy_usd": 5.0, "max_drawdown": 0.005},
+            "cost_stress": {"multiple": 2, "net_return": 0.005},
         }
         models.save_model(profile.scope, model)
         yield profile, "offline-browser-session", model, gateway
@@ -125,6 +128,39 @@ def begin(setup):
     profile, identifier, model, gateway = setup
     agent.start(profile, identifier, model["id"], 1000.0)
     return profile, identifier, model, gateway
+
+
+def test_negative_research_cannot_start_new_entries(setup, monkeypatch):
+    profile, identifier, model, gateway = setup
+    negative = dict(model, test=dict(model["test"], net_return=-0.01))
+    monkeypatch.setattr(agent, "load_model", lambda *args: negative)
+    with pytest.raises(ValueError, match="Paper entries blocked"):
+        agent.start(profile, identifier, model["id"])
+    assert not gateway["posts"]
+
+
+def test_failed_evidence_never_blocks_exit_of_existing_owned_position(setup, monkeypatch):
+    profile, identifier, model, gateway = begin(setup)
+    agent.tick(profile, identifier)
+    negative = dict(model, test=dict(model["test"], net_return=-0.01))
+    monkeypatch.setattr(agent, "load_model", lambda *args: negative)
+    gateway.update(bid=105.0, ask=105.1)
+    state = agent.tick(profile, identifier)
+    assert state["owned_qty"] == 0
+    assert gateway["posts"][-1]["side"] == "sell"
+    agent.tick(profile, identifier)
+    assert len(gateway["posts"]) == 2
+
+
+def test_expensive_spread_waits_without_consuming_the_daily_entry(setup):
+    profile, identifier, _, gateway = begin(setup)
+    gateway.update(bid=100, ask=100.5)
+    state = agent.tick(profile, identifier)
+    assert not gateway["posts"] and state["last_entry_day"] is None
+    assert "spread" in state["message"]
+    gateway.update(ask=100.1)
+    agent.tick(profile, identifier)
+    assert len(gateway["posts"]) == 1
 
 
 def test_ai_orders_are_paper_only_whole_cash_funded_and_repeat_ticks_do_not_buy_twice(setup):

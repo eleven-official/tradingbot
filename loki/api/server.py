@@ -55,6 +55,12 @@ app.include_router(news_desk_router)
 app.include_router(dive_board_router)
 app.include_router(revenue_router)
 app.include_router(member_router)
+from loki.api.cloud_research import router as cloud_research_router
+
+app.include_router(cloud_research_router)
+from loki.api.analogue import router as analogue_router
+
+app.include_router(analogue_router)
 
 
 @app.middleware("http")
@@ -455,7 +461,17 @@ class CopilotRequest(BaseModel):
 
 
 @app.post("/api/copilot")
-def copilot(payload: CopilotRequest):
+def copilot(payload: CopilotRequest, request: Request, response: Response):
+    from core import loki_memory
+    from loki.api.fusion import _require_local_action, _private_response, _call
+
+    memory_command = loki_memory.command(payload.message)
+    if memory_command:
+        _require_local_action(request)
+        _private_response(response)
+        text = _call(loki_memory.respond, *memory_command)
+        return {"text": text, "intent": "memory", "evidence": [],
+                "suggestions": ["show memory"], "conversation": {"topics": ["memory"], "symbol": None}}
     return LokiCopilot().respond(payload.message, payload.context).as_dict()
 
 

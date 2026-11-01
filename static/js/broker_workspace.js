@@ -8,10 +8,13 @@
     $('#broker-account-refresh').disabled=busy||!connection?.connected;
     $('#instrument-train-fields').disabled=busy||active||!paperConnection();
     $('#paper-model-select').disabled=busy||active||!paperConnection();
-    $('#ai-paper-start').disabled=busy||stopping||active||!onPaper()||!paperConnection()||!model||connection.account.trading_blocked;
+    const managing=agent?.model_id===model?.id&&(agent?.pending||agent?.owned_qty>0);
+    $('#ai-paper-start').disabled=busy||stopping||active||!onPaper()||!paperConnection()||!model||connection.account.trading_blocked||(!managing&&model?.execution_readiness?.can_start!==true);
     $('#ai-paper-stop').disabled=stopping||(!active&&!agent?.running);$('#ai-paper-reconcile').disabled=busy||stopping||!paperConnection()||!agent?.model_id;$('#ai-paper-cancel').disabled=busy||stopping||!paperConnection()||!agent?.pending;
     $('#broker-connect-form button[type=submit]').disabled=busy;
     $('#ai-max-notional').disabled=busy||active;
+    const compare=$('#compare-paper-strategies');
+    if(compare)compare.disabled=busy||active||!paperConnection()||model?.artifact?.version!=='loki_instrument_daily_logistic_v1';
   }
   async function ready(){if(!capabilities)await loadCapabilities();if(!capabilities?.local_actions_enabled)throw new Error('Broker key entry and AI paper trading need the local Loki launcher.');}
   async function perform(task,target){if(busy)return;busy=true;controls();try{await ready();await task();}catch(error){message(target,error.message,true);}finally{busy=false;controls();}}
@@ -41,6 +44,30 @@
   function showModel(report){
     model=report;const target=$('#instrument-model-results');target.hidden=false;
     target.replaceChildren(element('h3',`${report.symbol} · ${report.coverage.years.toFixed(2)} years received`),inlineMetrics([['Daily observations',number(report.coverage.bars,0)],['Later-test net return',pct(report.test.net_return)],['Completed test trades',number(report.test.closed_trades,0)],['Observed test win rate',pct(report.test.win_rate)]]));
+    target.append(element('p',`Research source: ${report.source.provider||report.source.name||'Operator upload'} · actual dates ${report.coverage.start}–${report.coverage.end}. Alpaca remains a separate paper-execution venue.`,'caption'));
+    const tested=Number.isFinite(report.test.net_return)&&report.test.closed_trades>0;
+    const positive=tested&&report.test.net_return>0&&report.test.expectancy_usd>0;
+    const assessment=element('div','','model-evidence');
+    assessment.dataset.result=tested?(positive?'positive':'negative'):'unmeasured';
+    assessment.append(element('strong',!tested?'Profitability not demonstrated — no completed test trades':positive?'Positive historical result — future profitability unproven':'Unprofitable on unseen history after costs'));
+    assessment.append(element('p',tested?`${report.test.closed_trades} closed trades · ${pct(report.test.net_return)} net return · ${number(report.test.expectancy_usd)} USD average per trade. Validation selects the settings; this later test measures whether they held up.`:'The selected policy stayed in cash. A zero return with no trades is not evidence of a profitable strategy.'));
+    if(report.artifact.policy)assessment.append(element('p',`Replay costs per side: ${number(report.artifact.policy.fee_bps)} bps fee + ${number(report.artifact.policy.slippage_bps)} bps slippage. Broker execution checks are separate from strategy performance.`, 'caption'));
+    target.append(assessment);
+    if(report.execution_readiness){
+      target.append(element('h3',`Paper entry checks: ${human(report.execution_readiness.status)}`));
+      target.append(bulletList(report.execution_readiness.reasons));
+      target.append(element('p',report.execution_readiness.note,'caption'));
+    }
+    if(report.comparison){
+      target.append(element('h3',`Frozen validation choice: ${human(report.comparison.selection)}`));
+      target.append(element('p','Previously inspected history · development comparison. New forward-paper results have not yet been observed.','integration-note'));
+      target.append(table(['Candidate','Validation net','2× cost validation','Positive blocks','Later diagnostic net','Later trades'],report.validation.trials.map(trial=>{
+        const later=report.comparison.candidates.find(item=>item.rule===trial.rule);
+        return [human(trial.rule)+(trial.rule===report.comparison.selection?' · selected':''),pct(trial.net_return),pct(trial.stress.net_return),`${trial.positive_folds} / 3`,pct(later?.net_return),number(later?.closed_trades,0)];
+      })));
+      target.append(inlineMetrics([['Selected policy · 2× costs',pct(report.cost_stress.net_return)],['Prior model · later net',pct(report.comparison.baseline_test.net_return)],['Passive 10% allocation',pct(report.test.buy_and_hold_10pct_net_return)],['Selected policy · estimated costs',number(report.test.estimated_costs_usd)+' USD']]));
+      target.append(element('p',`Frozen after history ending ${report.forward_evidence.historical_end}. Positive retrospective P&L is not confirmed future edge; cost sensitivity and underperformance versus passive exposure remain visible.`,'caption'));
+    }
     target.append(element('p',`${human(report.status)}. Training ${report.training.start}–${report.training.end}; validation ${report.validation.start}–${report.validation.end}; test ${report.test.start}–${report.test.end}.`,'caption'));
     const interval=report.test.win_rate_95pct_interval;target.append(element('p',`Test expectancy ${number(report.test.expectancy_usd)} USD; maximum drawdown ${pct(report.test.max_drawdown)}. Win-rate interval ${interval?interval.map(pct).join('–'):'unavailable'}. Entry threshold ${report.artifact.threshold??'none: wait in cash'}. These results do not prove 70% future wins.`,'integration-note'));
     target.append(element('p',`Matched passive 10% allocation: ${pct(report.test.buy_and_hold_10pct_net_return)}; cash baseline: 0%.`,'caption'));target.append(bulletList(report.limitations),detailsJSON(report,'Inspect frozen model, source and evaluation'));
@@ -57,7 +84,8 @@
   function renderAgent(){
     if(!agent){$('#ai-paper-metrics').replaceChildren();$('#ai-paper-journal').replaceChildren();controls();return;}
     message('#ai-paper-message',agent.message||'Paper runner ready.');
-    $('#ai-paper-metrics').replaceChildren(inlineMetrics([['Runner',active?'Running on this page':'Paused on this page'],['Owned units',number(agent.owned_qty,6)],['Direction score',pct(agent.probability)],['Entry threshold',agent.threshold==null?'Wait in cash':pct(agent.threshold)]]));
+    const rule=agent.signal_kind==='rule';
+    $('#ai-paper-metrics').replaceChildren(inlineMetrics([['Runner',active?'Running on this page':'Paused on this page'],['Owned units',number(agent.owned_qty,6)],[rule?'Entry condition':'Direction score',rule?(agent.probability==null?'Not evaluated':agent.probability===1?'Met':'Not met'):pct(agent.probability)],['Entry threshold',agent.threshold==null?'Wait in cash':rule?'Fixed rule':pct(agent.threshold)]]));
     $('#ai-paper-journal').replaceChildren(agent.journal?.length?table(['Time / UTC','Paper order','State','Actual filled units'],agent.journal.map(row=>[new Date(row.created_at*1000).toISOString().replace('T',' ').slice(0,19),`${row.request.side} ${row.request.qty} ${row.request.symbol} @ ${row.request.limit_price}`,human(row.state),number(row.order?.filled_qty,6)])):element('p','No AI paper order claims yet.','muted'));controls();
   }
   async function refresh(){
@@ -80,11 +108,44 @@
   });
   $('#broker-account-refresh').addEventListener('click',()=>perform(async()=>{connection=await request('/api/fusion/broker/account',{},true);accountCard();},'#broker-message'));
   $('#broker-disconnect').addEventListener('click',()=>perform(async()=>{await pause();const result=await request('/api/fusion/broker/disconnect',{},true);connection=null;model=null;agent=null;accountCard();renderAgent();$('#instrument-model-results').hidden=true;message('#broker-message',result.message);},'#broker-message'));
+  const historyForm=$('#instrument-train-form');
+  const yearSelect=historyForm.querySelector('select[name=years]');
+  for(const years of [15,20])yearSelect.append(new Option(`${years} years`,String(years)));
+  const sourceLabel=element('label','Research history source');
+  const sourceSelect=element('select');sourceSelect.name='source';
+  sourceSelect.append(new Option('Alpaca IEX · account data entitlement','alpaca'),new Option('Yahoo Finance · research only','yahoo'));
+  sourceLabel.append(sourceSelect);historyForm.querySelector('.form-grid').append(sourceLabel);
+  const historyIntro=historyForm.closest('section').querySelector('p.muted');
+  historyIntro.textContent='Research one instrument across 5, 10, 15 or 20 years, then inspect later-period results. Research data and Alpaca paper execution are separate; longer history does not guarantee a forecast or profit.';
+  const historyNote=historyForm.nextElementSibling;
+  historyNote.textContent='Requested coverage must actually exist: there is no silent provider switch or synthetic padding. Alpaca IEX may not cover long windows; choose Yahoo research history or upload licensed daily CSV data. Dates split chronologically: 60% fit, 20% validation, 20% later evaluation. Select the window before reviewing results.';
+  const csvLabel=element('label','Long-history CSV · up to 10,000 daily bars');
+  const csvInput=element('input');csvInput.type='file';csvInput.accept='.csv,text/csv';
+  csvLabel.append(csvInput);historyForm.querySelector('fieldset').append(csvLabel);
+  const csvButton=element('button','Train selected historical CSV','button secondary');csvButton.type='button';
+  historyForm.querySelector('fieldset').append(csvButton);
+  csvButton.addEventListener('click',()=>perform(async()=>{
+    const file=csvInput.files?.[0];if(!file)throw new Error('Choose a daily OHLCV CSV first.');
+    if(file.size>4000000)throw new Error('History CSV must be at most 4 MB.');
+    const bars=parseBars(await file.text(),10000);
+    const data=new FormData(historyForm);
+    const result=await request('/api/fusion/broker/train-upload',{symbol:String(data.get('symbol')).toUpperCase(),years:Number(data.get('years')),bars},true);
+    await loadModels(result.id);message('#instrument-train-message','Exact CSV snapshot saved. Inspect coverage, source and later-period results before any paper entry.');
+  },'#instrument-train-message'));
   $('#instrument-train-form').addEventListener('submit',event=>{
-    event.preventDefault();const data=new FormData(event.target),payload={symbol:String(data.get('symbol')).toUpperCase(),years:Number(data.get('years'))};
+    event.preventDefault();const data=new FormData(event.target),payload={symbol:String(data.get('symbol')).toUpperCase(),years:Number(data.get('years')),source:String(data.get('source'))};
     perform(async()=>{message('#instrument-train-message','Fetching completed daily history and fitting training dates only…');const result=await request('/api/fusion/broker/train-history',payload,true);await loadModels(result.id);message('#instrument-train-message',`Trained on the earlier dates in ${result.coverage.years.toFixed(2)} years of actual history. Later test dates stayed outside model selection.`);},'#instrument-train-message');
   });
   $('#train-imported-instrument').addEventListener('click',()=>perform(async()=>{if(!currentBars)throw new Error('Import daily OHLCV history in Quant lab first.');const years=Number($('#instrument-train-form select[name=years]').value);const result=await request('/api/fusion/broker/train-upload',{symbol:currentSymbol.toUpperCase(),years,bars:currentBars},true);await loadModels(result.id);message('#instrument-train-message','Imported instrument trained. Inspect source assumptions and later-date evaluation.');},'#instrument-train-message'));
+  const comparisonButton=element('button','Compare lower-turnover strategies','button secondary');
+  comparisonButton.id='compare-paper-strategies';comparisonButton.type='button';
+  $('#paper-model-select').closest('label').after(comparisonButton);
+  comparisonButton.addEventListener('click',()=>perform(async()=>{
+    message('#instrument-train-message','Comparing five development rules against the frozen input, chronological validation and doubled costs…');
+    const result=await request('/api/fusion/broker/compare-strategies',{model_id:model.id},true);
+    await loadModels(result.id);
+    message('#instrument-train-message','Comparison saved. Validation froze the choice; the later results are retrospective diagnostics.');
+  },'#instrument-train-message'));
   $('#paper-model-select').addEventListener('change',()=>perform(async()=>{if($('#paper-model-select').value)showModel(await request('/api/fusion/broker/models/'+$('#paper-model-select').value,undefined,true));},'#instrument-train-message'));
   function schedule(){clearTimeout(timer);if(active)timer=setTimeout(cycle,30000);}
   async function cycle(){

@@ -131,6 +131,10 @@ def _train_job(job: CryptoJob) -> Dict[str, Any]:
     from loki_v8.data import get_provider, is_crypto
     from loki_v8.regime import regime_distribution
     from loki_v8.strategy import EnsembleStrategy
+    try:
+        from loki_v8 import features
+    except Exception:
+        features = None
     from loki_v8.train import (
         SymbolReport,
         _cfg_with,
@@ -178,6 +182,12 @@ def _train_job(job: CryptoJob) -> Dict[str, Any]:
         folds=2,
     )
     payload = report.to_dict()
+    # Optional: record advanced feature coverage
+    try:
+        if features is not None:
+            payload["advanced_features"] = len(getattr(features, "FACTOR_SPECS", []))
+    except Exception:
+        pass
     payload["refine_round"] = job.round_no
     payload["train_seconds"] = round(time.perf_counter() - started, 1)
     payload["data_quality"] = _data_quality_note(development)
@@ -517,6 +527,8 @@ def run(
         f"hurdles + windows + synthetic tapes",
         flush=True,
     )
+    # Meta-training fetches full history independently. Keep it separate from
+    # this pipeline so it cannot train on the reserved final holdout.
     consensus = report.get("crypto_consensus") or {}
     if consensus:
         print("crypto consensus:", json.dumps(consensus.get("params", {})), flush=True)

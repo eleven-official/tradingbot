@@ -63,7 +63,17 @@
     account.href = '/account';
     account.textContent = 'My account';
     account.style.cssText = linkStyle;
-    pill.append(label, account, button);
+    const sync = document.createElement('span');
+    sync.style.cssText = 'font-size:11px;color:#a2b5c4';
+    sync.setAttribute('role','status');
+    const showSync = state => {
+      const labels = {idle:'Cloud ready',pending:'Saving soon',saving:'Saving…',saved:'Cloud saved',error:'Cloud save needs attention'};
+      sync.textContent = labels[state.status] || '';
+      sync.title = state.detail || 'Supported workspace data only. Restore on another device from My account.';
+    };
+    if(window.LokiCloudSync)showSync(window.LokiCloudSync.status());
+    window.addEventListener('loki-cloud-sync',event=>showSync(event.detail));
+    pill.append(label, sync, account, button);
     mount(pill);
     return pill;
   };

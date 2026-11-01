@@ -98,7 +98,7 @@ begin
                                     'loki_regime_events','loki_training_reports','loki_events']
   loop
     execute format('alter table public.%I enable row level security', table_name);
-    execute format('revoke all on table public.%I from anon, authenticated', table_name);
+    execute format('revoke all on table public.%I from public, anon, authenticated', table_name);
     execute format('grant select, insert on table public.%I to service_role', table_name);
     execute format('grant usage, select on sequence public.%I to service_role', table_name || '_id_seq');
   end loop;

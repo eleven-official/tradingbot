@@ -19,6 +19,7 @@ import statistics
 
 from core.strategy_lab import validate_bars, _win_interval
 from core.fusion.learning import fit, predict, FEATURES
+from core.fusion.instrument_history import HISTORY_YEARS, MAX_HISTORY_BARS
 
 MODEL_VERSION = "loki_instrument_daily_logistic_v1"
 POLICY = {
@@ -141,10 +142,10 @@ def replay(bars, samples, model, threshold):
 
 
 def train_instrument(rows, symbol, years, *, source):
-    if years not in {5, 10} or not re.fullmatch(r"[A-Z][A-Z0-9./-]{0,15}", symbol):
-        raise ValueError("Choose an instrument and a five- or ten-year daily history window")
-    if not isinstance(rows, list) or not 500 <= len(rows) <= 5000:
-        raise ValueError("Provide 500–5000 daily OHLCV observations")
+    if years not in HISTORY_YEARS or not re.fullmatch(r"[A-Z][A-Z0-9./-]{0,15}", symbol):
+        raise ValueError("Choose an instrument and a 5, 10, 15 or 20-year daily history window")
+    if not isinstance(rows, list) or not 500 <= len(rows) <= MAX_HISTORY_BARS:
+        raise ValueError("Provide 500–10000 daily OHLCV observations")
     if any(
         not isinstance(row, dict)
         or set(row) != {"timestamp", "open", "high", "low", "close", "volume"}
@@ -271,7 +272,7 @@ def train_instrument(rows, symbol, years, *, source):
         "live_automation_available": False,
         "limitations": [
             "Weights/scaling use the first 60% of dates; three entry thresholds use validation only; the final 20% never selects settings.",
-            "Five/ten years describes the full data window, including withheld evaluation dates; not all dates fit model weights.",
+            "The requested 5/10/15/20 years describes the full data window, including withheld evaluation dates; not all dates fit model weights.",
             "Fixed whole-unit long-only policy: at most 10% / 1000 USD, 2% stop, 4% take profit, five-session maximum; adverse same-bar stops take priority.",
             "Historical proxy executes at the next daily open with 10 bps fee and 5 bps slippage per side. Actual paper quotes, fills, delays and server-monitor stops differ.",
             "Direction scores are not calibrated win probabilities. An observed backtest is exploratory, not proof of future profitability or 70% wins.",

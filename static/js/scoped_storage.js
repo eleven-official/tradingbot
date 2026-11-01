@@ -10,11 +10,15 @@
   const scoped = (store, key) => store === window.localStorage && /^loki[_.-]/.test(String(key)) && key !== 'loki_guest';
   for (const method of Object.keys(native)) {
     Storage.prototype[method] = function (key, ...args) {
+      const originalKey = String(key);
+      const changed = scoped(this, key) && method !== 'getItem';
       if (scoped(this, key)) {
         if (!owner) throw new Error('Account context is unavailable; reload before using saved data.');
         key = prefix + key;
       }
-      return native[method].call(this, key, ...args);
+      const result = native[method].call(this, key, ...args);
+      if (changed) window.dispatchEvent(new CustomEvent('loki-storage-change', {detail:{key:originalKey}}));
+      return result;
     };
   }
   // If another tab signs into a different account, stop using the stale owner

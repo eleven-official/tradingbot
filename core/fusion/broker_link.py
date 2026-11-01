@@ -182,8 +182,9 @@ class AlpacaClient:
             raise BrokerUnavailable() from exc
 
     def historical_bars(self, symbol, years):
-        if not re.fullmatch(r"[A-Z][A-Z0-9.]{0,9}", symbol) or years not in {5, 10}:
-            raise ValueError("Use a US equity symbol and a five- or ten-year history window")
+        from core.fusion.instrument_history import HISTORY_YEARS, MAX_HISTORY_BARS
+        if not re.fullmatch(r"[A-Z][A-Z0-9.]{0,9}", symbol) or years not in HISTORY_YEARS:
+            raise ValueError("Use a US equity symbol and a 5, 10, 15 or 20-year history window")
         end = datetime.now(timezone.utc).date()
         start = end - timedelta(days=round(years * 365.25))
         rows, token, seen = [], None, set()
@@ -215,8 +216,8 @@ class AlpacaClient:
                         "volume": bar.get("v"),
                     }
                 )
-                if len(rows) > 5000:
-                    raise ValueError("Daily history exceeded the bounded 5000-bar limit")
+                if len(rows) > MAX_HISTORY_BARS:
+                    raise ValueError("Daily history exceeded the bounded 10000-bar limit")
             token = result.get("next_page_token")
             if not token:
                 break
@@ -227,7 +228,9 @@ class AlpacaClient:
             raise ValueError("History pagination was incomplete; no partial dataset was trained")
         return rows
 
-    def recent_bars(self, symbol):
+    def recent_bars(self, symbol, *, lookback=21):
+        if isinstance(lookback, bool) or not isinstance(lookback, int) or not 21 <= lookback <= 201:
+            raise ValueError("Daily lookback must be between 21 and 201 completed bars")
         today = datetime.now(timezone.utc).date()
         result = self.request(
             "GET",
@@ -235,7 +238,7 @@ class AlpacaClient:
             data=True,
             params={
                 "timeframe": "1Day",
-                "start": (today - timedelta(days=90)).isoformat(),
+                "start": (today - timedelta(days=max(90, lookback * 2))).isoformat(),
                 "end": today.isoformat(),
                 "feed": "iex",
                 "adjustment": "split",

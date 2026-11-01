@@ -42,7 +42,7 @@ def database(method: str, path: str, body: Optional[dict] = None, prefer: Option
     if prefer:
         headers["Prefer"] = prefer
     try:
-        response = requests.request(method, url + path, json=body, headers=headers, timeout=15)
+        response = requests.request(method, url + path, json=body, headers=headers, timeout=15, allow_redirects=False)
         if response.status_code == 404:
             raise HTTPException(503, "Account storage needs setup: run supabase/schema_member_data.sql in the project database.")
         if not 200 <= response.status_code < 300:
@@ -55,6 +55,28 @@ def database(method: str, path: str, body: Optional[dict] = None, prefer: Option
 class WorkspaceBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     items: Dict[str, str] = Field(max_length=30)
+
+
+class WorkspaceChanges(WorkspaceBody):
+    removed: list[str] = Field(default_factory=list, max_length=30)
+
+
+@router.patch("/workspace")
+async def merge_workspace(request: Request, body: WorkspaceChanges) -> dict:
+    member = require_member(request)
+    if request.headers.get("x-workspace-owner") != member["uid"]:
+        raise HTTPException(409, "Your signed-in account changed. Reload before saving this workspace.")
+    if (set(body.items) | set(body.removed)) - WORKSPACE_KEYS:
+        raise HTTPException(400, "Only workspace journals and game progress can be saved; credentials are excluded.")
+    if set(body.items) & set(body.removed):
+        raise HTTPException(400, "A workspace item cannot be updated and removed together.")
+    if len(json.dumps(body.items).encode()) > 500_000:
+        raise HTTPException(413, "This workspace update is too large (500 KB).")
+    rows = await run_in_threadpool(database, "POST", "/rest/v1/rpc/merge_member_workspace",
+                                  {"p_user_id": member["uid"], "p_items": body.items, "p_removed": body.removed})
+    if not rows or not isinstance(rows, list) or not rows[0].get("updated_at"):
+        raise HTTPException(503, "The database did not confirm this save.")
+    return {"saved": True, "updated_at": rows[0]["updated_at"]}
 
 
 @router.get("/storage-context.js")

@@ -1,0 +1,10 @@
+export type Regime = 'up' | 'down' | 'range' | 'stress';
+export const REGIMES: Regime[] = ['up','down','range','stress'];
+export type Parameters = { k:number; confidence:number; maxDistance:number; riskFraction:number; weights:number[] };
+export type Cell = { trades:number; wins:number; net:number };
+export type Stats = { examples:number; trades:number; wins:number; sum:number; stressSum:number; wealth:number; peak:number; maxDrawdown:number; brier:number; baselineBrier:number; regimes:Record<Regime,Cell>; lastTime?:string; lastOutcome?:string };
+export type Feature = { id:number; observed_at:string; outcome_at:string; embedding:number[] | string; regime:Regime; net_return:number; cost_return:number; contract_key:string; option_context?:Record<string,unknown> | null };
+export type Dataset = { id:string; user_id:string; symbol:string; asset_kind:'stock'|'option'; timeframe:'1d'|'15m'|'5m'; requested_years:number; source:'alpaca'|'upload'; source_verified:boolean; status:string; first_at:string; last_at:string; train_end:string; validation_end:string; training_win_rate:number; fee_bps:number; slippage_bps:number; option_commission:number; raw_count:number; feature_count:number; cursor:Record<string,unknown>; holdout_run_id:string|null };
+export type Work = { trial:number; stage:'validation'|'certification'; cursor?:number|null; stats?:Stats; run_id?:string; parameters?:Parameters; message?:string };
+export type Job = {id:string; user_id:string; dataset_id:string; max_trials:number; status:string; work:Work};
+export type Bar = { observed_at:string; open:number; high:number; low:number; close:number; volume:number };
