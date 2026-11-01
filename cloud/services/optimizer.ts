@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { candidate,emptyStats,observe,qualifies,summarize } from '../lib/math';
 import type { Dataset,Feature,Job,Work } from '../lib/types';
-import { matchPattern } from '../services/patternMatcher';
+import { matchPattern } from './patternMatcher';
 
 const BATCH=16;
 export async function optimizerTick(db:SupabaseClient,job:Job,token:string,deadline=Date.now()+40000) {

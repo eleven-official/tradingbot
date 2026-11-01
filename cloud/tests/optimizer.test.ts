@@ -4,7 +4,7 @@ import type { Dataset,Job,Stats } from '../lib/types';
 import { REGIMES } from '../lib/types';
 import { candidate,emptyStats,observe } from '../lib/math';
 vi.mock('../services/patternMatcher',()=>({matchPattern:vi.fn().mockResolvedValue({probability:.95,accepted:true})}));
-import { optimizerTick } from '../api/optimizer';
+import { optimizerTick } from '../services/optimizer';
 import { matchPattern } from '../services/patternMatcher';
 const dataset={id:'dataset',user_id:'owner',status:'ready',source_verified:true,train_end:'2010-01-01',validation_end:'2015-01-01',last_at:'2020-01-01',training_win_rate:.5,holdout_run_id:null} as Dataset;
 const job=():Job=>({id:'job',user_id:'owner',dataset_id:'dataset',max_trials:2,status:'running',work:{trial:0,stage:'validation'}});

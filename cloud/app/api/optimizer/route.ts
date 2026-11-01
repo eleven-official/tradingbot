@@ -1,6 +1,6 @@
 import { admin } from '../../../lib/admin';
 import { cronAuthorized } from '../../../lib/http';
-import { optimizerTick } from '../../../api/optimizer';
+import { optimizerTick } from '../../../services/optimizer';
 import { ingestionTick } from '../../../services/ingestion';
 import type { Dataset,Job } from '../../../lib/types';
 
