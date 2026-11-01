@@ -60,3 +60,20 @@ convex problem is solved to the maximum-likelihood optimum, so the same
 features, splits and frozen evaluation windows are unchanged; previously saved
 v1 artifacts remain comparable and loadable. No performance change is claimed:
 recompute validation and test evidence when licensed history is supplied.
+
+## Rich instrument family (2026-11-01)
+
+The research protocol gained a separate rich daily family
+(`loki_instrument_daily_rich_v3`, `core/fusion/paper_models_rich.py`): nine
+causal OHLCV features (last/5/10/20-session means, 20-day volatility, 14-day
+ATR% and stochastic range, overnight gap, 10-day momentum) fit with the same
+ridge Newton solver. Threshold selection runs the frozen validation table
+through a doubled-cost gate (at least 5 trades, positive 1x and 2x net and
+expectancy, drawdown at most 3%); the final 20% stays diagnostic. The v3
+family is accepted by `paper_evidence.assess` and the workspace compare pin,
+and is trained on the cached Yahoo datasets: all six instruments (SPY, QQQ,
+AAPL, MSFT, NVDA at 20y; TSLA at 15y) report `no_validation_edge_wait_in_cash`
+— the only validation candidate that cleared 1x costs (AAPL 0.55, +0.02%)
+failed the doubled-cost gate (−1.6%). Whole-unit sizing also skips entries
+when the 1000 USD cap cannot afford one unit. No edge is claimed; the family
+ships as honest cash-only research tooling alongside v1/v2.

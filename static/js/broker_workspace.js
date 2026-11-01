@@ -14,7 +14,7 @@
     $('#broker-connect-form button[type=submit]').disabled=busy;
     $('#ai-max-notional').disabled=busy||active;
     const compare=$('#compare-paper-strategies');
-    if(compare)compare.disabled=busy||active||!paperConnection()||!['loki_instrument_daily_logistic_v1','loki_instrument_daily_logistic_v2'].includes(model?.artifact?.version);
+    if(compare)compare.disabled=busy||active||!paperConnection()||!['loki_instrument_daily_logistic_v1','loki_instrument_daily_logistic_v2','loki_instrument_daily_rich_v3'].includes(model?.artifact?.version);
   }
   async function ready(){if(!capabilities)await loadCapabilities();if(!capabilities?.local_actions_enabled)throw new Error('Broker key entry and AI paper trading need the local Loki launcher.');}
   async function perform(task,target){if(busy)return;busy=true;controls();try{await ready();await task();}catch(error){message(target,error.message,true);}finally{busy=false;controls();}}

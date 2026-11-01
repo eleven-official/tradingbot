@@ -81,10 +81,15 @@ def feature_vector(bars, index=None):
     ]
 
 
-def replay(bars, samples, model, threshold):
+def replay(bars, samples, model, threshold, *, scorer=None, cost_multiple=1):
     cash, qty, entry, age, peak, drawdown = 10000.0, 0, 0.0, 0, 10000.0, 0.0
     trades, curve = [], []
-    fee, slip = POLICY["fee_bps"] / 10000, POLICY["slippage_bps"] / 10000
+    if cost_multiple not in (1, 2):
+        raise ValueError("Cost stress is fixed at 1x or 2x")
+    fee, slip = (
+        POLICY["fee_bps"] / 10000 * cost_multiple,
+        POLICY["slippage_bps"] / 10000 * cost_multiple,
+    )
 
     def exit_at(price, reason, day):
         nonlocal cash, qty
@@ -96,7 +101,7 @@ def replay(bars, samples, model, threshold):
 
     for sample in samples:
         bar = bars[sample[3]]
-        score = predict(model, sample[1])
+        score = scorer(model, sample[1]) if scorer else predict(model, sample[1])
         want_long = threshold is not None and score >= threshold
         day = bar.timestamp.date().isoformat()
         exited = False
