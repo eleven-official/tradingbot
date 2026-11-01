@@ -53,7 +53,15 @@ dist/
 
 # JavaScript / Next.js build output
 .next/
+out/
 node_modules/
+.vercel/
+.turbo/
+*.tsbuildinfo
+cloud/.next/
+cloud/node_modules/
+cloud/out/
+cloud/.turbo/
 
 # IDE & OS-specific files
 .idea/

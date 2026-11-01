@@ -58,6 +58,9 @@ app.include_router(member_router)
 from loki.api.cloud_research import router as cloud_research_router
 
 app.include_router(cloud_research_router)
+from loki.api.funded import router as funded_router
+
+app.include_router(funded_router)
 from loki.api.analogue import router as analogue_router
 
 app.include_router(analogue_router)

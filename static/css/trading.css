@@ -35,6 +35,16 @@
 #ai-stats strong { font-variant-numeric: tabular-nums; }
 #ai-log { max-height: 320px; overflow: auto; }
 #ai-trading .table-scroll { overflow-x: auto; }
+#ai-trading > [hidden] { display: none !important; }
+#trading-lane-note, #ai-lucid-controls, #ai-live-controls { grid-column: 1 / -1; }
+#ai-trading .trading-tabs { padding: 8px; border: 1px solid #344458; border-radius: 14px; }
+#ai-trading .trading-tabs > button { flex: 1 1 160px; }
+#ai-trading .funded-route { padding: 20px; border: 1px solid #344458; border-radius: 14px; background: #0b1422; }
+#ai-trading .funded-route p, #ai-trading .funded-route li { line-height: 1.65; }
+#ai-trading .funded-route li + li { margin-top: 12px; }
+#ai-trading .funded-route summary { cursor: pointer; padding: 14px 0; font-weight: 600; }
+#funded-connect-form { display: grid; gap: 16px; }
+#funded-account-details { margin-top: 24px; }
 @media (max-width: 1000px) {
   #ai-trading:not([hidden]) { grid-template-columns: minmax(0, 1fr); }
 }
