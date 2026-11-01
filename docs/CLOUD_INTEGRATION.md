@@ -11,7 +11,7 @@ Browser → existing Loki (FastAPI; existing Vercel project or desktop launcher)
                      ↓ signed server assertion; no browser-held bridge key
                  Loki cloud (Next.js; second Vercel project, root cloud/)
                      ├─ existing /api/* research APIs
-                     ├─ Vercel Cron → bounded optimizer/ingestion ticks
+                     ├─ GitHub Actions schedule → bounded optimizer/ingestion ticks
                      └─ the SAME Supabase Auth project and reviewed cloud tables
 ```
 

@@ -1,0 +1,32 @@
+name: Cloud optimizer tick
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloud-optimizer-tick
+  cancel-in-progress: false
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Run one authenticated bounded cloud tick
+        env:
+          WORKER_URL: ${{ vars.LOKI_CLOUD_WORKER_URL }}
+          CRON_SECRET: ${{ secrets.LOKI_CLOUD_CRON_SECRET }}
+        shell: bash
+        run: |
+          if [ -z "$WORKER_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Cloud optimizer is not configured; no work was triggered."
+            exit 0
+          fi
+          if [[ ! "$WORKER_URL" =~ ^https://[a-zA-Z0-9-]+\.vercel\.app$ ]]; then
+            echo "Use the verified production Vercel origin, without paths or query parameters."
+            exit 1
+          fi
+          curl --silent --show-error --fail-with-body --connect-timeout 10 --max-time 70 \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$WORKER_URL/api/optimizer"
