@@ -20,8 +20,8 @@ jobs:
         shell: bash
         run: |
           if [ -z "$WORKER_URL" ] || [ -z "$CRON_SECRET" ]; then
-            echo "Cloud optimizer is not configured; no work was triggered."
-            exit 0
+            echo "::error::Cloud optimizer configuration is missing; no work was triggered."
+            exit 1
           fi
           if [[ ! "$WORKER_URL" =~ ^https://[a-zA-Z0-9-]+\.vercel\.app$ ]]; then
             echo "Use the verified production Vercel origin, without paths or query parameters."
