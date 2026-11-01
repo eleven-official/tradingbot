@@ -10,6 +10,7 @@ import math
 import statistics
 
 from core.strategy_lab import validate_bars, _win_interval
+from core.fusion import paper_models
 from core.fusion.paper_rules import RULES, WARMUP, frozen_rule, signal_series, notional_budget
 from core.fusion.instrument_history import MAX_HISTORY_BARS
 
@@ -132,7 +133,10 @@ def validate_execution_report(report):
 
 
 def compare(base, rows):
-    if base.get("artifact", {}).get("version") != "loki_instrument_daily_logistic_v1":
+    if base.get("artifact", {}).get("version") not in {
+        paper_models.MODEL_VERSION,
+        "loki_instrument_daily_logistic_v1",
+    }:
         raise ValueError("Choose an original instrument model as the comparison baseline")
     if not isinstance(rows, list) or not 850 <= len(rows) <= MAX_HISTORY_BARS:
         raise ValueError("Comparison needs a complete saved 5/10/15/20-year daily dataset")

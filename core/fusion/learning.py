@@ -1,9 +1,10 @@
 """Transparent supervised learning on past returns, separate from trading proof.
 
-Fixed logistic model and fixed training schedule; no test-driven search. Supports
-up to 250000 daily observations offline. All features and scaling are causal;
-targets are dated by the return being predicted, so boundary labels cannot leak.
-The conversational assistant is not an LLM trained by this module.
+Fixed logistic model fitted to convergence with damped ridge Newton steps on a
+fixed chronological schedule; no test-driven search. Supports up to 250000
+daily observations offline. All features and scaling are causal; targets are
+dated by the return being predicted, so boundary labels cannot leak. The
+conversational assistant is not an LLM trained by this module.
 """
 
 from __future__ import annotations
@@ -15,15 +16,16 @@ import json
 import math
 import statistics
 
-MODEL_ID = "loki_market_direction_logistic_v1"
+MODEL_ID = "loki_market_direction_logistic_v2"
 FEATURES = ("last_return", "mean_5", "mean_20", "volatility_20", "positive_fraction_20")
 SPEC = {
     "train_through": "2023-12-31",
     "validate_through": "2024-12-31",
     "test_from": "2026-01-01",
-    "epochs": 60,
-    "learning_rate": 0.08,
+    "solver": "ridge_newton",
     "l2": 0.01,
+    "max_iterations": 25,
+    "tolerance": 1e-9,
     "positive_signal_threshold": 0.6,
     "feature_lag_days": 2,
 }
@@ -85,33 +87,94 @@ def _sigmoid(value):
     return 1 / (1 + math.exp(-max(-30, min(30, value))))
 
 
+def _solve(matrix, target):
+    """Gaussian elimination with partial pivoting; deterministic pure-Python."""
+    size = len(target)
+    work = [row[:] + [target[index]] for index, row in enumerate(matrix)]
+    for column in range(size):
+        pivot = max(range(column, size), key=lambda r: abs(work[r][column]))
+        if abs(work[pivot][column]) < 1e-14:
+            raise ArithmeticError("Ridge system cannot be solved")
+        work[column], work[pivot] = work[pivot], work[column]
+        scale = work[column][column]
+        for row in range(column + 1, size):
+            factor = work[row][column] / scale
+            if factor:
+                for j in range(column, size + 1):
+                    work[row][j] -= factor * work[column][j]
+    solution = [0.0] * size
+    for row in reversed(range(size)):
+        partial = work[row][size] - sum(work[row][j] * solution[j] for j in range(row + 1, size))
+        solution[row] = partial / work[row][row]
+    return solution
+
+
 def fit(train):
     means = [statistics.mean(row[1][i] for row in train) for i in range(len(FEATURES))]
     scales = [statistics.pstdev(row[1][i] for row in train) or 1 for i in range(len(FEATURES))]
     features = [
-        [
+        tuple(
             max(-10, min(10, (value - mean) / scale))
             for value, mean, scale in zip(row[1], means, scales)
-        ]
+        )
         for row in train
     ]
-    base = (sum(row[2] for row in train) + 1) / (len(train) + 2)
-    weights, bias = [0.0] * len(FEATURES), math.log(base / (1 - base))
-    for _ in range(SPEC["epochs"]):
-        gradients, intercept = [0.0] * len(weights), 0.0
-        for vector, row in zip(features, train):
-            residual = _sigmoid(bias + sum(w * x for w, x in zip(weights, vector))) - row[2]
-            intercept += residual
-            for index, value in enumerate(vector):
-                gradients[index] += residual * value
-        bias -= SPEC["learning_rate"] * intercept / len(train)
-        weights = [
-            w - SPEC["learning_rate"] * (gradient / len(train) + SPEC["l2"] * w)
-            for w, gradient in zip(weights, gradients)
-        ]
+    labels = [row[2] for row in train]
+    base = (sum(labels) + 1) / (len(train) + 2)
+    # Unknowns [intercept, weights...]; ridge applies to weights only. The tiny
+    # uniform diagonal term keeps the system invertible when probabilities saturate.
+    ridge, floor = SPEC["l2"], 1e-10
+    size = len(FEATURES) + 1
+
+    def objective(coefficients):
+        loss = 0.0
+        for vector, label in zip(features, labels):
+            score = _sigmoid(coefficients[0] + sum(c * x for c, x in zip(coefficients[1:], vector)))
+            loss -= math.log(max(score, 1e-15)) if label else math.log(max(1 - score, 1e-15))
+        return loss / len(train) + ridge * sum(c * c for c in coefficients[1:]) / 2
+
+    coefficients = [math.log(base / (1 - base))] + [0.0] * len(FEATURES)
+    for _ in range(SPEC["max_iterations"]):
+        hess = [[floor] * size for _ in range(size)]
+        grads = [0.0] * size
+        for vector, label in zip(features, labels):
+            point = [1.0, *vector]
+            score = _sigmoid(coefficients[0] + sum(c * x for c, x in zip(coefficients[1:], vector)))
+            weight = max(score * (1 - score), 1e-12)
+            residual = score - label
+            for row in range(size):
+                point_row = point[row]
+                grads[row] += residual * point_row
+                pivot_row = hess[row]
+                lead = weight * point_row
+                for column in range(row, size):
+                    pivot_row[column] += lead * point[column]
+        n = len(train)
+        for row in range(size):
+            grads[row] /= n
+            if row:  # weights only; intercept carries no ridge penalty
+                grads[row] += ridge * coefficients[row]
+            for column in range(row, size):
+                penalty = ridge if (row == column and column) else floor
+                hess[row][column] = hess[column][row] = hess[row][column] / n + penalty
+        grad_norm = max(abs(value) for value in grads)
+        if grad_norm < SPEC["tolerance"]:
+            break
+        step = _solve(hess, [-value for value in grads])
+        current = objective(coefficients)
+        factor, updated = 1.0, None
+        for _ in range(5):
+            trial = [c + factor * s for c, s in zip(coefficients, step)]
+            if objective(trial) <= current + 1e-12:
+                updated = trial
+                break
+            factor /= 2
+        if updated is None:
+            break
+        coefficients = updated
     return {
-        "weights": weights,
-        "intercept": bias,
+        "weights": coefficients[1:],
+        "intercept": coefficients[0],
         "means": means,
         "scales": scales,
         "training_up_frequency": base,

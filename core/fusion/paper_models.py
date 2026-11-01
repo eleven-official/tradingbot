@@ -21,7 +21,7 @@ from core.strategy_lab import validate_bars, _win_interval
 from core.fusion.learning import fit, predict, FEATURES
 from core.fusion.instrument_history import HISTORY_YEARS, MAX_HISTORY_BARS
 
-MODEL_VERSION = "loki_instrument_daily_logistic_v1"
+MODEL_VERSION = "loki_instrument_daily_logistic_v2"
 POLICY = {
     "allocation": 0.10,
     "max_notional": 1000.0,

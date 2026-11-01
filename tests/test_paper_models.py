@@ -5,9 +5,9 @@ from datetime import date, timedelta
 import math
 
 import pytest
+from core.fusion import learning
 from core.fusion import paper_models as models
 from core.strategy_lab import validate_bars
-
 
 def historical_fixture(years=11):
     rows = []
@@ -127,3 +127,73 @@ def test_duplicate_dates_and_incomplete_daily_bars_are_rejected():
     rows[-1]["timestamp"] = date.today().isoformat()
     with pytest.raises(ValueError, match="completed"):
         models.train_instrument(rows, "SPY", 10, source={})
+
+
+def _gradient_norm(model, train):
+    gradients = [0.0] * (len(models.FEATURES) + 1)
+    total = len(train)
+    for _, vector, label in train:
+        scaled = [
+            max(-10, min(10, (value - mean) / scale))
+            for value, mean, scale in zip(vector, model["means"], model["scales"])
+        ]
+        score = learning._sigmoid(model["intercept"] + sum(w * x for w, x in zip(model["weights"], scaled)))
+        gradients[0] += score - label
+        for index, value in enumerate(scaled):
+            gradients[index + 1] += (score - label) * value
+    return max(
+        abs(value / total + (learning.SPEC["l2"] * model["weights"][index - 1] if index else 0.0))
+        for index, value in enumerate(gradients)
+    )
+
+
+def test_newton_fit_reaches_a_converged_ridge_solution(trained):
+    rows, report = trained
+    # Reproduce train_instrument's own windowing: year cutoff, warmup, positional split.
+    bars_all = validate_bars(rows)
+    days = [bar.timestamp.date() for bar in bars_all]
+    requested = report["requested_years"]
+    cutoff = days[-1] - timedelta(days=round(requested * 365.25))
+    window = validate_bars([row for row, day in zip(rows, days) if day >= cutoff])
+    samples = [
+        (
+            window[index + 1].timestamp.date(),
+            models.feature_vector(window, index),
+            int(window[index + 1].close > window[index + 1].open),
+        )
+        for index in range(20, len(window) - 1)
+    ]
+    train = samples[: int(len(samples) * 0.6)]
+    assert len(train) == report["training"]["examples"]
+    model = report["artifact"]["model"]
+    assert _gradient_norm(model, train) < 1e-6
+    assert all(math.isfinite(weight) for weight in model["weights"])
+
+
+def test_fitting_is_deterministic_and_bounded_on_separable_data():
+    from core.fusion import learning
+
+    rows = [
+        {"timestamp": (date(2018, 1, 1) + timedelta(days=i)).isoformat(),
+         "return": 0.01 * math.sin(i / 9)}
+        for i in range(1500)
+    ]
+    sample = [
+        row for row in learning.examples(learning.validate_observations(rows))
+        if row[0].isoformat() < "2018-06"
+    ]
+    assert learning.fit(sample) == learning.fit(sample)
+    separable = [
+        (date(2020, 1, 1) + timedelta(days=index), (0.9, 0.9, 0.9, 0.01, 1.0), 1)
+        for index in range(200)
+    ]
+    model = learning.fit(separable)
+    assert all(math.isfinite(w) for w in model["weights"])
+    assert all(weight <= 25 for weight in model["weights"])
+    assert learning.SPEC["solver"] == "ridge_newton"
+
+
+def test_instrument_reports_use_the_current_model_version(trained):
+    _, report = trained
+    assert report["artifact"]["version"] == "loki_instrument_daily_logistic_v2"
+    assert report["artifact"]["model"]["feature_names"] == list(models.FEATURES)
