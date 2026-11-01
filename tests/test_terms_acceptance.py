@@ -32,14 +32,14 @@ def _page_lockdown(monkeypatch):
 
 def test_the_gate_refuses_a_body_without_a_tick_and_never_charges_the_timer(monkeypatch):
     _page_lockdown(monkeypatch)
-    unticked = client.post("/api/gate", json={"code": "flathead"})
+    unticked = client.post("/api/gate", json={"code": "slayterisgay"})
     assert unticked.status_code == 403
     assert "Tick the terms" in unticked.json()["detail"]
 
     # skipping the tick is not punished: nine silent skips still leave the
     # anti-brute-force budget for a real wrong-code probe
     for _ in range(9):
-        client.post("/api/gate", json={"code": "flathead"})
+        client.post("/api/gate", json={"code": "slayterisgay"})
     wrong_code = client.post("/api/gate", json={"code": "chocolate", "accepted_terms": True})
     assert wrong_code.status_code == 403
     assert "not the code" in wrong_code.json()["detail"]
@@ -47,7 +47,7 @@ def test_the_gate_refuses_a_body_without_a_tick_and_never_charges_the_timer(monk
 
 def test_non_object_gate_payloads_are_bad_requests(monkeypatch):
     _page_lockdown(monkeypatch)
-    for body in ([], ["code"], "flathead", 42, True):
+    for body in ([], ["code"], "slayterisgay", 42, True):
         response = client.post("/api/gate", json=body)
         assert response.status_code == 400
         assert "object" in response.json()["detail"]
@@ -56,7 +56,7 @@ def test_non_object_gate_payloads_are_bad_requests(monkeypatch):
 
 def test_a_ticked_correct_code_opens_with_both_cookies(monkeypatch):
     _page_lockdown(monkeypatch)
-    opened = client.post("/api/gate", json={"code": "flaTHEAD", "accepted_terms": True})
+    opened = client.post("/api/gate", json={"code": "slayterisgay", "accepted_terms": True})
     assert opened.status_code == 200
     gate = opened.cookies.get(site_access.GATE_COOKIE)
     terms = opened.cookies.get(site_access.TERMS_COOKIE)

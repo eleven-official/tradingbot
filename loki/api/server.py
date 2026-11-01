@@ -64,6 +64,9 @@ app.include_router(funded_router)
 from loki.api.analogue import router as analogue_router
 
 app.include_router(analogue_router)
+from loki.api.indicator_page import router as indicator_page_router
+
+app.include_router(indicator_page_router)
 
 
 @app.middleware("http")
@@ -125,7 +128,7 @@ async def root(request: Request):
 # The gate engages only on remote deployments (VERCEL) or when the launcher
 # asks for it (LOKI_SITE_GATE=1); the local desktop experience stays open.
 # ---------------------------------------------------------------------------
-_GATED_PAGES = {"/", "/account", "/paper-tools", "/paper-tools/"}
+_GATED_PAGES = {"/", "/account", "/paper-tools", "/paper-tools/", "/indicator"}
 
 
 @app.middleware("http")

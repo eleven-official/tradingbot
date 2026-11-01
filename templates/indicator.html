@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Loki NQ structural KNN Pine indicator — members' copy-paste page" />
+  <meta name="theme-color" content="#080d12" />
+  <title>Loki · Indicator (NQ Pine)</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; background: #080d12; color: #e8eef4;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    .shell { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
+    header.topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; margin-bottom: 28px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; }
+    .brand-mark { display: inline-flex; gap: 3px; }
+    .brand-mark span { width: 8px; height: 22px; border-radius: 2px; background: #4ce08d; }
+    .brand-mark span:nth-child(2) { background: #3ad0ff; }
+    .brand-mark span:nth-child(3) { background: #ff6b6b; }
+    .brand strong { display: block; letter-spacing: .28em; font-size: 15px; }
+    .brand small { display: block; color: #7c8b9c; font-size: 10px; letter-spacing: .22em; }
+    .gate-pill {
+      font-size: 11px; letter-spacing: .16em; padding: 6px 12px; border-radius: 999px;
+      border: 1px solid #2a3a4a; color: #7c8b9c;
+    }
+    .gate-pill.on { border-color: #4ce08d55; color: #4ce08d; }
+    .hero h1 { margin: 12px 0 6px; font-size: 30px; }
+    .hero h1 em { color: #3ad0ff; font-style: normal; }
+    .hero p { margin: 0 0 10px; color: #9fb0c0; max-width: 780px; line-height: 1.55; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
+    .chip {
+      font-size: 11px; letter-spacing: .08em; color: #bcd0e0; padding: 5px 10px;
+      border: 1px solid #24313f; border-radius: 999px; background: #0c141b;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 6px; }
+    button.tool {
+      appearance: none; border: 1px solid #2f4254; background: #101a24; color: #dff3ff;
+      padding: 10px 18px; border-radius: 10px; font-size: 14px; cursor: pointer;
+    }
+    button.tool:hover { background: #16233233; border-color: #3ad0ff; }
+    button.tool.primary { background: #123524; border-color: #2f8b57; color: #d7ffe8; }
+    .download a { text-decoration: none; color: #9fb0c0; font-size: 12px; }
+    .card {
+      margin-top: 18px; border: 1px solid #1d2a36; border-radius: 14px;
+      background: #0b1219; overflow: hidden;
+    }
+    .card-head {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 12px 16px; border-bottom: 1px solid #16222c; background: #0d151e;
+    }
+    .card-head strong { font-size: 12px; letter-spacing: .12em; color: #8fa7bb; }
+    .card-head span { font-size: 11px; color: #56718a; }
+    pre {
+      margin: 0; padding: 18px; max-height: 520px; overflow: auto;
+      font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+      font-size: 12px; line-height: 1.5; color: #cfe3f3; tab-size: 4;
+      white-space: pre; user-select: all;
+    }
+    .note { margin-top: 16px; color: #7c8b9c; font-size: 12.5px; line-height: 1.6; }
+    .note b { color: #bcd0e0; }
+    footer {
+      margin-top: 30px; color: #61748a; font-size: 11.5px; display: flex;
+      justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    }
+    .step {
+      display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+      border: 1px solid #2a3a4a; font-size: 11px; color: #3ad0ff; margin-right: 8px;
+    }
+    ol.how { line-height: 2.1; color: #9fb0c0; font-size: 13.5px; padding-left: 6px; }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Loki home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span><strong>LOKI</strong><small>TRADING INTELLIGENCE</small></span>
+      </a>
+      <span class="gate-pill {{ 'on' if gate_note else '' }}">
+        {{ 'MEMBERS · GATED' if gate_note else 'LOCAL MODE' }}
+      </span>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow" style="color:#3ad0ff; letter-spacing:.22em; font-size:11px; margin:0;">PRIVATE INDICATOR · MEMBERS</p>
+      <h1>Loki NQ Structural <em>KNN</em> — Pine Script v5</h1>
+      <p>
+        The adaptive candle-anatomy model <em>loki</em> for the NASDAQ 100 futures
+        (NQ): a Lorentz-distance K-Nearest-Neighbors vote over body/wick ratios,
+        range expansion, a momentum ladder, volume pressure and market structure,
+        self-labeled by HORIZON-bar outcomes. Signals, brackets, S/R, dashboard
+        and alerts — evaluated on confirmed bars only.
+      </p>
+      <div class="chips">
+        <span class="chip">NON-REPAINTING</span>
+        <span class="chip">BAR-CLOSE LOCKED SIGNALS</span>
+        <span class="chip">ATR TP/SL BRACKETS</span>
+        <span class="chip">PIVOT S/R · LOOKAHEAD OFF</span>
+        <span class="chip">HUD DASHBOARD</span>
+        <span class="chip">alert() + alertcondition</span>
+      </div>
+      <div class="actions">
+        <button class="tool primary" id="copy-button" type="button">Copy full script ⧉</button>
+        <a class="tool" id="download-button" download="loki_nq.pine" href="data:text/plain;charset=utf-8,later">Download .pine ↓</a>
+      </div>
+      <p class="note" id="copy-status" role="status" style="color:#4ce08d;"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <strong>PINE EDITOR PASTE</strong>
+        <span>sha256 {{ pine_sha256[:24] }}…</span>
+      </div>
+      <pre id="pine-source">{{ pine_source }}</pre>
+    </section>
+
+    <section class="note">
+      <ol class="how">
+        <li><span class="step">1</span> Open TradingView → <b>Pine Editor</b>.</li>
+        <li><span class="step">2</span> Clear the default script, paste everything, press <b>Add to chart</b>.</li>
+        <li><span class="step">3</span> Chart <b>NQ</b> (NASDAQ 100 futures). Recommended: 5-minute, RTH filter on until you audit win-rate.</li>
+        <li><span class="step">4</span> Right-click → <b>Add alert</b> → condition <b>loki</b>, or let the built-in <b>alert()</b> payloads fire once per bar close.</li>
+      </ol>
+      <p style="margin-top:10px;">
+        Honest scope: vote share is model confidence — not guaranteed probability of profit.
+        The HUD's win-rate row counts exactly what the resolved signals did. Audit that
+        number before trusting anything. Costs, drawdown and non-repaint behavior ship in
+        the script comments.
+      </p>
+    </section>
+
+    <footer>
+      <span>Research tool only. No order routing, no broker integration, no guarantee.</span>
+      <a href="/" style="color:#7c9cbc; text-decoration:none;">← Back to Loki</a>
+    </footer>
+  </main>
+
+  <script>
+    const source = document.getElementById("pine-source").textContent;
+    const status = document.getElementById("copy-status");
+
+    // download payload is built from the rendered text — keeps the download and
+    // the displayed block byte-identical
+    const dl = document.getElementById("download-button");
+    dl.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(source));
+
+    document.getElementById("copy-button").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(source);
+        status.textContent = "Copied " + source.length.toLocaleString() + " characters — paste it straight into the Pine Editor.";
+      } catch (error) {
+        // Clipboard API can be denied (http origins / older browsers): fall back
+        // to a manual selection so the member can still Ctrl+C easily.
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById("pine-source"));
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        status.textContent = "Script selected — press Ctrl+C to copy.";
+        status.style.color = "#ffd166";
+      }
+      setTimeout(() => { status.textContent = ""; status.style.color = "#4ce08d"; }, 6000);
+    });
+  </script>
+</body>
+</html>
