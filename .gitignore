@@ -80,3 +80,7 @@ components/mirofish/upstream/backend/.venv/
 
 # Private strategy-engine state and account snapshots
 state/
+
+# The cloud state endpoint is source code, not a runtime state directory.
+!/cloud/app/api/state/
+!/cloud/app/api/state/route.ts
