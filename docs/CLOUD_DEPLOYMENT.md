@@ -49,3 +49,14 @@ Verified application revision: `d961b65`.
 - Cloud broker execution is disabled and unimplemented. Deployment and an idle
   worker response do not establish a profitable model or a 75% performance result.
 - GitHub's five-minute schedule is approximate and may be delayed.
+
+## Model state (2026-11-01)
+
+The instrument direction model (`loki_instrument_daily_logistic_v2`) and the
+market-direction research model (`loki_market_direction_logistic_v2`) now fit
+to convergence with damped ridge Newton steps (λ=0.01, max 25 iterations,
+tolerance 1e-9) instead of 60 fixed-epoch full-batch gradient descent. The
+convex problem is solved to the maximum-likelihood optimum, so the same
+features, splits and frozen evaluation windows are unchanged; previously saved
+v1 artifacts remain comparable and loadable. No performance change is claimed:
+recompute validation and test evidence when licensed history is supplied.
