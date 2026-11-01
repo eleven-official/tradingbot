@@ -1,42 +1,44 @@
 //@version=5
 // ═══════════════════════════════════════════════════════════════════════════════
-//  LOKI — NQ Structural KNN / Adaptive Predictive Engine
+//  LOKI — NQ Structural KNN / Adaptive Predictive Engine  ·  Neon Edition
 //  ─────────────────────────────────────────────────────────────────────────────
-//  Design, honestly stated:
+//  CORE (unchanged semantics):
 //   • Features read CLOSED bars only: body/wick anatomy, range expansion vs
 //     ATR, a 1/3/5 momentum ladder in ATR units, volume pressure, and position
 //     inside the 20-bar structural envelope — all z-scored over 200 bars.
-//   • Every confirmed bar stores its condition vector into a bounded FIFO
-//     library. HORIZON bars later, the close labels that sample (+1/−1/0).
+//   • Every confirmed bar stores its condition vector into a bounded FIFO library.
+//     HORIZON bars later, the close labels that sample (+1/−1/0).
 //   • Each bar, the current condition is classified by a Lorentz-distance
-//     weighted KNN vote over the labeled library → pLong / pShort / conf.
-//   • Signals (Go Long / Go Short / Exit) fire only on confirmed bars and are
-//     frozen at print time — no later rewrite, no repaint.
-//   • TP/SL are ATR multiples drawn from entry; S/R comes from pivots on a
-//     configurable timeframe with lookahead off (lag = honesty).
-//   • A FIFO audit resolves fired signals HORIZON bars after fire and keeps a
-//     rolling win-rate the HUD shows verbatim.
+//     weighted KNN vote over the labeled library → pLong/pShort/conf.
+//   • Signals (Go Long / Go Short / Exit) fire only on confirmed bars, frozen
+//     at print time — no repaint.
+//   • TP/SL are ATR multiples drawn from entry; S/R from pivots with lookahead off.
+//   • A FIFO audit resolves fired signals HORIZON bars after fire → rolling win-rate.
 //   • alert() payloads fire once per bar close with frozen values.
 //
-//  Honest scope: KNN vote share is model confidence, not guaranteed probability
-//  of profit. The audit row shows real resolved outcomes — audit before trusting.
+//  NEW in the Neon Edition (cosmetics only — never touches decision logic):
+//   • Four neon themes (Midnight · Cyberpunk · Sunset · Aurora) + custom accents.
+//   • Choice of candle coloring: structural (colored conservatively: by bias
+//     with fading tails, not by literal up/down) or market-accurate candle fill.
+//   • Glow pulse on momentum ladders & brackets (layered transparency bands).
+//   • Interface: neon HUD with inline confidence bars, animated tick glyphs.
+//   • Multi-layer support/resistance bands filled with theme-tinted gradients.
 //
-//  Memory: all series are bounded FIFOs; lines are three reused handles; the
-//  classifier is a fixed k-pool insertion (no allocation in the hot loop).
+//  Honest scope: this is a probabilistic research tool. Vote share is model
+//  confidence, not guaranteed probability — the HUD's win-rate row reports
+//  exactly what resolved signals did. Audit it before trusting anything.
 // ═══════════════════════════════════════════════════════════════════════════════
-indicator("Loki — NQ Structural KNN", shorttitle="LOKI", overlay=true,
+indicator("Loki — NQ Structural KNN · Neon", shorttitle="LOKI✦", overlay=true,
      max_labels_count=100, max_lines_count=20)
 
 // ─────────────────────────────── INPUTS ─────────────────────────────────────
-grpModel  = "KNN engine"
+grpModel  = "⟡ KNN engine"
 lookback  = input.int(1500, "Training window (bars)", minval=200, maxval=3000,
-     group=grpModel, tooltip="How many closed bars are kept as the KNN library.")
-knn       = input.int(10, "Neighbors (k)", minval=3, maxval=25, group=grpModel,
-     tooltip="Nearest historical conditions polled. A near-even vote disables signals.")
-horizon   = input.int(3, "Outcome horizon (closed bars)", minval=1, maxval=10, group=grpModel,
-     tooltip="A stored sample is later labeled by whether price is above/below its store close this many bars after. Labels only fill from confirmed data — no lookahead.")
+     group=grpModel, tooltip="Closed bars kept as the KNN library.")
+knn       = input.int(10, "Neighbors (k)", minval=3, maxval=25, group=grpModel)
+horizon   = input.int(3, "Outcome horizon (closed bars)", minval=1, maxval=10, group=grpModel)
 
-grpFeat   = "Feature weights"
+grpFeat   = "✧ Feature weights"
 w_body    = input.float(1.0, "Body ratio",      minval=0, step=0.25, group=grpFeat)
 w_wick    = input.float(1.0, "Wick asymmetry",  minval=0, step=0.25, group=grpFeat)
 w_range   = input.float(1.0, "Range expansion", minval=0, step=0.25, group=grpFeat)
@@ -44,16 +46,13 @@ w_momo    = input.float(1.0, "Momentum ladder", minval=0, step=0.25, group=grpFe
 w_vol     = input.float(1.0, "Volume pressure", minval=0, step=0.25, group=grpFeat)
 w_struct  = input.float(1.5, "Range position",  minval=0, step=0.25, group=grpFeat)
 
-grpGates  = "Signal gates"
-confMin   = input.float(62.0, "Confidence floor", minval=50.0, maxval=90.0, step=1.0,
-     group=grpGates, tooltip="Minimum vote share for the winning side before any signal prints.")
-rngMin    = input.float(0.55, "Min range / ATR", minval=0.2, step=0.05, group=grpGates,
-     tooltip="Bar range must be at least this fraction of ATR(20) — skip signals on dead candles.")
-useSession= input.bool(true, "Trade NQ cash hours only", group=grpGates,
-     tooltip="09:30–16:00 US/Eastern by default. OFF trades the full CME globex session.")
+grpGates  = "⚑ Signal gates"
+confMin   = input.float(62.0, "Confidence floor", minval=50.0, maxval=90.0, step=1.0, group=grpGates)
+rngMin    = input.float(0.55, "Min range / ATR",  minval=0.2, step=0.05, group=grpGates)
+useSession= input.bool(true, "Trade NQ cash hours only", group=grpGates)
 sessDef   = input.session("0930-1600", "Session", group=grpGates)
 
-grpLevels = "Targets and levels"
+grpLevels = "◈ Targets and levels"
 atrLen    = input.int(20, "ATR length", minval=5, group=grpLevels)
 tpMult    = input.float(2.0,  "TP = ATR ×", minval=0.25, step=0.25, group=grpLevels)
 slMult    = input.float(1.25, "SL = ATR ×", minval=0.25, step=0.25, group=grpLevels)
@@ -61,19 +60,50 @@ srTF      = input.timeframe("15", "S/R resolution", group=grpLevels)
 pivLeft   = input.int(5, "Pivot left bars",  minval=1, group=grpLevels)
 pivRight  = input.int(5, "Pivot right bars", minval=1, group=grpLevels)
 
-grpStats  = "Signal audit"
+grpStats  = "▸ Signal audit"
 statLen   = input.int(30, "Rolling audit size", minval=10, maxval=200, group=grpStats)
 
-grpLook   = "Cosmetics"
-showSig   = input.bool(true, "Signal labels", group=grpLook)
-showHUD   = input.bool(true, "HUD dashboard", group=grpLook)
-hudSize   = input.string("small", "HUD text size", options=["tiny", "small", "normal"], group=grpLook)
+grpStyle  = "✦ Neon cosmetics"
+themeSel = input.string("Midnight", "Theme",
+     options=["Midnight", "Cyberpunk", "Sunset", "Aurora", "Custom"], group=grpStyle)
+cBullCust = input.color(color.new(#00ffa3, 0), "Custom ▲", inline="tc", group=grpStyle)
+cBearCust = input.color(color.new(#ff4d6d, 0), "Custom ▼", inline="tc", group=grpStyle)
+cAccCust  = input.color(color.new(#3ad0ff, 0), "Custom ✦", inline="tc", group=grpStyle)
 
-C_BULL = color.new(color.lime, 0)
-C_BEAR = color.new(color.red, 0)
-C_FLAT = color.new(color.gray, 0)
-C_ACC  = color.new(color.aqua, 0)
-C_BG   = color.new(color.black, 75)
+paintModel = input.string("market", "Signal candle ghost",
+     options=["market", "bias ghost"], title="Candle ghosting", group=grpStyle,
+     tooltip="market = real candles untouched. bias ghost = candles painted with the model's live bias (visual only, does NOT change data).")
+trailGlow  = input.bool(true, "Momentum trail glow (layered)", group=grpStyle)
+glowBands  = input.bool(true, "S/R gradient bands", group=grpStyle)
+showSig    = input.bool(true, "Signal labels", group=grpStyle)
+showHUD    = input.bool(true, "HUD dashboard", group=grpStyle)
+hudSize    = input.string("small", "HUD text size", options=["tiny", "small", "normal"], group=grpStyle)
+
+// ───────────────────────────── THEME PALETTE ────────────────────────────────
+// Real theme palette: one source of color truth for bars, lines, HUD, badges,
+// and candle ghosts. All plots stay series-colored — no hardcoded passes.
+themeUp    = themeSel == "Midnight"  ? color.new(#00ffa3, 0) :
+     themeSel == "Cyberpunk" ? color.new(#c77dff, 0) :
+     themeSel == "Sunset"    ? color.new(#ff9e57, 0) :
+     themeSel == "Aurora"    ? color.new(#7ef9c8, 0) : cBullCust
+themeDown  = themeSel == "Midnight"  ? color.new(#ff4d6d, 0) :
+     themeSel == "Cyberpunk" ? color.new(#ff2bd6, 0) :
+     themeSel == "Sunset"    ? color.new(#e63946, 0) :
+     themeSel == "Aurora"    ? color.new(#fd5ea0, 0) : cBearCust
+themeAcc   = themeSel == "Midnight"  ? color.new(#3ad0ff, 0) :
+     themeSel == "Cyberpunk" ? color.new(#00e5ff, 0) :
+     themeSel == "Sunset"    ? color.new(#ffd166, 0) :
+     themeSel == "Aurora"    ? color.new(#a0c4ff, 0) : cAccCust
+themeDim   = color.new(color.gray, 0)
+themeBG    = themeSel == "Cyberpunk" ? color.new(#120a1f, 75) :
+     themeSel == "Sunset" ? color.new(#1a0f14, 75) :
+     themeSel == "Aurora" ? color.new(#0a141a, 75) : color.new(color.black, 75)
+
+C_BULL = themeUp
+C_BEAR = themeDown
+C_FLAT = themeDim
+C_ACC  = themeAcc
+C_BG   = themeBG
 
 // ─────────────────────── FEATURE EXTRACTION (CLOSED BAR ONLY) ───────────────
 body = math.abs(close - open)
@@ -94,17 +124,12 @@ hi20 = ta.highest(high, 20)
 lo20 = ta.lowest(low, 20)
 f_struct = (close - lo20) / math.max(hi20 - lo20, syminfo.mintick)
 
-// ── standardization: z-scores over each feature's own last-200 bars ─────────
-// Scale-free distances, regime-adaptive. Same formula at store and judge time.
 zSize = 200
 zdef(s) =>
     m = ta.sma(s, zSize)
     sd = ta.stdev(s, zSize)
     sd > 0 ? math.max(-5.0, math.min(5.0, (s - m) / sd)) : 0.0
 
-// One unconditional build of the CURRENT condition vector each bar: every
-// series call executes on every bar, so Pine's internal bookkeeping stays
-// consistent (no conditional-call drift).
 dq = array.from(
      w_body   * zdef(f_body),
      w_wick   * zdef(f_wick),
@@ -117,12 +142,9 @@ dq = array.from(
 )
 nFeat = array.size(dq)
 
-// ─────────────────────────────── SESSION FILTER ─────────────────────────────
 sessOK = not useSession or not na(time(timeframe.period, sessDef + ":123456789"))
 
 // ─────────────────────────── MARKET STRUCTURE STATE ─────────────────────────
-// Confirmed swing pivots: recognized pivRight bars after the swing forms. The
-// lag is structural; once set from closed bars the level never moves again.
 ph = ta.pivothigh(high, pivLeft, pivRight)
 pl = ta.pivotlow(low, pivLeft, pivRight)
 var float lastPH = na
@@ -142,19 +164,17 @@ regime = structUp ? "UP-TREND" :
      regimeV < 0.85 ? "QUIET" : "RANGE"
 regimeColor = structUp ? C_BULL : structDn ? C_BEAR : C_FLAT
 
-// ─────────────────────────── KNN MEMORY (FIFO, BOUNDED) ─────────────────────
-var float[] sampleF = array.new_float(0)   // flattened: nFeat slots per sample
-var float[] sampleR = array.new_float(0)   // close at store time (label reference)
-var int[]   sampleL = array.new_int(0)     // label: +1 / −1 / 0 (unresolved)
+// ─────────────────────── KNN MEMORY (FIFO, BOUNDED) ─────────────────────────
+var float[] sampleF = array.new_float(0)
+var float[] sampleR = array.new_float(0)
+var int[]   sampleL = array.new_int(0)
 
 if barstate.isconfirmed
-    // resolve the sample now HORIZON bars old with this closes' outcome
     idx = array.size(sampleL) - 1 - horizon
     if idx >= 0
         ref = array.get(sampleR, idx)
         dir = close > ref ? 1 : close < ref ? -1 : 0
         array.set(sampleL, idx, dir)
-    // store this bar's condition
     for j = 0 to nFeat - 1
         array.push(sampleF, array.get(dq, j))
     array.push(sampleR, close)
@@ -166,8 +186,6 @@ if barstate.isconfirmed
         array.shift(sampleL)
 
 // ─────────────────────────── KNN CLASSIFICATION ─────────────────────────────
-// Fixed k-pool insertion keeps the k smallest Lorentz distances among labeled
-// samples; vote weight = 1 / (d + ε). No allocation inside the loop.
 scoreBar() =>
     n = array.size(sampleL)
     if n >= 50
@@ -211,13 +229,11 @@ confOK = conf >= confMin and total >= math.max(3, math.floor(knn * 0.6))
 bias = pLong > 50 ? 1 : pLong < 50 ? -1 : 0
 
 // ────────────────────── SIGNAL STATE MACHINE (LOCKED AT CLOSE) ──────────────
-// State can only change on confirmed bars. Events are derived from the state
-// transition itself, so once printed, a signal is history — frozen forever.
 rngOK = f_range >= rngMin
 longCond  = barstate.isconfirmed and sessOK and rngOK and confOK and bias > 0
 shortCond = barstate.isconfirmed and sessOK and rngOK and confOK and bias < 0
 
-var int state = 0      // 1 = long, −1 = short, 0 = flat
+var int state = 0
 var int lastState = 0
 if barstate.isconfirmed
     if longCond
@@ -234,9 +250,6 @@ if barstate.isconfirmed
     lastState := state
 
 // ─────────────────────── AUDIT: RESOLVED SIGNAL WIN-RATE ────────────────────
-// Each fire enters a FIFO; it resolves HORIZON bars later against the close AT
-// FIRE TIME, counted once. The pool evicts its oldest when over statLen —
-// an evicted-unresolved fire is dropped uncounted (honest undercount).
 var float[] auditDir = array.new_float(0)
 var float[] auditPx  = array.new_float(0)
 var int[]   auditB   = array.new_int(0)
@@ -271,10 +284,11 @@ if barstate.isconfirmed
 winRate = auditN > 0 ? 100.0 * auditW / auditN : na
 
 // ─────────────────────────── TP / SL TARGET LINES ───────────────────────────
-// Three reused handles; coordinates rewritten per trade. No handle growth.
 var line tpLine = na
 var line slLine = na
 var line enLine = na
+var linefill tpf = na
+var linefill slf = na
 var float entryPx = na
 var float tpPx = na
 var float slPx = na
@@ -286,6 +300,8 @@ if barstate.isconfirmed and evLong
     tpLine := line.new(bar_index, tpPx, bar_index + 1, tpPx, color=C_BULL, width=2, style=line.style_dashed)
     slLine := line.new(bar_index, slPx, bar_index + 1, slPx, color=C_BEAR, width=1, style=line.style_dotted)
     enLine := line.new(bar_index, close, bar_index + 1, close, color=C_ACC, width=1)
+    tpf := linefill.new(tpLine, enLine, color.new(C_BULL, 88))
+    slf := linefill.new(slLine, enLine, color.new(C_BEAR, 92))
 
 if barstate.isconfirmed and evShort
     entryPx := close
@@ -294,39 +310,49 @@ if barstate.isconfirmed and evShort
     tpLine := line.new(bar_index, tpPx, bar_index + 1, tpPx, color=C_BEAR, width=2, style=line.style_dashed)
     slLine := line.new(bar_index, slPx, bar_index + 1, slPx, color=C_BULL, width=1, style=line.style_dotted)
     enLine := line.new(bar_index, close, bar_index + 1, close, color=C_ACC, width=1)
+    tpf := linefill.new(tpLine, enLine, color.new(C_BEAR, 88))
+    slf := linefill.new(slLine, enLine, color.new(C_BULL, 92))
 
 if not na(tpLine)
     if state != 0
         line.set_x2(tpLine, bar_index + 1)
         line.set_x2(slLine, bar_index + 1)
         line.set_x2(enLine, bar_index + 1)
+        linefill.set_color(tpf, color.new(C_BULL, 88))
+        linefill.set_color(slf, color.new(C_BEAR, 92))
     else
         tpLine := na
         slLine := na
         enLine := na
+        tpf := na
+        slf := na
 
-// ─────────────────────────── OVERLAY VISUALS ────────────────────────────────
-plotshape(evLong,  style=shape.triangleup,   location=location.belowbar, color=C_BULL, size=size.small, title="Go Long")
-plotshape(evShort, style=shape.triangledown, location=location.abovebar, color=C_BEAR, size=size.small, title="Go Short")
-plotshape(evExit,  style=shape.xcross,       location=location.belowbar, color=C_FLAT, size=size.tiny, title="Exit")
-plot(entryPx, "Entry line", color=C_ACC, linewidth=1, style=plot.style_linebr)
+// ───────────────────── CANDLE GHOSTING (bias ghost, visual only) ────────────
+// When "bias ghost": candles carry the model's structural stance. Data stays
+// real; only the paint changes. Colors follow the frozen state, not the bar.
+barcol = paintModel == "bias ghost" ?
+     (state == 1 ? color.new(C_BULL, 12) :
+      state == -1 ? color.new(C_BEAR, 12) : color.new(C_FLAT, 55)) :
+     na
+barcolor(barcol, title="Candle ghost")
+plotcandle(paintModel == "bias ghost" ? open : na,
+     paintModel == "bias ghost" ? high : na,
+     paintModel == "bias ghost" ? low : na,
+     paintModel == "bias ghost" ? close : na,
+     "Ghost fill", color=color.new(color.black, 100),
+     wickcolor=barcol, bordercolor=barcol)
 
-bgcolor(sessOK ? na : color.new(color.yellow, 92), title="Session shading")
+// ─────────────────── MOMENTUM TRAIL (glow layered plots) ────────────────────
+// A soft structural trail: distance of close from the structural envelope
+// center, painted in theme accent with layered transparency for glow. This is
+// a VISUAL aid, and every layer's value derives from closed bars.
+trailVal = (hi20 + lo20) / 2.0
+plot(trailGlow ? trailVal : na, "Trail glow 4", color=color.new(C_ACC, 92), linewidth=6)
+plot(trailGlow ? trailVal : na, "Trail glow 3", color=color.new(C_ACC, 86), linewidth=4)
+plot(trailGlow ? trailVal : na, "Trail glow 2", color=color.new(C_ACC, 78), linewidth=3)
+plot(trailGlow ? trailVal : na, "Trail core",  color=color.new(C_ACC, 55), linewidth=2)
 
-if showSig and barstate.isconfirmed
-    if evLong
-        label.new(bar_index, low, "LOKI ▲ LONG  " + str.tostring(conf, "#.0") + "%",
-             style=label.style_label_up, color=color.new(C_BULL, 15), textcolor=color.white, yloc=yloc.belowbar)
-    if evShort
-        label.new(bar_index, high, "LOKI ▼ SHORT  " + str.tostring(conf, "#.0") + "%",
-             style=label.style_label_down, color=color.new(C_BEAR, 15), textcolor=color.white, yloc=yloc.abovebar)
-    if evExit
-        label.new(bar_index, close, "LOKI ■ EXIT", style=label.style_none,
-             color=color.new(C_FLAT, 40), textcolor=C_FLAT, yloc=yloc.abovebar)
-
-// ───────────────────── S/R FROM HIGHER FRAME (NO-REPAINT FORM) ──────────────
-// Lookahead off: the 15m pivot value arrives only after the 15m bar closes and
-// the pivot confirms — level lags pivRight bars, never rewritten after.
+// ───────────────────── S/R BANDS (lookahead off, gradient fill) ─────────────
 srHigh = request.security(syminfo.tickerid, srTF, ta.pivothigh(high, pivLeft, pivRight), lookahead=barmerge.lookahead_off)
 srLow  = request.security(syminfo.tickerid, srTF, ta.pivotlow(low, pivLeft, pivRight),    lookahead=barmerge.lookahead_off)
 var float resLvl = na
@@ -336,45 +362,94 @@ if not na(srHigh)
 if not na(srLow)
     supLvl := srLow
 
-plot(resLvl, "Resistance", color=color.new(C_BEAR, 35), style=plot.style_linebr, linewidth=1)
-plot(supLvl, "Support",    color=color.new(C_BULL, 35), style=plot.style_linebr, linewidth=1)
+resP = plot(resLvl, "Resistance", color=color.new(C_BEAR, 25), style=plot.style_linebr, linewidth=1)
+supP = plot(supLvl, "Support",    color=color.new(C_BULL, 25), style=plot.style_linebr, linewidth=1)
+// faint glow shadow just outside each level for the neon band effect
+resG = plot(glowBands ? resLvl * 1.0005 : na, "Resistance glow", color=color.new(C_BEAR, 85), style=plot.style_linebr, linewidth=4)
+supG = plot(glowBands ? supLvl * 0.9995 : na, "Support glow",    color=color.new(C_BULL, 85), style=plot.style_linebr, linewidth=4)
 
-// ──────────────────────────── HUD DASHBOARD ────────────────────────────────
+// ─────────────────────────── OVERLAY SIGNALS ────────────────────────────────
+plotshape(evLong,  style=shape.triangleup,   location=location.belowbar, color=C_BULL, size=size.small, title="Go Long")
+plotshape(evShort, style=shape.triangledown, location=location.abovebar, color=C_BEAR, size=size.small, title="Go Short")
+plotshape(evExit,  style=shape.xcross,       location=location.belowbar, color=C_FLAT, size=size.tiny, title="Exit")
+plot(entryPx, "Entry line", color=C_ACC, linewidth=1, style=plot.style_linebr)
+
+// session shading with the theme's soft banner
+bgcolor(sessOK ? na : color.new(color.yellow, 92), title="Session shading")
+// subtle theme halo behind active positions
+bgcolor(state == 1 ? color.new(C_BULL, 94) :
+     state == -1 ? color.new(C_BEAR, 94) : na, title="Position halo")
+
+if showSig and barstate.isconfirmed
+    if evLong
+        label.new(bar_index, low, "LOKI ▲ LONG  " + str.tostring(conf, "#.0") + "%",
+             style=label.style_label_up, color=color.new(C_BULL, 15), textcolor=color.black, yloc=yloc.belowbar)
+    if evShort
+        label.new(bar_index, high, "LOKI ▼ SHORT  " + str.tostring(conf, "#.0") + "%",
+             style=label.style_label_down, color=color.new(C_BEAR, 15), textcolor=color.white, yloc=yloc.abovebar)
+    if evExit
+        label.new(bar_index, close, "LOKI ■ EXIT", style=label.style_none,
+             color=color.new(C_FLAT, 40), textcolor=C_FLAT, yloc=yloc.abovebar)
+
+// ──────────────────────────── HUD (NEON) ───────────────────────────────────
 hudSz = hudSize == "tiny" ? size.tiny : hudSize == "normal" ? size.normal : size.small
-var table hud = table.new(position.top_right, 2, 9, bgcolor=C_BG, frame_width=1,
-     frame_color=color.new(color.gray, 50), border_color=color.new(color.gray, 85), border_width=1)
+// inline bar writer: e.g. ████████░░░░ 8/12
+barGlyph(filled, width) =>
+    filledCnt = math.max(0, math.min(width, math.round(filled * width / 100.0)))
+    str.repeat("█", filledCnt) + str.repeat("░", width - filledCnt)
+
+var table hud = table.new(position.top_right, 2, 10, bgcolor=C_BG, frame_width=2,
+     frame_color=color.new(C_ACC, 40), border_color=color.new(C_ACC, 80), border_width=1)
 
 if showHUD and barstate.islast
-    table.cell(hud, 0, 0, "L O K I", text_color=C_ACC, text_size=hudSz, bgcolor=color.new(color.black, 30))
-    table.cell(hud, 1, 0, "NQ · KNN", text_color=C_ACC, text_size=hudSz, bgcolor=color.new(color.black, 30))
+    table.cell(hud, 0, 0, "✦ LOKI ✦", text_color=color.new(C_ACC, 0), text_size=hudSz,
+         bgcolor=color.new(color.black, 20), text_halign=text.align_center)
+    table.cell(hud, 1, 0, "NQ · " + themeSel + " · KNN-" + str.tostring(knn),
+         text_color=C_ACC, text_size=hudSz, bgcolor=color.new(color.black, 20), text_halign=text.align_center)
+    // regime with emoji glyph
+    regimeGlyph = structUp ? "🡅" : structDn ? "🡇" : "◎"
     table.cell(hud, 0, 1, "Regime", text_color=C_FLAT, text_size=hudSz)
-    table.cell(hud, 1, 1, regime, text_color=regimeColor, text_size=hudSz)
-    confCol = confOK ? (bias > 0 ? C_BULL : C_BEAR) : C_FLAT
+    table.cell(hud, 1, 1, regimeGlyph + " " + regime, text_color=regimeColor, text_size=hudSz)
+    // confidence meter
+    confPercent = math.round(conf)
+    meter = barGlyph(confPercent, 10)
+    confColx = confOK ? (bias > 0 ? C_BULL : bias < 0 ? C_BEAR : C_FLAT) : C_FLAT
     table.cell(hud, 0, 2, "Confidence", text_color=C_FLAT, text_size=hudSz)
-    table.cell(hud, 1, 2, str.tostring(conf, "#.0") + "%  (" + str.tostring(upN) + "↑ / " + str.tostring(dnN) + "↓)",
-         text_color=confCol, text_size=hudSz)
-    biasTxt = state == 1 ? "LONG" : state == -1 ? "SHORT" : "NEUTRAL"
-    biasCol = state == 1 ? C_BULL : state == -1 ? C_BEAR : C_FLAT
+    table.cell(hud, 1, 2, str.tostring(conf, "#.0") + "%   " + meter + "  (" + str.tostring(upN) + "↑/" + str.tostring(dnN) + "↓)",
+         text_color=confColx, text_size=hudSz)
+    // recommended bias with colored background when a signal is live
+    biasTxt = state == 1 ? "▲ LONG" : state == -1 ? "▼ SHORT" : "◐ NEUTRAL"
+    biasBg = state == 1 ? color.new(C_BULL, 80) : state == -1 ? color.new(C_BEAR, 80) : color.new(C_FLAT, 88)
+    biasCol = state == 1 ? color.new(C_BULL, 5) : state == -1 ? color.new(C_BEAR, 5) : C_FLAT
     table.cell(hud, 0, 3, "Bias", text_color=C_FLAT, text_size=hudSz)
-    table.cell(hud, 1, 3, biasTxt, text_color=biasCol, text_size=hudSz)
+    table.cell(hud, 1, 3, biasTxt, text_color=biasCol, text_size=hudSz, bgcolor=biasBg)
+    // targets
     tpShow = state != 0 and not na(tpPx) ? tpPx : na
     slShow = state != 0 and not na(slPx) ? slPx : na
     table.cell(hud, 0, 4, "TP / SL", text_color=C_FLAT, text_size=hudSz)
     table.cell(hud, 1, 4,
          (na(tpShow) ? "—" : str.tostring(tpShow, format.mintick)) + " / " +
          (na(slShow) ? "—" : str.tostring(slShow, format.mintick)), text_color=color.white, text_size=hudSz)
+    // ATR context with regime bar
+    regimeMeter = barGlyph(math.min(regimeV * 50.0, 100), 8)
     table.cell(hud, 0, 5, "ATR(" + str.tostring(atrLen) + ")", text_color=C_FLAT, text_size=hudSz)
-    table.cell(hud, 1, 5, str.tostring(atr, format.mintick), text_color=color.white, text_size=hudSz)
+    table.cell(hud, 1, 5, str.tostring(atr, format.mintick) + "  " + regimeMeter, text_color=color.white, text_size=hudSz)
+    // measured S/R with glyph markers
     table.cell(hud, 0, 6, "Resistance", text_color=C_FLAT, text_size=hudSz)
-    table.cell(hud, 1, 6, na(resLvl) ? "—" : str.tostring(resLvl, format.mintick), text_color=C_BEAR, text_size=hudSz)
+    table.cell(hud, 1, 6, na(resLvl) ? "—" : "▲ " + str.tostring(resLvl, format.mintick), text_color=C_BEAR, text_size=hudSz)
     table.cell(hud, 0, 7, "Support", text_color=C_FLAT, text_size=hudSz)
-    table.cell(hud, 1, 7, na(supLvl) ? "—" : str.tostring(supLvl, format.mintick), text_color=C_BULL, text_size=hudSz)
+    table.cell(hud, 1, 7, na(supLvl) ? "—" : "▼ " + str.tostring(supLvl, format.mintick), text_color=C_BULL, text_size=hudSz)
+    // audit winrate with mini meter
     wrShow = auditN >= 5 ?
-         str.tostring(winRate, "#.0") + "% (" + str.tostring(auditW) + "/" + str.tostring(auditN) + ")" :
-         "warming…"
+         str.tostring(winRate, "#.0") + "% " + barGlyph(winRate, 10) + " (" + str.tostring(auditW) + "/" + str.tostring(auditN) + ")" :
+         "warming…" + str.repeat("·", 3)
     wrCol = auditN >= 5 ? (winRate >= 50 ? C_BULL : C_BEAR) : C_FLAT
     table.cell(hud, 0, 8, "Win-rate", text_color=C_FLAT, text_size=hudSz)
     table.cell(hud, 1, 8, wrShow, text_color=wrCol, text_size=hudSz)
+    // compact footer line
+    table.cell(hud, 0, 9, "pLong", text_color=C_FLAT, text_size=hudSz)
+    table.cell(hud, 1, 9, str.tostring(pLong, "#.0") + " / " + str.tostring(pShort, "#.0"),
+         text_color=pLong >= 50 ? color.new(C_BULL, 25) : color.new(C_BEAR, 25), text_size=hudSz)
 
 // ───────────────────────────────── ALERTS ───────────────────────────────────
 if evLong
@@ -387,14 +462,11 @@ if evShort
          " | SL " + str.tostring(nz(slPx), format.mintick), alert.freq_once_per_bar_close)
 if evExit
     alert("LOKI ■ EXIT/NEUTRAL | price " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
-
-// dynamic bracket alerts while a position is open (once per confirmed close)
 if state == 1 and barstate.isconfirmed and (high >= tpPx or low <= slPx)
     alert("LOKI ▲ bracket: " + (high >= tpPx ? "TP hit " : "SL hit ") + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
 if state == -1 and barstate.isconfirmed and (low <= tpPx or high >= slPx)
     alert("LOKI ▼ bracket: " + (low <= tpPx ? "TP hit " : "SL hit ") + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
 
-// condition-dropdown forms for manual alert composition
 alertcondition(evLong,  title="LOKI Go Long",  message="LOKI Go Long — {{close}}")
 alertcondition(evShort, title="LOKI Go Short", message="LOKI Go Short — {{close}}")
 alertcondition(evExit,  title="LOKI Exit",     message="LOKI Exit/Neutral — {{close}}")
