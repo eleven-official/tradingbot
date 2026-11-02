@@ -13,17 +13,19 @@ describe('historical matching',()=>{
     const far=(offset:number)=>({...point(100+offset,'2010-01-0'+(offset+2)+'T00:00:00Z'),embedding:[1,...Array(11).fill(0)],net_return:-.1});
     const rows=[...winners,far(1),far(2)];
     const result=rerank(Array(12).fill(0),rows,candidate(0));
-    expect(result.probability).toBeGreaterThan(0.8);
-    expect(result.probability).toBeLessThan(0.85);
+    // far analogue distance = sqrt(w0/Σw) = sqrt(0.7/12) → opener ≈ 0.805;
+    // soft share 0.832, Laplace count 0.75, blend ≈ 0.791.
+    expect(result.probability).toBeGreaterThan(0.78);
+    expect(result.probability).toBeLessThan(0.82);
   });
   it('keeps distant analogue winners from flattering a losing pool',()=>{
     const losers=Array.from({length:8},(_,i)=>({...point(i,'2000-01-0'+(i+2)+'T00:00:00Z'),net_return:-.1}));
     const far=(offset:number)=>({...point(200+offset,'2010-01-0'+(offset+2)+'T00:00:00Z'),embedding:[1,...Array(11).fill(0)]});
     const result=rerank(Array(12).fill(0),[...losers,far(1),far(2)],candidate(0));
-    // Laplace count share 0.25 (2 raw wins of 10), soft share 0.111: two
-    // distant winners barely lift an eight-strong losing pool.
-    expect(result.probability).toBeGreaterThan(0.1);
-    expect(result.probability).toBeLessThan(0.2);
+    // Same distances: soft share 0.168, Laplace count 0.25, blend ≈ 0.209 —
+    // two distant winners barely lift an eight-strong losing pool.
+    expect(result.probability).toBeGreaterThan(0.2);
+    expect(result.probability).toBeLessThan(0.22);
   });
   it('abstains with no historical evidence',()=>{expect(rerank(Array(12).fill(0),[],candidate(0)).accepted).toBe(false);});
   it('accepts a sufficiently supported close analogue set',()=>{const rows=Array.from({length:40},(_,i)=>point(i,new Date(Date.UTC(2000,0,i+2)).toISOString()));expect(rerank(Array(12).fill(0),rows,candidate(0)).accepted).toBe(true);});
