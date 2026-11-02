@@ -7,6 +7,24 @@ const point=(id:number,date:string):Feature=>({id,observed_at:'2000-01-01T00:00:
 describe('historical matching',()=>{
   it('rejects malformed vectors and weights',()=>{expect(()=>vector('[0]')).toThrow();expect(()=>vector(Array(12).fill(NaN))).toThrow();expect(()=>rerank(Array(12).fill(0),[],{...candidate(0),weights:[-1]})).toThrow();});
   it('deduplicates same-day option outcomes',()=>{const rows=[point(1,'2000-01-02T12:00:00Z'),point(2,'2000-01-02T13:00:00Z')];expect(rerank(Array(12).fill(0),rows,candidate(0)).neighbors).toBe(1);});
+  it('blends the raw win share with the distance-softened share',()=>{
+    // Eight unanimous winners at distance 0 and two losers at distance 1.
+    const winners=Array.from({length:8},(_,i)=>point(i,'2000-01-0'+(i+2)+'T00:00:00Z'));
+    const far=(offset:number)=>({...point(100+offset,'2010-01-0'+(offset+2)+'T00:00:00Z'),embedding:[1,...Array(11).fill(0)],net_return:-.1});
+    const rows=[...winners,far(1),far(2)];
+    const result=rerank(Array(12).fill(0),rows,candidate(0));
+    expect(result.probability).toBeGreaterThan(0.8);
+    expect(result.probability).toBeLessThan(0.85);
+  });
+  it('keeps distant analogue winners from flattering a losing pool',()=>{
+    const losers=Array.from({length:8},(_,i)=>({...point(i,'2000-01-0'+(i+2)+'T00:00:00Z'),net_return:-.1}));
+    const far=(offset:number)=>({...point(200+offset,'2010-01-0'+(offset+2)+'T00:00:00Z'),embedding:[1,...Array(11).fill(0)]});
+    const result=rerank(Array(12).fill(0),[...losers,far(1),far(2)],candidate(0));
+    // Laplace count share 0.25 (2 raw wins of 10), soft share 0.111: two
+    // distant winners barely lift an eight-strong losing pool.
+    expect(result.probability).toBeGreaterThan(0.1);
+    expect(result.probability).toBeLessThan(0.2);
+  });
   it('abstains with no historical evidence',()=>{expect(rerank(Array(12).fill(0),[],candidate(0)).accepted).toBe(false);});
   it('accepts a sufficiently supported close analogue set',()=>{const rows=Array.from({length:40},(_,i)=>point(i,new Date(Date.UTC(2000,0,i+2)).toISOString()));expect(rerank(Array(12).fill(0),rows,candidate(0)).accepted).toBe(true);});
   it('rejects outcome leakage returned by the database',async()=>{const db={rpc:vi.fn().mockResolvedValue({data:[point(1,'2020-01-02T00:00:00Z')]})} as unknown as SupabaseClient;await expect(matchPattern(db,{id:'d',train_end:'2020-01-01T00:00:00Z'} as Dataset,{embedding:Array(12).fill(0),observed_at:'2021-01-01T00:00:00Z',contract_key:''},candidate(0))).rejects.toThrow('leakage');});

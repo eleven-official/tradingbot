@@ -89,20 +89,28 @@
 
     <section class="hero">
       <p class="eyebrow" style="color:#3ad0ff; letter-spacing:.22em; font-size:11px; margin:0;">PRIVATE INDICATOR · MEMBERS</p>
-      <h1>Loki NQ Structural <em>KNN</em> — Pine Script v5</h1>
+      <h1>Loki NQ Structural <em>KNN</em> — Neon</h1>
       <p>
-        The adaptive candle-anatomy model <em>loki</em> for the NASDAQ 100 futures
-        (NQ): a Lorentz-distance K-Nearest-Neighbors vote over body/wick ratios,
-        range expansion, a momentum ladder, volume pressure and market structure,
-        self-labeled by HORIZON-bar outcomes. Signals, brackets, S/R, dashboard
-        and alerts — evaluated on confirmed bars only.
+        loki remembers candles. Every time one of its setups worked out, the shape
+        of the tape that made it happen joins a private scrapbook — body, wick,
+        acceleration, and all. Then each bar closes, the current tape gets compared
+        against that scrapbook, and the closest matches vote on what they did
+        next. That's the whole engine. It's a memory trick, not magic, and it
+        says so right in the HUD.
+      </p>
+      <p>
+        Built for human use. Paste it, pick a color theme, done. While it's
+        warming up and the scrapbook is still thin, the HUD just tells you that
+        instead of pretending to know anything. Nothing here repaints — once a
+        bar closes, its call is final.
       </p>
       <div class="chips">
         <span class="chip">NON-REPAINTING</span>
-        <span class="chip">BAR-CLOSE LOCKED SIGNALS</span>
+        <span class="chip">BAR-CLOSE LOCKED</span>
         <span class="chip">ATR TP/SL BRACKETS</span>
         <span class="chip">PIVOT S/R · LOOKAHEAD OFF</span>
-        <span class="chip">HUD DASHBOARD</span>
+        <span class="chip">VOTE MARGIN GATE</span>
+        <span class="chip">ATR EXPECTANCY</span>
         <span class="chip">alert() + alertcondition</span>
       </div>
       <div class="actions">
@@ -122,17 +130,36 @@
 
     <section class="note">
       <ol class="how">
-        <li><span class="step">1</span> Open TradingView → <b>Pine Editor</b>.</li>
-        <li><span class="step">2</span> Clear the default script, paste everything, press <b>Add to chart</b>.</li>
-        <li><span class="step">3</span> Chart <b>NQ</b> (NASDAQ 100 futures). Recommended: 5-minute, RTH filter on until you audit win-rate.</li>
-        <li><span class="step">4</span> Right-click → <b>Add alert</b> → condition <b>loki</b>, or let the built-in <b>alert()</b> payloads fire once per bar close.</li>
+        <li><span class="step">1</span> TradingView → <b>Pine Editor</b>.</li>
+        <li><span class="step">2</span> Wipe the starter script, paste everything, hit <b>Add to chart</b>.</li>
+        <li><span class="step">3</span> Put it on <b>NQ</b>, 5-minute. The 15-minute S/R level is a good default.</li>
+        <li><span class="step">4</span> When the stage is set, <b>Add alert</b> → <b>loki</b> condition, or let the built-in payloads warn you at every close.</li>
       </ol>
       <p style="margin-top:10px;">
-        Honest scope: vote share is model confidence — not guaranteed probability of profit.
-        The HUD's win-rate row counts exactly what the resolved signals did. Audit that
-        number before trusting anything. Costs, drawdown and non-repaint behavior ship in
-        the script comments.
+        Say it plainly: the confidence number is a vote share — it means the closest
+        memories lean one way, not that money shows up. It is not a TP/SL profit
+        tracker. The Horizon hit-rate counts where price stood after the configured
+        number of bars, on the most recent resolved signals, and flat closes lose —
+        it is not a real trade P&L and costs are not subtracted.
+        Audit it before trusting anything.
       </p>
+      <h2>Field notes</h2>
+      <ul>
+        <li><b>'VOTE POOL TIED' in the HUD</b> is not a malfunction. It means neighbors couldn't settle a direction, so the signal gate stays shut until one side wins by the configured margin.</li>
+        <li>That <b>M</b> number on a badge follows the vote margin — the distance between the two neighbor pools at that call.</li>
+        <li>The script keeps quiet for a few bars right after an exit before it is allowed to signal again — a chill-off so it doesn't churn itself to death. Reversals sidestep the wait: they're active, not lazy.</li>
+        <li><b>Expectancy ×ATR</b> is the average outcome of resolved signals, measured in average-bar-size units. Under zero over a long run and it's telling you to stop, not to adjust until it agrees with you.</li>
+        <li>Warm-up on a fresh chart takes some time to fill the memory. Don't trade on thin evidence; the HUD literally displays that condition.</li>
+        <li>Themes on the side panel: Midnight, Cyberpunk, Sunset, Aurora, or fully custom to your chart.</li>
+      </ul>
+      <h2>Chart checks</h2>
+      <p>Use a standard intraday candlestick chart, with an S/R resolution that's a
+        clean multiple of your chart (for example, 5-minute chart with a 15-minute level).
+        Levels refresh only on the S/R bar close, and pivots also need the set
+        right-side confirmation bars. If volume data is missing, the gate stays shut.</p>
+      <p>Paste it in TradingView to compile it and run <b>Bar Replay</b> across the past days
+        to double-check signals, brackets and alerts on your chart build. The site's tests
+        verify the source stays intact end to end — they don't run TradingView's compiler.</p>
     </section>
 
     <footer>

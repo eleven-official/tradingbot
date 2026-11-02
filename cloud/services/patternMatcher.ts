@@ -15,7 +15,16 @@ export function rerank(query:number[],rows:Feature[],parameters:Parameters) {
   // Multiple option strikes on one outcome date are not independent trials.
   const chosen=ranked.filter(row=>{const date=new Date(row.outcome_at).toISOString().slice(0,10);if(unique.has(date))return false;unique.add(date);return true;}).slice(0,parameters.k);
   const wins=chosen.filter(row=>row.net_return-row.cost_return>0).length;
-  const probability=chosen.length?(wins+1)/(chosen.length+2):0.5;
+  // Two causal estimates agree or the call goes soft: the Laplace-smoothed win
+  // share and the distance-softened share, where a close analogue outweighs a
+  // far one. Refusal estimates stay separate; the Wilson lower bound below
+  // still counts hard wins only, so acceptance gets no softer than before.
+  const countShare=(wins+1)/(chosen.length+2);
+  const openers=chosen.map(row=>1/(1+row.distance));
+  const openerSum=openers.reduce((a,b)=>a+b,0);
+  const openWins=openers.reduce((sum,w,i)=>sum+w*Number(chosen[i].net_return-chosen[i].cost_return>0),0);
+  const softShare=openerSum>0?openWins/openerSum:0.5;
+  const probability=chosen.length?(countShare+softShare)/2:0.5;
   const lower=wilsonLower(wins,chosen.length);
   const distance=chosen.length?chosen.reduce((sum,row)=>sum+row.distance,0)/chosen.length:Infinity;
   return {probability,lower,distance,neighbors:chosen.length,accepted:chosen.length>=parameters.k&&lower>=parameters.confidence&&distance<=parameters.maxDistance,
