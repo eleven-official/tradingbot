@@ -54,6 +54,15 @@ ANALYSIS = {
     "price": 512.4,
     "trained_profile_applied": True,
     "regime": "BULL",
+    "memory": {
+        "samples": 12,
+        "postures": {"long": {"ok": 9, "total": 12}},
+        "long_ok": 9,
+        "long_total": 12,
+        "lesson": "self-review: 9/12 long setups graded — holding up",
+        "applied": True,
+        "horizon": 5,
+    },
     "director": {"posture": "long", "thesis": "SPY: strong uptrend (trend_score=+78)"},
     "quant": {
         "action": "BUY",
@@ -87,7 +96,9 @@ class TestAiStep:
         assert data["trained_profile_applied"] is True
         assert data["price"] == 512.4
         agents = [entry["agent"] for entry in data["trail"]]
-        assert agents == ["director", "quant", "risk", "execution"]
+        assert agents == ["memory", "director", "quant", "risk", "execution"]
+        memory = data["trail"][0]
+        assert memory["lesson"].startswith("self-review")
         execution = data["trail"][-1]
         assert execution["executed"] is False  # review-only: no server-side orders
 
@@ -95,10 +106,10 @@ class TestAiStep:
         _stub(monkeypatch)
         rich = client.post("/api/fusion/ai/step", json={"symbol": "SPY", "equity": 20000, "equity_start": 20000})
         poor = client.post("/api/fusion/ai/step", json={"symbol": "SPY", "equity": 500, "equity_start": 20000})
-        assert rich.json()["trail"][2]["approved"] is True
-        assert rich.json()["trail"][2]["reason"] == "ok"
-        assert poor.json()["trail"][2]["approved"] is False
-        assert poor.json()["trail"][2]["reason"] == "daily_loss_limit"
+        assert rich.json()["trail"][3]["approved"] is True
+        assert rich.json()["trail"][3]["reason"] == "ok"
+        assert poor.json()["trail"][3]["approved"] is False
+        assert poor.json()["trail"][3]["reason"] == "daily_loss_limit"
 
     def test_rejects_bad_payload(self, monkeypatch):
         _stub(monkeypatch)
@@ -116,8 +127,8 @@ class TestAiStep:
             "/api/fusion/ai/step", json={"symbol": "SPY", "equity": 9500, "equity_start": 10000}
         )
         assert declined.status_code == 200
-        assert declined.json()["trail"][2]["reason"] == "daily_loss_limit"
-        assert declined.json()["trail"][2]["approved"] is False
+        assert declined.json()["trail"][3]["reason"] == "daily_loss_limit"
+        assert declined.json()["trail"][3]["approved"] is False
 
         # max_consecutive_losses is 3 in the default config: a 3-loss streak
         # halts the account even when the day is financially fine.
@@ -125,14 +136,14 @@ class TestAiStep:
             "/api/fusion/ai/step",
             json={"symbol": "SPY", "equity": 9900, "equity_start": 10000, "consecutive_losses": 3},
         )
-        assert halted.json()["trail"][2]["reason"] == "consecutive_losses"
+        assert halted.json()["trail"][3]["reason"] == "consecutive_losses"
 
         # Inside the limits the fresh agent approves a real sized BUY.
         healthy = client.post(
             "/api/fusion/ai/step",
             json={"symbol": "SPY", "equity": 9900, "equity_start": 10000, "consecutive_losses": 2},
         )
-        decision = healthy.json()["trail"][2]
+        decision = healthy.json()["trail"][3]
         assert decision["approved"] is True
         assert decision["reason"] == "ok"
         assert decision["action"] == "BUY"
@@ -167,7 +178,7 @@ class TestAiStep:
 
         # And each request's own ledger stays its own: the second request
         # (3 losses, 40% drawdown) reads only ITS payload, not the first's.
-        assert second.json()["trail"][2]["reason"] == "daily_loss_limit"
+        assert second.json()["trail"][3]["reason"] == "daily_loss_limit"
 
 
 # --- /api/fusion/ai/bars -----------------------------------------------------

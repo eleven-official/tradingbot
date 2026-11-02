@@ -34,7 +34,7 @@ class DirectorAgent:
     def __init__(self, cfg: LokiConfig):
         self.cfg = cfg
 
-    def run(self, symbol: str, regime: Regime) -> Dict:
+    def run(self, symbol: str, regime: Regime, notes: Optional[str] = None) -> Dict:
         state = regime.state
         if is_bullish(state):
             posture = "long"
@@ -54,6 +54,8 @@ class DirectorAgent:
         else:
             posture = "long"  # ranging: trade longs on strong signals, tighter size
             thesis = f"{symbol}: ranging market — trade only high-confidence longs"
+        if notes:
+            thesis = f"{thesis} · {notes}"
 
         return {
             "symbol": symbol,

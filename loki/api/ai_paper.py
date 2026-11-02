@@ -33,6 +33,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from loki.api.fusion import _private_response
+from loki_v8 import memory_agent
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,10 @@ def _analyze(symbol: str) -> Dict[str, Any]:
         if frame is None or frame.empty:
             raise ValueError("no history")
         regime = detect_regime(frame)
-        director = pipeline.director.run(symbol, regime)
+        # The memory agent reviews past postures on the same fetched frame
+        # BEFORE the Director runs, so the thesis can carry the self-review.
+        memory = memory_agent.reflect(frame, horizon=memory_agent.HORIZON)
+        director = pipeline.director.run(symbol, regime, memory_agent.director_notes(memory))
         signal = pipeline.quant.run(symbol, frame)
         quotes = pipeline.provider.get_quotes([symbol])
         price = float(quotes.get(symbol) or 0.0)
@@ -147,6 +151,7 @@ def _analyze(symbol: str) -> Dict[str, Any]:
         "price": round(price, 6),
         "trained_profile_applied": trained_applied,
         "regime": getattr(regime, "state", None),
+        "memory": memory,
         "director": director,
         "quant": signal,
     }
@@ -181,6 +186,7 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
         "approved": bool(risk.get("approved", False)),
     }
     trail = [
+        {"agent": "memory", **analysis["memory"]},
         {"agent": "director", **analysis["director"]},
         {"agent": "quant", **(quant or {"action": "HOLD"})},
         {"agent": "risk", **risk},

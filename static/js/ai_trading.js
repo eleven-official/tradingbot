@@ -233,6 +233,7 @@
     const target = $('ai-trail');
     if (!target) return;
     const badges = {
+      memory: ['MEMORY', '#c9b8ff'],
       director: ['DIRECTOR', '#8bdad4'],
       quant: ['QUANT', '#b8f0d8'],
       risk: ['RISK', '#f0c98b'],
@@ -241,6 +242,12 @@
     const cards = (data.trail || []).map((entry) => {
       const [name, color] = badges[entry.agent] || [entry.agent.toUpperCase(), '#9fb0c2'];
       let body = '';
+      if (entry.agent === 'memory') {
+        body = `<strong>${escapeHtml(entry.samples)} past calls graded</strong><br>${escapeHtml(entry.lesson || 'collecting samples…')}`;
+        if (entry.postures && entry.postures.short) {
+          body += `<br><span style="color:#7f93a8">short setups: ${escapeHtml(entry.postures.short.ok)}/${escapeHtml(entry.postures.short.total)} graded ok</span>`;
+        }
+      }
       if (entry.agent === 'director') body = escapeHtml(entry.thesis || '') + `<br><span style="color:#7f93a8">posture: ${escapeHtml(entry.posture || '—')}</span>`;
       if (entry.agent === 'quant') {
         body = entry.action === 'HOLD' || !entry.action
