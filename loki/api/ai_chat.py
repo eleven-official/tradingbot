@@ -1,0 +1,617 @@
+"""The sentient chat room: Loki talks, learns from the internet, remembers.
+
+Design honesty first: this module gives the same paper-research AI a persistent
+memory and internet eyes — it is still a deterministic reasoning engine over
+real inputs, not a magic oracle. What it says always cites where it learned
+it (chat, internet feed, admin teaching), and nothing in here submits orders.
+
+Pieces:
+- ``memory.sqlite3`` — persistent chat memory (facts distilled from the
+  internet, admin lessons, and reply history) across restarts.
+- Internet access — public Yahoo Finance feeds only (headlines + quotes),
+  self-fetched at reply time (no user browsing gets shared);
+  new facts learned from the feed are stored with their source link.
+- Access — the room is its own passcode area (`slaterisgay`), independent of
+  the workspace gate; the code never travels further than the HMAC check.
+- Admin — the signed cookie can carry an admin claim; the account name
+  "joshua mathew" is the admin. Admin can teach facts (weighted), pin,
+  and wipe memory; every admin action is journaled in the memory store.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import logging
+import os
+import re
+import secrets
+import sqlite3
+import threading
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, ConfigDict, Field
+
+from loki.api.market_feed import MarketFeedError, fetch_quote, latest_headlines_for_query
+from loki.version import __version__
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/ai/chat", tags=["Sentient AI chat"])
+
+DEFAULT_CHAT_CODE = "slaterisgay"
+ADMIN_NAME = "joshua mathew"
+COOKIE_NAME = "loki_chat"
+COOKIE_MAX_AGE = 14 * 24 * 3600
+_MESSAGE_MAX = 500
+_NAME_MAX = 24
+_MEMORY_LIMIT = 180
+_STORE_ROWS = 400
+_FACT_LEN = 220
+_LEARN_INTERVAL = 300.0  # one internet sweep at most every five minutes
+_MEMO_TTL = 900.0  # how long a fresh "internet lesson" is quoted verbatim
+
+_DB_DIR = Path(__file__).resolve().parents[2] / "state" / "ai_chat"
+# LOKI_CHAT_DB_PATH lets a host point the memory store somewhere writable;
+# default keeps the sqlite beside the repo state.
+_env_db = os.environ.get("LOKI_CHAT_DB_PATH")
+if _env_db:
+    _DB_DIR = Path(_env_db).expanduser().resolve().parent
+    _DB_PATH = Path(_env_db).expanduser().resolve()
+else:
+    _DB_PATH = _DB_DIR / "memory.sqlite3"
+_DB_LOCK = threading.RLock()
+
+_COOKIE_SALT = b"loki-sentient-chat-v1"
+_PROCESS_SECRET = secrets.token_bytes(32)
+
+
+def _chat_code() -> str:
+    raw = os.environ.get("LOKI_CHAT_CODE") or DEFAULT_CHAT_CODE
+    return " ".join(str(raw).split()).lower()
+
+
+# ---------------------------------------------------------------------------
+# Persistent memory store (sqlite, WAL, process-safe by an in-process lock).
+# ---------------------------------------------------------------------------
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS facts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL CHECK (kind IN ('internet','admin','chat')),
+    text TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT '',
+    weight REAL NOT NULL DEFAULT 1.0,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS turns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role TEXT NOT NULL CHECK (role IN ('user','ai')),
+    name TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS admin_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS turns_created ON turns (created_at DESC);
+"""
+
+
+def _connect() -> sqlite3.Connection:
+    _DB_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(_DB_PATH, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.row_factory = sqlite3.Row
+    with _DB_LOCK:
+        conn.executescript(_SCHEMA)
+    return conn
+
+
+# Schema runs inside _connect, so every handle (including after a test
+# repoints _DB_PATH) opens with tables present; executescript is idempotent.
+
+
+def _ensure_schema() -> None:
+    with _DB_LOCK, _connect() as conn:
+        conn.executescript(_SCHEMA)
+
+
+def record_turn(role: str, name: str, text: str) -> None:
+    with _DB_LOCK, _connect() as conn:
+        conn.execute(
+            "INSERT INTO turns (role, name, text, created_at) VALUES (?,?,?,?)",
+            (role, name[:_NAME_MAX], text[:_MESSAGE_MAX], time.time()),
+        )
+        conn.execute(
+            "DELETE FROM turns WHERE id NOT IN "
+            "(SELECT id FROM turns ORDER BY created_at DESC LIMIT ?)",
+            (_STORE_ROWS,),
+        )
+
+
+def add_fact(kind: str, text: str, source: str = "", weight: float = 1.0) -> int:
+    with _DB_LOCK, _connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO facts (kind, text, source, weight, created_at) VALUES (?,?,?,?,?)",
+            (kind, text[:_FACT_LEN], source[:300], float(weight), time.time()),
+        )
+        conn.execute(
+            "DELETE FROM facts WHERE id NOT IN "
+            "(SELECT id FROM facts ORDER BY weight DESC, created_at DESC LIMIT ?)",
+            (_MEMORY_LIMIT,),
+        )
+        return int(cursor.lastrowid or 0)
+
+
+def recall_facts(limit: int = 6) -> List[Dict[str, Any]]:
+    limit = max(1, min(limit, 12))
+    with _DB_LOCK, _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, kind, text, source, weight, created_at FROM facts "
+            "ORDER BY weight DESC, created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def recall_turns(limit: int = 12) -> List[Dict[str, Any]]:
+    limit = max(1, min(limit, 40))
+    with _DB_LOCK, _connect() as conn:
+        rows = conn.execute(
+            "SELECT role, name, text, created_at FROM turns " "ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in reversed(rows)]
+
+
+def wipe_memory() -> Tuple[int, int]:
+    wiped = 0
+    with _DB_LOCK, _connect() as conn:
+        for table in ("facts", "turns"):
+            cursor = conn.execute(f"DELETE FROM {table}")
+            wiped += cursor.rowcount or 0
+        conn.execute(
+            "INSERT INTO admin_log (action, detail, created_at) VALUES ('wipe','memory cleared',?)",
+            (time.time(),),
+        )
+    return wiped, 0
+
+
+def admin_journal(action: str, detail: str) -> None:
+    with _DB_LOCK, _connect() as conn:
+        conn.execute(
+            "INSERT INTO admin_log (action, detail, created_at) VALUES (?,?,?)",
+            (action[:40], detail[:220], time.time()),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Signed chat cookie: name + admin claim, verified with HMAC every request.
+# ---------------------------------------------------------------------------
+def _sign(payload: str) -> str:
+    return hmac.new(
+        _COOKIE_SALT + _PROCESS_SECRET, payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+
+
+def encode_chat_cookie(name: str, admin: bool) -> str:
+    payload = json.dumps(
+        {"name": name, "admin": admin, "iat": int(time.time())}, separators=(",", ":")
+    )
+    return payload + "." + _sign(payload)
+
+
+def decode_chat_cookie(value: str) -> Optional[Dict[str, Any]]:
+    try:
+        payload, signature = value.rsplit(".", 1)
+    except ValueError:
+        return None
+    if not hmac.compare_digest(_sign(payload), signature):
+        return None
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("name"), str):
+        return None
+    if time.time() - float(data.get("iat") or 0) > COOKIE_MAX_AGE:
+        return None
+    return {"name": data["name"][:_NAME_MAX], "admin": bool(data.get("admin"))}
+
+
+def chat_identity(request: Request) -> Optional[Dict[str, Any]]:
+    return decode_chat_cookie(request.cookies.get(COOKIE_NAME) or "")
+
+
+def _normalize_name(value: str) -> str:
+    return " ".join(str(value or "").split()).lower()[:_NAME_MAX]
+
+
+# ---------------------------------------------------------------------------
+# Internet access: public feeds only, learned facts carry their source link.
+# ---------------------------------------------------------------------------
+_TICKER_TOKEN = re.compile(r"\b([A-Z]{1,5})\b")
+_SYMBOL_BLACKLIST = {
+    "A",
+    "I",
+    "OK",
+    "THE",
+    "AND",
+    "OR",
+    "IF",
+    "IS",
+    "MY",
+    "ME",
+    "IT",
+    "NO",
+    "ON",
+    "IN",
+    "TO",
+    "OF",
+    "UP",
+    "AT",
+    "AS",
+    "BE",
+    "BY",
+    "DO",
+    "GO",
+    "HI",
+    "SO",
+    "TV",
+    "VS",
+    "AM",
+    "PM",
+    "AI",
+    "CEO",
+    "IPO",
+    "ETF",
+    "GDP",
+    "CPI",
+    "EPS",
+    "SL",
+    "TP",
+    "USD",
+    "EUR",
+    "YTD",
+    "ATH",
+    "NQ",
+    "ES",
+    "YM",
+    "RTY",
+}
+
+
+def detect_symbol(message: str) -> Optional[str]:
+    """First plausible ticker in a chat message, honest enough to fetch."""
+    for token in _TICKER_TOKEN.findall(message.upper()):
+        if token in _SYMBOL_BLACKLIST:
+            continue
+        if len(token) == 1 and token not in {"T", "F"}:
+            continue
+        return token
+    return None
+
+
+def _headline_fact(item: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+    """Distill one headline into (fact text, source link)."""
+    title = " ".join(str(item.get("title") or "").split())
+    link = str(item.get("link") or "").strip()
+    if not title or not link or len(title) < 12:
+        return None
+    publisher = str(item.get("publisher") or "").strip()
+    stamp = time.strftime("%b %d", time.gmtime(float(item.get("published_at") or time.time())))
+    text = f"{stamp}: {title}"
+    if publisher:
+        text = f"{stamp} ({publisher}): {title}"
+    return text, link
+
+
+def learn_from_internet(symbol: Optional[str] = None) -> Dict[str, Any]:
+    """Pull fresh public headlines (and a quote when a symbol was named),
+    store the new facts, and return a compact view for the reply builder."""
+    terms = [symbol] if symbol else ["stock market", "Federal Reserve"]
+    learned: List[Dict[str, Any]] = []
+    quote: Optional[Dict[str, Any]] = None
+    try:
+        if symbol:
+            quote = fetch_quote(symbol)
+    except MarketFeedError:
+        quote = None
+    for term in terms[:2]:
+        try:
+            payload = latest_headlines_for_query(str(term), 5)
+        except MarketFeedError:
+            continue
+        for item in payload.get("items", []):
+            distilled = _headline_fact(item)
+            if distilled is None:
+                continue
+            text, link = distilled
+            # Same headline is not learned twice: the source link is unique.
+            existing = [row for row in learned if row["source"] == link]
+            if existing:
+                learned.append({"text": text, "source": link, "fresh": 0.0})
+                continue
+            add_fact("internet", text, source=link, weight=1.0)
+            learned.append({"text": text, "source": link, "fresh": _MEMO_TTL})
+    return {"learned": learned[:6], "quote": quote}
+
+
+_LEARN_LOCK = threading.Lock()
+_last_sweep: List[float] = [0.0]
+
+
+def _maybe_sweep(symbol: Optional[str]) -> Dict[str, Any]:
+    """Rate-limited internet sweep: at most one per _LEARN_INTERVAL."""
+    with _LEARN_LOCK:
+        now = time.time()
+        if now - _last_sweep[0] >= _LEARN_INTERVAL:
+            _last_sweep[0] = now
+            due = True
+        else:
+            due = False
+    if due:
+        return learn_from_internet(symbol)
+    return {"learned": [], "quote": None}
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+class AccessBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=_NAME_MAX)
+    code: str = Field(min_length=1, max_length=80)
+
+
+class MessageBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=_MESSAGE_MAX)
+
+
+class TeachBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fact: str = Field(min_length=3, max_length=_FACT_LEN)
+
+
+class Reply(BaseModel):
+    text: str = Field(min_length=1, max_length=_MESSAGE_MAX * 4)
+    learned: List[Dict[str, Any]] = Field(default_factory=list)
+    quote: Optional[Dict[str, Any]] = None
+    facts_used: int = 0
+    admin: bool = False
+    name: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Reply composer: deterministic, honest, sourced.
+# ---------------------------------------------------------------------------
+def _quote_block(quote: Optional[Dict[str, Any]]) -> str:
+    if not isinstance(quote, dict) or not quote.get("ok"):
+        return ""
+    price = quote.get("price")
+    pct = quote.get("change_pct")
+    sym = quote.get("symbol") or ""
+    if not isinstance(price, (int, float)) or not price > 0:
+        return ""
+    change = ""
+    if isinstance(pct, (int, float)):
+        arrow = "+" if pct >= 0 else ""
+        change = f" ({arrow}{pct:.2f}% today)"
+    return f"LIVE {sym}: {price:,.2f}{change} · public feed"
+
+
+def _compose_reply(
+    text: str,
+    name: str,
+    is_admin: bool,
+    learned: List[Dict[str, Any]],
+    quote: Optional[Dict[str, Any]],
+    facts: List[Dict[str, Any]],
+    turns_used: int,
+    symbol: Optional[str],
+) -> str:
+    lower = text.lower()
+    parts: List[str] = []
+    if is_admin:
+        parts.append("joshua — admin recognized; memory and teaching are unlocked.")
+    else:
+        parts.append(f"{name or 'friend'} — memory on, research open.")
+    parts.append(
+        "What I am, honestly: a reasoning engine over real inputs — my own market "
+        "memory, public internet feeds, and what you've taught me. Nothing here "
+        "submits orders."
+    )
+    if symbol:
+        parts.append(f"You named {symbol} — checking it against memory and the live tape.")
+    else:
+        parts.append(
+            "No ticker named — I keep watching the macro basket: stocks, the Fed, Bitcoin."
+        )
+    fresh = [entry for entry in learned if entry.get("fresh")]
+    if fresh:
+        quoted = "; ".join(str(entry["text"]) for entry in fresh[:3])
+        parts.append(
+            f"Just learned from the internet ({len(fresh)} headline"
+            f"{'s' if len(fresh) != 1 else ''}): {quoted}"
+        )
+        sources = " · ".join(str(entry.get("source") or "") for entry in fresh[:3]).strip(" ·")
+        if sources:
+            parts.append(f"Sources: {sources}")
+    if quote_block := _quote_block(quote):
+        parts.append(quote_block)
+    if facts:
+        recalled = "; ".join(str(entry.get("text") or "") for entry in facts[:3])
+        parts.append(
+            f"Memory recall ({len(facts)} fact{'s' if len(facts) != 1 else ''}): {recalled}"
+        )
+    elif not fresh:
+        parts.append(
+            "My memory on this is still thin — ask again after the next internet "
+            "sweep, or teach me a fact, and I will hold it."
+        )
+    if turns_used:
+        parts.append(f"Our room's history stays alive in me: {turns_used} turns deep.")
+    if any(word in lower for word in ("buy", "sell", "long", "short", "entry", "trade")):
+        parts.append(
+            "On trade asks: I grade setups from graded history and never promise "
+            "outcomes — research, not advice; no orders."
+        )
+    else:
+        parts.append("Everything above: research, not advice; no orders.")
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Routes. Access first; every other route demands a signed cookie.
+# ---------------------------------------------------------------------------
+def _set_chat_cookie(response: Response, request: Request, name: str, admin: bool) -> None:
+    response.set_cookie(
+        COOKIE_NAME,
+        encode_chat_cookie(name, admin),
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        secure=request.url.scheme == "https" or bool(os.getenv("VERCEL")),
+        samesite="lax",
+        path="/",
+    )
+
+
+@router.post("/access")
+async def chat_access(payload: AccessBody, response: Response, request: Request) -> Dict[str, Any]:
+    """Passcode area: the code gates the room; the name becomes the identity.
+
+    The admin name ("joshua mathew") carries an admin claim on the signed
+    cookie. Wrong names are still identities — they just stay members.
+    """
+    submitted = " ".join(payload.code.split()).lower()
+    if not hmac.compare_digest(submitted, _chat_code()):
+        raise HTTPException(403, "Wrong passcode — the door stays shut.")
+    name = _normalize_name(payload.name)
+    if not name:
+        raise HTTPException(422, "Pick a name for the room (or use the admin one).")
+    admin = name == ADMIN_NAME
+    _set_chat_cookie(response, request, name.title(), admin)
+    record_turn("user", name.title(), f"[joined as {name.title()}{' — admin' if admin else ''}]")
+    if admin:
+        admin_journal("join", "joshua mathew entered the chat room")
+    return {
+        "ok": True,
+        "name": name.title(),
+        "admin": admin,
+        "memory_url": "/ai-chat",
+        "intro": (
+            "Loki's private room unlocked. The AI reads the market internet, "
+            "keeps a persistent memory, and answers in its own voice."
+        ),
+    }
+
+
+@router.get("/whoami")
+async def chat_whoami(request: Request) -> Dict[str, Any]:
+    identity = chat_identity(request)
+    if not identity:
+        return {"ok": False, "admin": False, "name": ""}
+    return {"ok": True, **identity}
+
+
+@router.post("/logout")
+async def chat_logout(request: Request, response: Response) -> Dict[str, Any]:
+    response.delete_cookie(COOKIE_NAME, path="/")
+    return {"ok": True}
+
+
+@router.post("/message")
+async def chat_message(payload: MessageBody, request: Request, response: Response) -> Reply:
+    identity = chat_identity(request)
+    if not identity:
+        raise HTTPException(401, "Unlock the room first — the passcode gates it.")
+    name = str(identity.get("name") or "")
+    is_admin = bool(identity.get("admin"))
+    text = payload.text.strip()[:_MESSAGE_MAX]
+    if not text:
+        raise HTTPException(422, "Say something first.")
+
+    symbol = detect_symbol(text)
+    sweep = _maybe_sweep(symbol)
+    quote = sweep.get("quote")
+    try:
+        if symbol and not isinstance(quote, dict):
+            quote = fetch_quote(symbol)
+    except MarketFeedError:
+        quote = None
+
+    turns_used = recall_turns(10)
+    fact_pool = recall_facts(8)
+    relevant = fact_pool[:6]
+    reply_text = _compose_reply(
+        text=text,
+        name=name,
+        is_admin=is_admin,
+        learned=sweep.get("learned") or [],
+        quote=quote,
+        facts=relevant,
+        turns_used=len(turns_used),
+        symbol=symbol,
+    )
+    record_turn("user", name, text)
+    record_turn("ai", "Loki", reply_text[:_MESSAGE_MAX])
+    # Refresh the sliding 14-day window on every message.
+    _set_chat_cookie(response, request, name, is_admin)
+    return Reply(
+        text=reply_text,
+        learned=sweep.get("learned") or [],
+        quote=quote,
+        facts_used=len(relevant),
+        admin=is_admin,
+        name=name,
+    )
+
+
+@router.get("/memory")
+async def chat_memory(request: Request) -> Dict[str, Any]:
+    identity = chat_identity(request)
+    if not identity:
+        raise HTTPException(401, "Unlock the room first — the passcode gates it.")
+    return {
+        "facts": recall_facts(12),
+        "turns": recall_turns(30),
+        "admin": bool(identity.get("admin")),
+        "name": identity.get("name") or "",
+    }
+
+
+@router.post("/teach")
+async def chat_teach(payload: TeachBody, request: Request) -> Dict[str, Any]:
+    identity = chat_identity(request)
+    if not identity:
+        raise HTTPException(401, "Unlock the room first — the passcode gates it.")
+    if not identity.get("admin"):
+        raise HTTPException(403, "Only the admin can write permanent facts.")
+    fact = " ".join(payload.fact.split())
+    add_fact("admin", fact, source="taught by joshua mathew", weight=3.0)
+    admin_journal("teach", fact)
+    return {"ok": True, "fact": fact, "note": "Loki holds this as a heavy truth (weight 3)."}
+
+
+@router.post("/wipe")
+async def chat_wipe(request: Request) -> Dict[str, Any]:
+    identity = chat_identity(request)
+    if not identity:
+        raise HTTPException(401, "Unlock the room first — the passcode gates it.")
+    if not identity.get("admin"):
+        raise HTTPException(403, "Only the admin can wipe memory.")
+    wiped_facts, _ = wipe_memory()
+    admin_journal("wipe", f"{wiped_facts} facts cleared")
+    return {"ok": True, "wiped": wiped_facts, "note": "Memory wiped; the wipe itself is journaled."}

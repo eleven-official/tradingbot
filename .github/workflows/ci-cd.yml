@@ -142,7 +142,7 @@ jobs:
                 if attempt == 29:
                     raise
                 time.sleep(1)
-        for path in ("/", "/paper-tools", "/research-desk",
+        for path in ("/", "/paper-tools", "/research-desk", "/ai-chat",
                      "/static/css/style.css",
                      "/static/css/paper_tools.css", "/static/js/workspace.js",
                      "/static/vendor/chartjs/chart.umd.js"):

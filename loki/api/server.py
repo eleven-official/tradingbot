@@ -24,6 +24,7 @@ from loki.api import site_access
 from loki.api.member_data import router as member_router
 from loki.api.ai_paper import router as ai_paper_router
 from loki.api.news_desk import router as news_desk_router
+from loki.api.ai_chat import router as ai_chat_router
 from loki.api.fusion import router as fusion_router
 from loki.api.dive_board import router as dive_board_router
 from loki.api.revenue import router as revenue_router
@@ -37,6 +38,7 @@ app = FastAPI(
 app.include_router(fusion_router)
 app.include_router(broker_workspace_router)
 app.include_router(ai_paper_router)
+app.include_router(ai_chat_router)
 from loki.api.paper_tools import router as paper_tools_router
 
 app.include_router(paper_tools_router)
@@ -75,13 +77,22 @@ async def member_privacy_boundary(request: Request, call_next):
     protected_write = private or request.url.path == "/api/dive/score"
     if protected_write and request.method not in {"GET", "HEAD", "OPTIONS"}:
         from urllib.parse import urlsplit
+
         origin = request.headers.get("origin")
         cross_site = request.headers.get("sec-fetch-site") == "cross-site"
         if origin:
             parsed = urlsplit(origin)
-            cross_site = cross_site or parsed.netloc != request.headers.get("host") or parsed.scheme not in {"http", "https"}
+            cross_site = (
+                cross_site
+                or parsed.netloc != request.headers.get("host")
+                or parsed.scheme not in {"http", "https"}
+            )
         if cross_site:
-            return JSONResponse({"detail": "Use this website to change your account or publish a score."}, status_code=403, headers={"Cache-Control": "no-store"})
+            return JSONResponse(
+                {"detail": "Use this website to change your account or publish a score."},
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
     response = await call_next(request)
     if private:
         response.headers["Cache-Control"] = "private, no-store"
@@ -128,7 +139,7 @@ async def root(request: Request):
 # The gate engages only on remote deployments (VERCEL) or when the launcher
 # asks for it (LOKI_SITE_GATE=1); the local desktop experience stays open.
 # ---------------------------------------------------------------------------
-_GATED_PAGES = {"/", "/account", "/paper-tools", "/paper-tools/", "/indicator"}
+_GATED_PAGES = {"/", "/account", "/paper-tools", "/paper-tools/", "/indicator", "/ai-chat"}
 
 
 @app.middleware("http")
@@ -157,13 +168,9 @@ async def site_access_gate(request: Request, call_next):
     needs_gate = low == "/login" or low in _GATED_PAGES
     if not needs_gate:
         return await call_next(request)
-    has_gate = site_access.verify_gate_cookie_value(
-        request.cookies.get(site_access.GATE_COOKIE)
-    )
+    has_gate = site_access.verify_gate_cookie_value(request.cookies.get(site_access.GATE_COOKIE))
     has_terms = (
-        site_access.read_terms_cookie_value(
-            request.cookies.get(site_access.TERMS_COOKIE)
-        )
+        site_access.read_terms_cookie_value(request.cookies.get(site_access.TERMS_COOKIE))
         >= site_access.TERMS_VERSION
     )
     if has_gate and has_terms:
@@ -178,13 +185,9 @@ async def site_access_gate(request: Request, call_next):
 
 @app.get("/gate", response_class=HTMLResponse, include_in_schema=False)
 async def access_gate_page(request: Request):
-    has_gate = site_access.verify_gate_cookie_value(
-        request.cookies.get(site_access.GATE_COOKIE)
-    )
+    has_gate = site_access.verify_gate_cookie_value(request.cookies.get(site_access.GATE_COOKIE))
     has_terms = (
-        site_access.read_terms_cookie_value(
-            request.cookies.get(site_access.TERMS_COOKIE)
-        )
+        site_access.read_terms_cookie_value(request.cookies.get(site_access.TERMS_COOKIE))
         >= site_access.TERMS_VERSION
     )
     if has_gate and has_terms:
@@ -214,7 +217,9 @@ async def terms_page(request: Request):
 async def account_page(request: Request):
     if not site_access.read_session_cookie_value(request.cookies.get(site_access.SESSION_COOKIE)):
         return RedirectResponse("/login", status_code=303)
-    response = templates.TemplateResponse(request=request, name="account.html", context={"version": __version__})
+    response = templates.TemplateResponse(
+        request=request, name="account.html", context={"version": __version__}
+    )
     response.headers["Cache-Control"] = "private, no-store"
     return response
 
@@ -232,7 +237,9 @@ async def access_gate_submit(request: Request):
     except ValueError:
         body = {}
     if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail="Send an object with the access code and terms acceptance.")
+        raise HTTPException(
+            status_code=400, detail="Send an object with the access code and terms acceptance."
+        )
     # The tick comes before the code matters. Refusing an unticked consent is
     # not a code failure, so it must never feed the anti-brute-force timer.
     if body.get("accepted_terms") is not True:
@@ -389,7 +396,9 @@ _FX_FALLBACK_RATE = 1.53  # AUD per 1 USD, used if the rate service is down
 # frankfurter.app answers HTTP 403 to python's stock "Python-urllib/x.y"
 # User-Agent; an identifying custom UA is accepted like every other public
 # provider this workspace reads.
-_FX_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; LokiWorkspace/2.0; read-only USD-AUD display rate)"}
+_FX_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; LokiWorkspace/2.0; read-only USD-AUD display rate)"
+}
 
 
 def _fetch_usd_aud_sync() -> float:
@@ -414,7 +423,12 @@ async def fx_rate():
     except Exception as error:
         # A degraded rate must be diagnosable, not silent: the deployment log
         # says exactly why the bar had to fall back.
-        logging.getLogger(__name__).warning("FX rate fetch failed (%s: %s); serving %s fallback", error.__class__.__name__, error, _FX_FALLBACK_RATE)
+        logging.getLogger(__name__).warning(
+            "FX rate fetch failed (%s: %s); serving %s fallback",
+            error.__class__.__name__,
+            error,
+            _FX_FALLBACK_RATE,
+        )
         if cached:
             # Service blip: serve the last known rate, flagged not-live.
             return {"from": "USD", "to": "AUD", "rate": cached[1], "live": False}
@@ -427,6 +441,14 @@ async def fx_rate():
 async def login_page(request: Request):
     return templates.TemplateResponse(
         request=request, name="login.html", context={"version": __version__}
+    )
+
+
+@app.get("/ai-chat", response_class=HTMLResponse, include_in_schema=False)
+async def ai_chat_page(request: Request):
+    """Loki's private room: its own passcode area, separate from the workspace gate."""
+    return templates.TemplateResponse(
+        request=request, name="ai_chat.html", context={"version": __version__}
     )
 
 
@@ -476,8 +498,13 @@ def copilot(payload: CopilotRequest, request: Request, response: Response):
         _require_local_action(request)
         _private_response(response)
         text = _call(loki_memory.respond, *memory_command)
-        return {"text": text, "intent": "memory", "evidence": [],
-                "suggestions": ["show memory"], "conversation": {"topics": ["memory"], "symbol": None}}
+        return {
+            "text": text,
+            "intent": "memory",
+            "evidence": [],
+            "suggestions": ["show memory"],
+            "conversation": {"topics": ["memory"], "symbol": None},
+        }
     return LokiCopilot().respond(payload.message, payload.context).as_dict()
 
 
