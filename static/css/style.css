@@ -446,3 +446,28 @@ button.tag:hover{color:var(--text);border-color:#5a7a63}
 .dive-board-row.dive-board-podium { border-color: #8b784b66; background: linear-gradient(110deg, #51402222, #0e1927); }
 .dive-board-podium .dive-board-rank { color: var(--dive-podium-gold); font-size: 20px; font-weight: 800; }
 @media(max-width:600px) { .dive-member-strip { align-items: flex-start; flex-direction: column; } }
+
+/* Proof Engine (05 / falsification battery) */
+.proof-verdict { border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; margin: 14px 0; background: #0f1c2c; }
+.proof-verdict-rejected { border-color: rgba(255, 138, 128, .5); background: rgba(60, 26, 26, .35); }
+.proof-verdict-insufficient { border-color: rgba(255, 199, 128, .45); background: rgba(64, 46, 18, .28); }
+.proof-verdict-supported { border-color: rgba(139, 218, 212, .55); background: rgba(23, 55, 51, .4); }
+.proof-verdict p { margin: 8px 0 2px; color: #9fb0c2; }
+.proof-verdict b { letter-spacing: .06em; }
+.proof-checks { list-style: none; padding: 0; margin: 8px 0 14px; }
+.proof-checks li { margin: 6px 0; color: #9fb0c2; }
+.proof-status { display: inline-block; min-width: 96px; text-align: center; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .06em; padding: 2px 10px; margin-right: 8px; text-transform: lowercase; }
+.proof-pass { background: rgba(43, 108, 86, .35); color: #baf0d8; }
+.proof-watch { background: rgba(122, 92, 32, .35); color: #ffd9a0; }
+.proof-fail { background: rgba(128, 48, 44, .38); color: #ffb3a8; }
+.proof-insufficient { background: rgba(96, 78, 36, .35); color: #ffd9a0; }
+.proof-spec { border-left: 3px solid #36564c; padding: 6px 14px; margin: 12px 0; color: #9fb0c2; }
+.proof-spec p { margin: 6px 0; }
+.proof-reviewers { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 10px 0 16px; }
+.proof-reviewer { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: #0e1927; }
+.proof-reviewer b { display: block; margin-bottom: 6px; }
+.proof-reviewer p { margin: 8px 0 0; font-size: 12.5px; color: #9fb0c2; }
+.proof-battery { width: 100%; margin-bottom: 14px; }
+.proof-battery th, .proof-battery td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.proof-limitations { color: #9fb0c2; font-size: 12.5px; margin: 14px 0; }
+@media (max-width: 640px) { .proof-reviewers { grid-template-columns: 1fr; } }

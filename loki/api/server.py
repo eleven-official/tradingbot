@@ -507,6 +507,44 @@ class ResearchRequest(BaseModel):
     config: dict = Field(default_factory=dict)
 
 
+class ProofRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    description: str = Field(min_length=1, max_length=2000)
+    symbol: str = Field(default="", max_length=15)
+    interval: str = Field(default="1h", max_length=8)
+    bars: int = Field(default=1000, ge=300, le=5000)
+    starting_capital: float = Field(default=10_000.0, gt=0, le=1e9)
+    risk_percent: float = Field(default=1.0, ge=0.05, le=5.0)
+    max_holding_bars: int = Field(default=20, ge=1, le=100)
+
+
+@app.post("/api/proof/assess")
+async def proof_assess(payload: ProofRequest):
+    """The Proof Engine: plain English -> fixed rules -> falsification battery -> evidence report."""
+    import asyncio
+
+    from loki.api.binance_market_data import MarketDataError, get_binance_spot_history
+    from loki.api.proof_engine import ProofError, safe_assess
+
+    try:
+        candles = await asyncio.to_thread(
+            get_binance_spot_history, payload.symbol or "BTCUSDT", payload.interval, payload.bars
+        )
+        return safe_assess(
+            candles,
+            payload.description,
+            symbol=payload.symbol,
+            interval=payload.interval,
+            starting_capital=payload.starting_capital,
+            risk_percent=payload.risk_percent,
+            max_holding_bars=payload.max_holding_bars,
+        )
+    except MarketDataError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    except ProofError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
 @app.post("/api/research/evaluate")
 def research(payload: ResearchRequest):
     try:
