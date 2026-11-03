@@ -24,6 +24,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -124,11 +125,16 @@ def _ensure_schema() -> None:
         conn.executescript(_SCHEMA)
 
 
+_TURN_TEXT_MAX = _MESSAGE_MAX  # user bubbles stay single-message sized
+_AI_TURN_TEXT_MAX = _MESSAGE_MAX * 4  # AI replies are multi-line; keep them whole
+
+
 def record_turn(role: str, name: str, text: str) -> None:
+    cap = _AI_TURN_TEXT_MAX if role == "ai" else _TURN_TEXT_MAX
     with _DB_LOCK, _connect() as conn:
         conn.execute(
             "INSERT INTO turns (role, name, text, created_at) VALUES (?,?,?,?)",
-            (role, name[:_NAME_MAX], text[:_MESSAGE_MAX], time.time()),
+            (role, name[:_NAME_MAX], text[:cap], time.time()),
         )
         conn.execute(
             "DELETE FROM turns WHERE id NOT IN "
@@ -151,22 +157,40 @@ def add_fact(kind: str, text: str, source: str = "", weight: float = 1.0) -> int
         return int(cursor.lastrowid or 0)
 
 
+_FACT_HALF_LIFE = 36.0  # hours until an internet fact's recency bonus halves
+
+
+def _fact_score(weight: float, created_at: float, now: float) -> float:
+    """Weight plus a decaying recency pulse, so freshly learned headlines
+    can outrank months-old ones the way a trader weights 'new tape' — while
+    admin-taught facts keep their heavier base weight forever."""
+    age_hours = max(0.0, (now - created_at) / 3600.0)
+    recency = 1.4 * (0.5 ** (age_hours / _FACT_HALF_LIFE))
+    return float(weight) * 0.6 + recency
+
+
 def recall_facts(limit: int = 6) -> List[Dict[str, Any]]:
     limit = max(1, min(limit, 12))
     with _DB_LOCK, _connect() as conn:
         rows = conn.execute(
             "SELECT id, kind, text, source, weight, created_at FROM facts "
             "ORDER BY weight DESC, created_at DESC LIMIT ?",
-            (limit,),
+            (limit * 6,),
         ).fetchall()
-    return [dict(row) for row in rows]
+    now = time.time()
+    ranked = sorted(
+        [dict(row) for row in rows],
+        key=lambda row: (_fact_score(row["weight"], row["created_at"], now), row["created_at"]),
+        reverse=True,
+    )
+    return ranked[:limit]
 
 
 def recall_turns(limit: int = 12) -> List[Dict[str, Any]]:
     limit = max(1, min(limit, 40))
     with _DB_LOCK, _connect() as conn:
         rows = conn.execute(
-            "SELECT role, name, text, created_at FROM turns " "ORDER BY created_at DESC LIMIT ?",
+            "SELECT role, name, text, created_at FROM turns ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
     return [dict(row) for row in reversed(rows)]
@@ -306,11 +330,16 @@ def _headline_fact(item: Dict[str, Any]) -> Optional[Tuple[str, str]]:
     link = str(item.get("link") or "").strip()
     if not title or not link or len(title) < 12:
         return None
-    publisher = str(item.get("publisher") or "").strip()
-    stamp = time.strftime("%b %d", time.gmtime(float(item.get("published_at") or time.time())))
-    text = f"{stamp}: {title}"
-    if publisher:
+    publisher = " ".join(str(item.get("publisher") or "").split())
+    published = item.get("published_at")
+    stamp = ""
+    if isinstance(published, (int, float)) and published > 0:
+        stamp = time.strftime("%b %d", time.gmtime(float(published)))
+    text = f"{stamp}: {title}" if stamp and not publisher else title
+    if stamp and publisher:
         text = f"{stamp} ({publisher}): {title}"
+    elif publisher:
+        text = f"{publisher}: {title}"
     return text, link
 
 
@@ -325,23 +354,31 @@ def learn_from_internet(symbol: Optional[str] = None) -> Dict[str, Any]:
             quote = fetch_quote(symbol)
     except MarketFeedError:
         quote = None
-    for term in terms[:2]:
+
+    def _sweep(term: str) -> None:
         try:
             payload = latest_headlines_for_query(str(term), 5)
         except MarketFeedError:
-            continue
+            return
         for item in payload.get("items", []):
             distilled = _headline_fact(item)
             if distilled is None:
                 continue
             text, link = distilled
             # Same headline is not learned twice: the source link is unique.
-            existing = [row for row in learned if row["source"] == link]
-            if existing:
-                learned.append({"text": text, "source": link, "fresh": 0.0})
+            if any(entry["source"] == link for entry in learned):
                 continue
             add_fact("internet", text, source=link, weight=1.0)
             learned.append({"text": text, "source": link, "fresh": _MEMO_TTL})
+
+    for term in terms[:2]:
+        _sweep(term)
+    # A named ticker whose feed answers nothing falls back to the macro
+    # basket, labeled loudly; an empty room stays honest about the gap.
+    if symbol and not learned:
+        _sweep("stock market")
+        for entry in learned:
+            entry["text"] = f"[macro fallback — no live news for {symbol}] {entry['text']}"
     return {"learned": learned[:6], "quote": quote}
 
 
@@ -412,6 +449,22 @@ def _quote_block(quote: Optional[Dict[str, Any]]) -> str:
     return f"LIVE {sym}: {price:,.2f}{change} · public feed"
 
 
+_TRADE_WORDS = ("buy", "sell", "long", "short", "entry", "trade", "stop", "target")
+_QUESTION_WORDS = ("what", "why", "how", "will", "when", "who", "which", "should")
+_GREETING_WORDS = ("hi", "hello", "hey", "yo", "sup", "morning", "evening")
+
+
+def _intent(text: str) -> str:
+    lower = " " + text.lower() + " "
+    if any(f" {word}" in lower for word in _GREETING_WORDS) and len(text.split()) <= 6:
+        return "greeting"
+    if any(word in lower for word in _TRADE_WORDS):
+        return "trade"
+    if any(word in lower for word in _QUESTION_WORDS):
+        return "question"
+    return "chat"
+
+
 def _compose_reply(
     text: str,
     name: str,
@@ -422,17 +475,29 @@ def _compose_reply(
     turns_used: int,
     symbol: Optional[str],
 ) -> str:
-    lower = text.lower()
+    intent = _intent(text)
     parts: List[str] = []
+    if intent == "greeting":
+        parts.append(f"Hey {name or 'friend'} — room's open, memory is loaded, research mode on.")
+        taught = sum(1 for entry in facts if entry.get("kind") == "admin")
+        net = len(facts) - taught
+        parts.append(
+            f"On the shelf right now: {taught} taught fact{'s' if taught != 1 else ''} and {net} internet fact{'s' if net != 1 else ''}. Name a ticker or ask away."
+        )
+        if is_admin:
+            parts.append("joshua — admin perks active: teach and wipe are unlocked.")
+        parts.append("Everything here: research, not advice; no orders.")
+        return "\n".join(parts)
     if is_admin:
         parts.append("joshua — admin recognized; memory and teaching are unlocked.")
     else:
         parts.append(f"{name or 'friend'} — memory on, research open.")
-    parts.append(
-        "What I am, honestly: a reasoning engine over real inputs — my own market "
-        "memory, public internet feeds, and what you've taught me. Nothing here "
-        "submits orders."
-    )
+    if intent == "question":
+        parts.append(
+            "What I am, honestly: a reasoning engine over real inputs — my own market "
+            "memory, public internet feeds, and what you've taught me. Nothing here "
+            "submits orders."
+        )
     if symbol:
         parts.append(f"You named {symbol} — checking it against memory and the live tape.")
     else:
@@ -463,7 +528,7 @@ def _compose_reply(
         )
     if turns_used:
         parts.append(f"Our room's history stays alive in me: {turns_used} turns deep.")
-    if any(word in lower for word in ("buy", "sell", "long", "short", "entry", "trade")):
+    if intent == "trade":
         parts.append(
             "On trade asks: I grade setups from graded history and never promise "
             "outcomes — research, not advice; no orders."
@@ -532,6 +597,131 @@ async def chat_logout(request: Request, response: Response) -> Dict[str, Any]:
     return {"ok": True}
 
 
+_DUPLICATE_WINDOW = 10.0  # same speaker + same text inside this window = flood
+_recent_messages: Dict[str, float] = {}
+_FLOOD_LOCK = threading.Lock()
+
+
+def memory_audit() -> Dict[str, Any]:
+    """Room self-audit: counts by kind, memory span, store pressure. Honest,
+    bounded reads straight off the sqlite store."""
+    now = time.time()
+    with _DB_LOCK, _connect() as conn:
+        fact_rows = conn.execute(
+            "SELECT kind, COUNT(*) AS n, MAX(created_at) AS newest FROM facts GROUP BY kind"
+        ).fetchall()
+        turn_row = conn.execute(
+            "SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM turns"
+        ).fetchone()
+    by_kind = {row["kind"]: int(row["n"]) for row in fact_rows}
+    newest = max([float(row["newest"] or 0.0) for row in fact_rows] or [0.0])
+    oldest_turn = float(turn_row["oldest"] or 0) if turn_row and turn_row["oldest"] else 0.0
+    span_days = 0.0
+    if oldest_turn:
+        span_days = max(0.0, (now - oldest_turn) / 86400.0)
+    return {
+        "taught": by_kind.get("admin", 0),
+        "internet": by_kind.get("internet", 0),
+        "turns": int(turn_row["n"] or 0) if turn_row else 0,
+        "newest_fact_age_min": round(max(0.0, (now - newest) / 60.0), 1) if newest else None,
+        "memory_span_days": round(span_days, 2),
+        "next_sweep_in_min": round(max(0.0, (_last_sweep[0] + _LEARN_INTERVAL - now) / 60.0), 1),
+        "store_cap": {"facts": _MEMORY_LIMIT, "turns": _STORE_ROWS},
+    }
+
+
+def _audit_reply(name: str, is_admin: bool) -> str:
+    audit = memory_audit()
+    parts = [
+        f"{name or 'friend'} — audit, as asked:",
+        (
+            f"Memory shelf: {audit['taught']} taught + {audit['internet']} internet facts "
+            f"(caps: {audit['store_cap']['facts']} facts / {audit['store_cap']['turns']} turns)."
+        ),
+        f"Conversation depth: {audit['turns']} turns, spanning {audit['memory_span_days']} day(s)."
+        f"{' Admin unlocked.' if is_admin else ' Member view.'}",
+        (
+            f"Internet sweep: next in ~{audit['next_sweep_in_min']} min "
+            f"(5-minute cadence by design)."
+        ),
+        (
+            f"Newest learned fact is {audit['newest_fact_age_min']} min old."
+            if audit["newest_fact_age_min"] is not None
+            else "No facts learned yet — name a ticker to start the sweep."
+        ),
+        "Everything here: research, not advice; no orders.",
+    ]
+    return "\n".join(parts)
+
+
+_STOP_WORDS = {
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "is",
+    "are",
+    "was",
+    "you",
+    "i",
+    "it",
+    "to",
+    "of",
+    "on",
+    "in",
+    "what",
+    "how",
+    "why",
+    "tell",
+    "me",
+    "about",
+    "for",
+    "with",
+    "this",
+    "that",
+    "any",
+    "your",
+    "my",
+    "do",
+    "does",
+    "be",
+}
+
+
+def _relevant_facts(message: str, pool: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    """Relevance-ranked recall: overlap with the message's content words and
+    the named symbol beats plain recency, so the room answers about the thing
+    asked instead of whatever landed last. Taught facts keep their weight edge."""
+    words = [
+        w for w in re.findall(r"[a-z0-9]+", message.lower()) if len(w) > 2 and w not in _STOP_WORDS
+    ]
+    wanted = set(words)
+    symbol_upper = detect_symbol(message)
+    if symbol_upper:
+        wanted.add(symbol_upper.lower())
+
+    def score(fact: Dict[str, Any]) -> float:
+        hay = f"{fact.get('text','')} {fact.get('source','')}".lower()
+        overlap = sum(1 for token in wanted if token in hay)
+        base = float(fact.get("weight", 1.0)) * 0.35
+        return overlap * 2.0 + base
+
+    ranked = sorted(pool, key=score, reverse=True)
+    half = math.ceil(limit / 2) if symbol_upper else 0
+    ordered: List[Dict[str, Any]] = []
+    if symbol_upper:
+        matching = [f for f in ranked if symbol_upper.lower() in f.get("text", "").lower()]
+        ordered.extend(matching[:half])
+    for fact in ranked:
+        if fact in ordered:
+            continue
+        ordered.append(fact)
+        if len(ordered) >= limit:
+            break
+    return ordered
+
+
 @router.post("/message")
 async def chat_message(payload: MessageBody, request: Request, response: Response) -> Reply:
     identity = chat_identity(request)
@@ -542,6 +732,23 @@ async def chat_message(payload: MessageBody, request: Request, response: Respons
     text = payload.text.strip()[:_MESSAGE_MAX]
     if not text:
         raise HTTPException(422, "Say something first.")
+    flood_key = f"{name}::{text}"
+    now = time.time()
+    with _FLOOD_LOCK:
+        last_same = _recent_messages.get(flood_key)
+        _recent_messages[flood_key] = now
+        if len(_recent_messages) > 256:  # bounded key ring, oldest half dropped
+            for key, stamp in sorted(_recent_messages.items(), key=lambda kv: kv[1])[:128]:
+                _recent_messages.pop(key, None)
+    if last_same is not None and now - last_same < _DUPLICATE_WINDOW:
+        raise HTTPException(429, "Same message twice in ten seconds — give the room a breath.")
+
+    if text.strip().lower() in {"audit", "pulse", "status"}:
+        reply_text = _audit_reply(name, is_admin)
+        record_turn("user", name, text)
+        record_turn("ai", "Loki", reply_text)
+        _set_chat_cookie(response, request, name, is_admin)
+        return Reply(text=reply_text, admin=is_admin, name=name)
 
     symbol = detect_symbol(text)
     sweep = _maybe_sweep(symbol)
@@ -553,8 +760,8 @@ async def chat_message(payload: MessageBody, request: Request, response: Respons
         quote = None
 
     turns_used = recall_turns(10)
-    fact_pool = recall_facts(8)
-    relevant = fact_pool[:6]
+    fact_pool = recall_facts(16)
+    relevant = _relevant_facts(text, fact_pool, 6)
     reply_text = _compose_reply(
         text=text,
         name=name,
@@ -566,7 +773,7 @@ async def chat_message(payload: MessageBody, request: Request, response: Respons
         symbol=symbol,
     )
     record_turn("user", name, text)
-    record_turn("ai", "Loki", reply_text[:_MESSAGE_MAX])
+    record_turn("ai", "Loki", reply_text)
     # Refresh the sliding 14-day window on every message.
     _set_chat_cookie(response, request, name, is_admin)
     return Reply(

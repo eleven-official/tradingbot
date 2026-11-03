@@ -18,8 +18,14 @@ COMPONENT = Path(__file__).resolve().parents[2] / "components" / "mirofish"
 
 
 def data_directory():
+    """Where a HOST drops MiroFish report artifacts; real data lives out of
+    the repository (the upstream app snapshot is pruned), so the fallback is
+    a writable state path, not a vendored uploads folder."""
     return (
-        Path(os.environ.get("LOKI_MIROFISH_DATA_PATH") or COMPONENT / "upstream/backend/uploads")
+        Path(
+            os.environ.get("LOKI_MIROFISH_DATA_PATH")
+            or Path(__file__).resolve().parents[2] / "state" / "mirofish" / "data"
+        )
         .expanduser()
         .resolve()
     )
@@ -28,7 +34,11 @@ def data_directory():
 def native_status():
     return {
         "engine": "bundled_mirofish_native",
-        "source_bundled": (COMPONENT / "upstream/backend/app/services/report_agent.py").is_file(),
+        "source_bundled": (
+            (COMPONENT / "report_contracts.py").is_file()
+            and (COMPONENT / "manifest.json").is_file()
+            and (COMPONENT / "LICENSE").is_file()
+        ),
         "report_reader_ready": (COMPONENT / "report_bridge.py").is_file(),
         "data_directory_configured": bool(os.environ.get("LOKI_MIROFISH_DATA_PATH")),
         "reports_available": (data_directory() / "reports").is_dir(),

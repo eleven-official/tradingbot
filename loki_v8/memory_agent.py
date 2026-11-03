@@ -9,15 +9,15 @@ typed into the Director's thesis; sizing, gates and order paths are untouched
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-HORIZON = 5          # bars until a past posture is graded as right or wrong
-MAX_SAMPLES = 24     # bounded review window, sampled every SAMPLE_STRIDE bars
+HORIZON = 5  # bars until a past posture is graded as right or wrong
+MAX_SAMPLES = 24  # bounded review window, sampled every SAMPLE_STRIDE bars
 SAMPLE_STRIDE = 3
 MIN_BARS = HORIZON + 2
-WEAK_RATE = 0.40     # below this, the review warns that the posture is fading
+WEAK_RATE = 0.40  # below this, the review warns that the posture is fading
 
 
 def _posture_at(frame: pd.DataFrame, i: int) -> str:
@@ -87,19 +87,25 @@ def reflect(frame: Optional[pd.DataFrame], horizon: int = HORIZON) -> Dict[str, 
     recap["samples"] = graded
     recap["long_ok"] = long_ok
     recap["long_total"] = long_total
+    lessons: List[str] = []
     if long_total >= 8:
         rate = long_ok / long_total
         recap["applied"] = True
         verdict = "holding up" if rate >= WEAK_RATE else "not working"
-        recap["lesson"] = (
-            f"self-review: long setups graded {long_ok}/{long_total} over the "
-            f"last {long_total} samples — the trend playbook has been {verdict}"
+        lessons.append(
+            f"long setups graded {long_ok}/{long_total} over the last {long_total} "
+            f"samples — the trend playbook has been {verdict}"
         )
     else:
-        recap["lesson"] = (
-            f"self-review: only {long_total} long samples graded so far — "
-            "too small to advise"
+        lessons.append(f"only {long_total} long samples graded so far — too small to advise")
+    short_bucket = recap["postures"].get("short", {"ok": 0, "total": 0})
+    if short_bucket["total"] >= 8:
+        short_rate = short_bucket["ok"] / short_bucket["total"]
+        short_verdict = "holding up" if short_rate >= WEAK_RATE else "not working"
+        lessons.append(
+            f"short setups graded {short_bucket['ok']}/{short_bucket['total']} — {short_verdict}"
         )
+    recap["lesson"] = "self-review: " + "; ".join(lessons)
     return recap
 
 

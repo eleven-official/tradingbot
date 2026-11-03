@@ -178,3 +178,111 @@ def test_admin_can_teach_weighted_and_non_admin_is_403(memory_path, no_internet)
     wiped = admin.post("/api/ai/chat/wipe")
     assert wiped.status_code == 200 and wiped.json()["wiped"] >= 1
     assert ai_chat.recall_facts(5) == []
+
+
+def test_recency_blend_lets_fresh_news_outrank_stale_same_weight(memory_path):
+    now = time.time()
+    ai_chat.add_fact("internet", "old internet fact, months cold", source="a://x", weight=1.0)
+    with ai_chat._DB_LOCK, ai_chat._connect() as conn:
+        conn.execute("UPDATE facts SET created_at = ?", (now - 40 * 86400.0,))
+    fresh = ai_chat.add_fact("internet", "fresh headline from the tape", source="a://y", weight=1.0)
+    ranked = ai_chat.recall_facts(2)
+    assert ranked[0]["id"] == fresh
+    # But a weight-3 admin lesson still outranks everything the sweep learns.
+    taught = ai_chat.add_fact("admin", "taught: don't chase gap opens", weight=3.0)
+    ranked = ai_chat.recall_facts(2)
+    assert ranked[0]["id"] == taught
+
+
+def test_audit_command_reports_the_shelf(memory_path, no_internet):
+    _join(client)
+    ai_chat.add_fact("internet", "Nov 02: treasury yields cool", source="a://y")
+    audited = client.post("/api/ai/chat/message", json={"text": "audit"})
+    assert audited.status_code == 200
+    body = audited.json()["text"]
+    assert "audit, as asked" in body
+    assert "0 taught + 1 internet facts" in body
+    assert "5-minute cadence" in body
+    assert audited.json()["learned"] == []
+
+
+def test_duplicate_same_text_is_flood_guarded(memory_path, no_internet):
+    _join(client)
+    first = client.post("/api/ai/chat/message", json={"text": "tell me about SPY"})
+    assert first.status_code == 200
+    repeat = client.post("/api/ai/chat/message", json={"text": "tell me about SPY"})
+    assert repeat.status_code == 429
+    assert "ten seconds" in repeat.json()["detail"]
+
+
+def test_recall_prefers_facts_about_the_named_symbol(memory_path, no_internet):
+    _join(client)
+    loud = ai_chat.add_fact(
+        "internet",
+        "Jul 01: SPY ladders into record close as breadth thins",
+        source="https://finance.yahoo.com/news/spy-ladder",
+    )
+    noise = ai_chat.add_fact(
+        "internet",
+        "Nov 03: Bitcoin spot volumes ease for a third day",
+        source="https://finance.yahoo.com/news/btc-vol",
+    )
+    ai_chat.add_fact("admin", "taught: watch the 10-handle", weight=3.0)
+    ai_chat._last_sweep[0] = 0.0
+    reply = client.post("/api/ai/chat/message", json={"text": "what's SPY doing today?"})
+    assert reply.status_code == 200
+    assert "SPY ladders" in reply.json()["text"] or loud in [f for f in ai_chat.recall_facts(3)]
+
+
+def test_currency_and_macro_asks_stay_on_weather_not_ticker_garbage(memory_path, no_internet):
+    _join(client)
+    ai_chat._last_sweep[0] = 0.0
+    reply = client.post("/api/ai/chat/message", json={"text": "good morning"})
+    assert reply.status_code == 200
+    body = reply.json()["text"]
+    assert "room's open" in body
+    assert "0 taught" in body
+
+
+def test_ai_replies_stored_unclipped_for_honest_replay(memory_path, no_internet):
+    _join(client)
+    client.post("/api/ai/chat/message", json={"text": "hello there friend"})
+    with ai_chat._DB_LOCK, ai_chat._connect() as conn:
+        rows = conn.execute(
+            "SELECT text FROM turns WHERE role = 'ai' ORDER BY created_at DESC LIMIT ?",
+            (2,),
+        ).fetchall()
+        row = rows[0] if rows else None
+    assert row is not None
+    ai_text = row["text"]
+    assert len(ai_text) > 100  # greeting replies are multi-line; pre-cap sliced them
+
+
+def test_macro_fallback_labels_itself_when_symbol_news_is_empty(memory_path, monkeypatch):
+    items = [
+        {
+            "title": "Fed minutes signal patience on rate path",
+            "publisher": "Reuters",
+            "link": "https://finance.yahoo.com/news/fed-1",
+            "published_at": 1730500000.0,
+        },
+    ]
+    monkeypatch.setattr(
+        ai_chat,
+        "latest_headlines_for_query",
+        lambda query, limit: {
+            "items": items if "SVXY" not in query.upper() and "stock" in query.lower() else []
+        },
+    )
+    monkeypatch.setattr(
+        ai_chat,
+        "fetch_quote",
+        lambda symbol: {"symbol": "SVXY", "ok": True, "price": 51.2, "change_pct": None},
+    )
+    _join(client)
+    ai_chat._last_sweep[0] = 0.0
+    reply = client.post("/api/ai/chat/message", json={"text": "anything on SVXY?"})
+    assert reply.status_code == 200
+    fresh = [entry for entry in reply.json()["learned"] if entry.get("fresh")]
+    assert fresh and "[macro fallback — no live news for SVXY]" in fresh[0]["text"]
+    assert "Fed minutes" in reply.json()["text"]

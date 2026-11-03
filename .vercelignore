@@ -38,7 +38,4 @@
 /trade_bot/
 /env/
 /ENV/
-/components/mirofish/upstream/backend/uploads/
-/components/mirofish/upstream/backend/.venv/
-/components/mirofish/upstream/frontend/dist/
 *.tsbuildinfo

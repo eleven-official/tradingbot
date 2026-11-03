@@ -358,6 +358,8 @@ if barstate.isconfirmed
 
 winRate = auditN > 0 ? 100.0 * auditW / auditN : na
 expMean = array.size(auditExp) > 0 ? array.avg(auditExp) : na
+// State transition (any entry→exit→entry flip) is the automation-friendly beat.
+stateChange = barstate.isconfirmed and state != lastState
 
 // ─────────────────────────── TP / SL TARGET LINES ───────────────────────────
 var line tpLine = na
@@ -571,3 +573,4 @@ alertcondition(ambiguousHit, title="LOKI Both brackets touched", message="LOKI b
 alertcondition(evLong,  title="LOKI Go Long",  message="LOKI Go Long — {{close}}")
 alertcondition(evShort, title="LOKI Go Short", message="LOKI Go Short — {{close}}")
 alertcondition(evExit,  title="LOKI Exit",     message="LOKI Exit/Neutral — {{close}}")
+alertcondition(stateChange, title="LOKI State change", message="LOKI state changed — posture flipped on confirmed bar — {{close}}")

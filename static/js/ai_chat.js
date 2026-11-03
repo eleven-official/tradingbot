@@ -41,25 +41,40 @@
     refreshMemory();
   }
 
-  function bubble(kind, text) {
+  function bubble(kind, text, withCopy) {
     const div = document.createElement('div');
     if (kind === 'join') {
       div.className = 'join';
       div.textContent = text;
-    } else {
-      div.className = `bubble ${kind}`;
-      if (kind === 'ai') {
-        const who = document.createElement('b');
-        who.className = 'who';
-        who.textContent = 'LOKI';
-        div.appendChild(who);
-        div.appendChild(document.createTextNode(text));
-      } else {
-        div.textContent = text;
+      $('stream').appendChild(div);
+      $('stream').scrollTop = $('stream').scrollHeight;
+      return div;
+    }
+    div.className = `bubble ${kind}`;
+    if (kind === 'ai') {
+      const who = document.createElement('b');
+      who.className = 'who';
+      who.textContent = 'LOKI';
+      div.appendChild(who);
+      div.appendChild(document.createTextNode(text));
+      if (withCopy !== false) {
+        const copy = document.createElement('button');
+        copy.className = 'copy';
+        copy.type = 'button';
+        copy.textContent = 'copy';
+        copy.addEventListener('click', async () => {
+          copy.textContent = 'copied';
+          try { await navigator.clipboard.writeText(text); } catch (error) { /* private mode */ }
+          setTimeout(() => { copy.textContent = 'copy'; }, 1400);
+        });
+        div.appendChild(copy);
       }
+    } else {
+      div.textContent = text;
     }
     $('stream').appendChild(div);
     $('stream').scrollTop = $('stream').scrollHeight;
+    return div;
   }
 
   async function refreshMemory() {
@@ -139,9 +154,8 @@
     }
   });
 
-  $('msgForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const text = $('msgInput').value.trim();
+  const composerSubmit = async (rawText) => {
+    const text = String(rawText == null ? $('msgInput').value : rawText).trim();
     if (!text) return;
     const btn = $('sendBtn');
     btn.disabled = true;
@@ -171,6 +185,10 @@
     } finally {
       btn.disabled = false;
     }
+  };
+  $('msgForm').addEventListener('submit', (event) => { event.preventDefault(); composerSubmit($('msgInput').value); });
+  document.querySelectorAll('#chips [data-ask]').forEach((chip) => {
+    chip.addEventListener('click', () => composerSubmit(chip.dataset.ask));
   });
 
   $('teachForm').addEventListener('submit', async (event) => {

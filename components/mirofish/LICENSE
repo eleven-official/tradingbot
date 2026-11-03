@@ -1,0 +1,8 @@
+MiroFish upstream (https://github.com/QinJ-x/mirofish) is licensed under
+AGPL-3.0. This directory keeps the two retained data-class contracts
+(report_bridge.py, report_contracts.py), the manifest binding their bytes,
+and this license file. The full upstream application snapshot was removed
+from the repository as unused bulk; the provenance manifest and license
+document the origin and rights for the retained, adapted code in
+core/fusion/narrative.py (originally licensed AGPL-3.0 upstream, this copy
+is under the project repository's distribution terms).

@@ -9,11 +9,12 @@ families instead of generated profiles, and a hash-seeded order instead of
 randomness. Everything is inspectable: every event that moves a stance is
 listed in the report.
 
-This is original code; no upstream file is copied. The MiroFish source bundle,
-its manifest and its AGPL-3.0 license stay in components/mirofish/upstream/.
-The produced report doubles as a native MiroFish-shaped report artifact, so
-the existing council path (core.fusion.miro_native.load_report) can read it
-without any change.
+This is original code; no upstream file is copied. The MiroFish origin is
+documented in components/mirofish/ (manifest + AGPL-3.0 license); the full
+upstream snapshot was removed from the repository as laboring bulk and the
+archive it was hashed from stays external. The produced report doubles as a
+native MiroFish-shaped report artifact, so the existing council path
+(core.fusion.miro_native.load_report) can read it without any change.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from core.fusion.miro_native import data_directory
 
 PROVENANCE = {
     "project": "MiroFish",
-    "license": "AGPL-3.0 (bundled upstream; license file in components/mirofish/upstream)",
+    "license": "AGPL-3.0 (documented in components/mirofish/LICENSE; upstream archive removed from repo)",
     "archive_sha256": "89cbffbebb32228b99a5d022ca919cc83fb227b1a254d63d1d9695a89d51f524",
     "adaptation": (
         "Same pipeline shape (source text -> relation graph -> heterogeneous persona "
@@ -94,32 +95,114 @@ DATE_RE = re.compile(
 )
 HEDGE_RE = re.compile(
     r"\b(may|might|could|rumoured|rumored|unconfirmed|unverified|reported|reportedly|"
-    r"report suggests|expected|possible|watch|unclear)\b", re.I
+    r"report suggests|expected|possible|watch|unclear)\b",
+    re.I,
 )
 BULLISH_RE = re.compile(
     r"\b(rallies|rally|rallied|surge[sd]?|soar[sd]?|jump[sd]?|leaps?|leapt|upgrades?|"
     r"upgraded|upbeat|beats|record high|record profit|inflows?|bullish|expands?|expanded|"
     r"expanding|raises?|raised|buybacks?|optimism|optimistic|gains?|gained|climbs?|climbed|"
-    r"outperforms?|outperformed|strengthens?|strengthened|accelerates?|accelerated)\b", re.I
+    r"outperforms?|outperformed|strengthens?|strengthened|accelerates?|accelerated)\b",
+    re.I,
 )
 BEARISH_RE = re.compile(
     r"\b(slumps?|slumped|plunges?|plunged|tanks?|tanked|crashes|crashed|downgrades?|"
     r"downgraded|misses|outflows?|bearish|lawsuits?|probe[s]?|probes|investigates|investigated|"
     r"investigation|sinks?|sank|tumbles?|tumbled|warning|warns?|cuts|slashes?|slashed|"
-    r"weakens?|weakened|layoffs?|fraud|defaults?|bankruptcy|halts?|halted|delays?|delayed)\b", re.I
+    r"weakens?|weakened|layoffs?|fraud|defaults?|bankruptcy|halts?|halted|delays?|delayed)\b",
+    re.I,
 )
 
 # Common uppercase words a naive ticker regex would capture from news prose.
-STOPWORDS = frozenset({
-    "AND", "ALLY", "THE", "THIS", "THAT", "WITH", "FROM", "HAVE", "HAS", "WAS", "WERE",
-    "NOT", "BUT", "FOR", "ALL", "ANY", "ARE", "OUT", "ITS", "INTO", "OVER", "AFTER",
-    "BEFORE", "WHILE", "WILL", "DID", "DOES", "NEWS", "CEO", "SEC", "ETF", "GDP", "FED",
-    "FOMC", "CPI", "EPS", "IPO", "COO", "CFO", "CTO", "APR", "AUG", "DEC", "FEB", "JAN",
-    "JUL", "JUN", "MAR", "MAY", "NOV", "OCT", "SEP", "MON", "TUE", "WED", "THU", "FRI",
-    "SAT", "SUN", "AM", "PM", "ET", "PT", "NOW", "SAYS", "SAID", "SAY", "TODAY", "NEW",
-    "OLD", "BIG", "LOW", "TOP", "OFF", "WAY", "BUY", "SELL", "HOLD", "WAIT", "MISS",
-    "BEAT", "FULL", "YEAR", "WEEK", "DAILY",
-})
+STOPWORDS = frozenset(
+    {
+        "AND",
+        "ALLY",
+        "THE",
+        "THIS",
+        "THAT",
+        "WITH",
+        "FROM",
+        "HAVE",
+        "HAS",
+        "WAS",
+        "WERE",
+        "NOT",
+        "BUT",
+        "FOR",
+        "ALL",
+        "ANY",
+        "ARE",
+        "OUT",
+        "ITS",
+        "INTO",
+        "OVER",
+        "AFTER",
+        "BEFORE",
+        "WHILE",
+        "WILL",
+        "DID",
+        "DOES",
+        "NEWS",
+        "CEO",
+        "SEC",
+        "ETF",
+        "GDP",
+        "FED",
+        "FOMC",
+        "CPI",
+        "EPS",
+        "IPO",
+        "COO",
+        "CFO",
+        "CTO",
+        "APR",
+        "AUG",
+        "DEC",
+        "FEB",
+        "JAN",
+        "JUL",
+        "JUN",
+        "MAR",
+        "MAY",
+        "NOV",
+        "OCT",
+        "SEP",
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT",
+        "SUN",
+        "AM",
+        "PM",
+        "ET",
+        "PT",
+        "NOW",
+        "SAYS",
+        "SAID",
+        "SAY",
+        "TODAY",
+        "NEW",
+        "OLD",
+        "BIG",
+        "LOW",
+        "TOP",
+        "OFF",
+        "WAY",
+        "BUY",
+        "SELL",
+        "HOLD",
+        "WAIT",
+        "MISS",
+        "BEAT",
+        "FULL",
+        "YEAR",
+        "WEEK",
+        "DAILY",
+    }
+)
 
 
 def _clamp(value: float, low: float = -100.0, high: float = 100.0) -> float:
@@ -190,13 +273,15 @@ def _events_from(text: str) -> tuple[list[dict[str, Any]], int]:
         if direction == 0:
             skipped += 1
             continue
-        events.append({
-            "text": sentence if len(sentence) <= 240 else sentence[:237] + "...",
-            "direction": direction,
-            "weight": weight,
-            "hedged": hedged,
-            "tickers": _extract_tickers(sentence),
-        })
+        events.append(
+            {
+                "text": sentence if len(sentence) <= 240 else sentence[:237] + "...",
+                "direction": direction,
+                "weight": weight,
+                "hedged": hedged,
+                "tickers": _extract_tickers(sentence),
+            }
+        )
     return events, skipped
 
 
@@ -224,12 +309,14 @@ def _agents(seed: str, agents_per_family: int) -> list[dict[str, Any]]:
             digest = hashlib.sha256(f"{seed}|{family['family']}|{unit}".encode()).digest()
             jitter = ((digest[0] << 8 | digest[1]) / 65535.0 - 0.5) * 12.0
             starting = _clamp(float(family["prior"]) + jitter)
-            agents.append({
-                "name": f"{family['family']} {unit + 1}",
-                "family": str(family["family"]),
-                "prior": _round1(starting),
-                "stance": _round1(starting),
-            })
+            agents.append(
+                {
+                    "name": f"{family['family']} {unit + 1}",
+                    "family": str(family["family"]),
+                    "prior": _round1(starting),
+                    "stance": _round1(starting),
+                }
+            )
     return agents
 
 
@@ -263,7 +350,7 @@ def _trajectory(
         offset = order_digest[round_index % len(order_digest)] % max(len(events), 1)
         for position, _ in enumerate(events):
             event = events[(offset + position) % len(events)]
-            influence = float(event["direction"]) * float(event["weight"]) * (0.86 ** round_index)
+            influence = float(event["direction"]) * float(event["weight"]) * (0.86**round_index)
             for agent in agents:
                 if agent["family"] == "Contrarian retail":
                     continue
@@ -275,11 +362,13 @@ def _trajectory(
         for agent in agents:
             if agent["family"] == "Contrarian retail":
                 agent["stance"] = _round1(_clamp(agent["stance"] - 0.10 * mean_stance))
-        trajectory.append({
-            "round": round_index + 1,
-            "stance": _round1(math.fsum(agent["stance"] for agent in agents) / len(agents)),
-            "shares": _shares(agents),
-        })
+        trajectory.append(
+            {
+                "round": round_index + 1,
+                "stance": _round1(math.fsum(agent["stance"] for agent in agents) / len(agents)),
+                "shares": _shares(agents),
+            }
+        )
     return trajectory
 
 
@@ -317,7 +406,9 @@ def _change_notes(events: list[dict[str, Any]]) -> list[str]:
             f"{hedged} of {len(events)} stance events are hedged; confirmation could shift the low-sensitivity families."
         )
     if len(events) <= 2:
-        notes.append("Only a couple of stance sentences were parsed; one added quote could flip the aggregate.")
+        notes.append(
+            "Only a couple of stance sentences were parsed; one added quote could flip the aggregate."
+        )
     if not notes:
         notes.append(
             "The source already carries priced, dated and quantified language; "
@@ -358,9 +449,7 @@ def _build_outline(
             listed.append(f"(+{more} parsed stance events not listed; all still count.)")
         event_content = "\n".join(listed)
         if skipped:
-            event_content += (
-                f"\n{skipped} sentence(s) had no directional language and were counted but not simulated."
-            )
+            event_content += f"\n{skipped} sentence(s) had no directional language and were counted but not simulated."
     else:
         event_content = (
             "No directional sentences were parsed. The engine reports no lean rather than "
@@ -422,14 +511,22 @@ def analyze_narrative(
         raise ValueError("Seed text is required for the narrative simulation")
     if len(seed_text) > MAX_TEXT:
         raise ValueError(f"Seed text is capped at {MAX_TEXT} characters")
-    if not isinstance(rounds, int) or isinstance(rounds, bool) or not MIN_ROUNDS <= rounds <= MAX_ROUNDS:
+    if (
+        not isinstance(rounds, int)
+        or isinstance(rounds, bool)
+        or not MIN_ROUNDS <= rounds <= MAX_ROUNDS
+    ):
         raise ValueError(f"Rounds must be an integer between {MIN_ROUNDS} and {MAX_ROUNDS}")
-    if not isinstance(agents_per_family, int) or isinstance(agents_per_family, bool) or not (
-        1 <= agents_per_family <= MAX_AGENTS_PER_FAMILY
+    if (
+        not isinstance(agents_per_family, int)
+        or isinstance(agents_per_family, bool)
+        or not (1 <= agents_per_family <= MAX_AGENTS_PER_FAMILY)
     ):
         raise ValueError(f"Agents per family must be an integer from 1 to {MAX_AGENTS_PER_FAMILY}")
-    question = question if question and str(question).strip() else (
-        "Simulate how fixed persona families react to this market narrative."
+    question = (
+        question
+        if question and str(question).strip()
+        else ("Simulate how fixed persona families react to this market narrative.")
     )
     if len(question) > MAX_QUESTION:
         raise ValueError(f"The simulation question is capped at {MAX_QUESTION} characters")
@@ -502,10 +599,21 @@ def save_report(report: dict[str, Any]) -> Path:
     if not folder.is_relative_to(base):
         raise ValueError("The narrative report path escaped its data directory")
     folder.mkdir(parents=True, exist_ok=True)
-    meta = {key: report.get(key) for key in (
-        "report_id", "simulation_id", "graph_id", "simulation_requirement",
-        "status", "error", "outline", "markdown_content", "created_at", "completed_at",
-    )}
+    meta = {
+        key: report.get(key)
+        for key in (
+            "report_id",
+            "simulation_id",
+            "graph_id",
+            "simulation_requirement",
+            "status",
+            "error",
+            "outline",
+            "markdown_content",
+            "created_at",
+            "completed_at",
+        )
+    }
     meta["markdown_content"] = ""
     (folder / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8"
