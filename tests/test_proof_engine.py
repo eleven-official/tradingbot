@@ -250,6 +250,18 @@ def test_api_surfaces_compilation_and_feed_errors_honestly(monkeypatch):
     assert response.status_code == 422
     assert "momentum / trend" in response.json()["detail"]
 
+
+def test_a_bad_description_is_a_text_error_even_when_the_feed_is_down(monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise binance_market_data.MarketDataError("public market data unavailable")
+
+    monkeypatch.setattr(binance_market_data, "get_binance_spot_history", unavailable)
+    response = client.post("/api/proof/assess", json={"description": "make me rich by friday"})
+    assert response.status_code == 422
+    assert "momentum / trend" in response.json()["detail"]
+
+
+def test_api_maps_market_data_outage_to_gateway_error(monkeypatch):
     def unavailable(*args, **kwargs):
         raise binance_market_data.MarketDataError("public market data unavailable")
 

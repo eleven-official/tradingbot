@@ -526,6 +526,14 @@ async def proof_assess(payload: ProofRequest):
     from loki.api.binance_market_data import MarketDataError, get_binance_spot_history
     from loki.api.proof_engine import ProofError, safe_assess
 
+    # Compile BEFORE touching the feed: a bad description is a text error and
+    # must read as one even when public market data is unreachable.
+    try:
+        from loki.api.proof_engine import compile_spec
+
+        compile_spec(payload.description)
+    except ProofError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     try:
         candles = await asyncio.to_thread(
             get_binance_spot_history, payload.symbol or "BTCUSDT", payload.interval, payload.bars
