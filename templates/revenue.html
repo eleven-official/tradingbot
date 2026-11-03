@@ -41,6 +41,7 @@
     <div class="mark-row"><span class="mark" aria-hidden="true">L</span><b>LOKI</b><span>REVENUE · HOW THE HOUSE IS PAID</span></div>
     <p class="eyebrow">PROFIT-SHARE, STATED PLAINLY</p>
     <h1>The house keeps <em>30%</em> of recorded profits.</h1>
+    <div class="draft-band" style="margin: 0 0 18px;"><b>PROPOSED — not yet in force.</b> The model below is how the house intends to charge once a formal agreement is signed. No invoice is issued and no payment is collected through Loki today; this becomes binding only when the operator publishes a signed agreement.</div>
     <p class="muted">Loki bills a share of real, recorded profits — not of forecasts, not of paper gains, and never of anything a visitor plays with. This page explains the model. The figures themselves stay on the operator's side of the wall: money data answers only to the operator's key, so nothing about your use of Loki is posted here.</p>
 
     <div class="card">
@@ -55,23 +56,30 @@
     </div>
 
     <div class="card">
-      <h2>Where the books live</h2>
-      <p><span class="pill">{{ ledger_mode|upper }}</span></p>
-      <p>{{ ledger_note }}</p>
+      <h2>The definitions — net profit, losses, periods, disputes</h2>
       <dl class="books">
-        <div><dt>Shared</dt><dd>a `revenue_ledger` table in the project database — survives deploys. Run <strong>supabase/schema_revenue.sql</strong> once.</dd></div>
-        <div><dt>Server-local</dt><dd>a file beside this Loki server — real bookkeeping for this deployment.</dd></div>
-        <div><dt>Unavailable</dt><dd>ephemeral hosting with no database — nothing can be recorded, and it says so.</dd></div>
+        <div><dt>Net realised profit</dt><dd>realised gains minus realised losses and recorded expenses for a subject, in a reporting period — closed, cash-settled trades only. Unrealised gains and paper or simulated results are never counted.</dd></div>
+        <div><dt>Losses</dt><dd>recorded as negative events and pull the books down dollar for dollar; a later correction is recorded with its provenance and never silently rewrites the past.</dd></div>
+        <div><dt>Reporting periods</dt><dd>calendar months (UTC), computed and (once invoicing exists) invoiced monthly.</dd></div>
+        <div><dt>Rounding</dt><dd>exact decimal math, rounded once, half-up, to the cent, at the moment the fee is computed.</dd></div>
+        <div><dt>Disputes</dt><dd>raise one in writing against a specific recorded event within 30 days, to the operator contact on <a href="/transparency" style="color:#8bdad4">/transparency</a>. The event stays visible with a dispute note while reviewed; a disputed fee is withheld until the dispute is closed.</dd></div>
       </dl>
     </div>
 
     <div class="card">
+      <h2>Where the books live</h2>
+      <p><span class="pill">{{ ledger_mode|upper }}</span></p>
+      <p>{{ ledger_note }}</p>
+      <p>The ledger is kept server-side on this deployment, as a durable store when one is available. Bookkeeping details are documented in the operator's handbook, not on this page.</p>
+    </div>
+
+    <div class="card">
       <h2>The agreement itself (draft)</h2>
-      <p>Fee: 30% of a subject's recorded monthly profit, invoiced monthly, computed by this ledger from the events the operator records. It is a service-side bookkeeping system; it does not execute payments yet — a later wave wires invoicing through a payment provider the operator owns.</p>
+      <p>Fee: 30% of a subject's recorded monthly net realised profit, invoiced monthly once invoicing exists, computed by this ledger from the events the operator records. It does not execute payments yet — a later wave wires invoicing through a payment provider the operator owns.</p>
       <div class="draft-band"><b>Draft, not legal advice.</b> The wording of an actual profit-share agreement — measurement, disputes, clawbacks, taxes — must be settled by the operator with a qualified professional before anyone signs anything or a cent moves.</div>
     </div>
 
-    <p class="foot">Loki {{ version }} · <a href="/">Back to the workspace</a></p>
+    <p class="foot">Loki {{ version }} · <a href="/transparency">Who runs Loki</a> · <a href="/terms">Terms</a> · <a href="/">Back to the workspace</a></p>
   </div>
 </body>
 </html>

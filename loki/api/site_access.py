@@ -45,8 +45,8 @@ _DEFAULT_CODE = "slayterisgay"
 # The Terms of Use a visitor ticks before the door opens. Version stamps every
 # acceptance cookie: bump TERMS_VERSION whenever the document changes, and every
 # browser re-gates once to accept the new words.
-TERMS_VERSION = 4
-TERMS_UPDATED = "2026-10-25"
+TERMS_VERSION = 5
+TERMS_UPDATED = "2026-11-03"
 
 _COOKIE_SALT = b"loki-site-access-v1"
 _PROCESS_SECRET = secrets.token_bytes(32)

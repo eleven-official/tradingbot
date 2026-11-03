@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#060a12">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loki · Transparency</title>
+  <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}">
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { min-height: 100vh; background: radial-gradient(ellipse at 0 0, #153337, transparent 55%), #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 40px 20px 60px; }
+    .wrap { width: min(860px, 100%); margin: 0 auto; }
+    .mark-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 30px; }
+    .mark { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 1px solid rgba(139, 218, 212, .45); border-radius: 11px; font-weight: 800; color: #8bdad4; font-size: 18px; }
+    .mark-row b { font-size: 20px; letter-spacing: .04em; } .mark-row span { color: #7f93a8; font-size: 12px; }
+    .eyebrow { color: #8bdad4; letter-spacing: .16em; font-size: 11px; font-weight: 600; margin-bottom: 8px; }
+    h1 { font-size: clamp(36px, 7vw, 60px); letter-spacing: -.045em; line-height: 1.1; margin-bottom: 10px; } h1 em { color: #b8f0d8; font-style: normal; }
+    .card { background: rgba(14, 22, 36, .82); border: 1px solid rgba(139, 218, 212, .18); border-radius: 20px; padding: 24px 30px; margin: 0 0 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
+    .card h2 { font-size: 17px; color: #d9f4ea; margin-top: 0; margin-bottom: 10px; }
+    .card p { color: #9fb0c2; font-size: 15px; line-height: 1.85; margin-bottom: 8px; }
+    .card p:last-child { margin-bottom: 0; }
+    .card p strong { color: #c9e9dd; }
+    dl { margin: 0; }
+    dl div { margin-bottom: 10px; }
+    dt { color: #c9e9dd; font-weight: 600; font-size: 14px; }
+    dd { color: #9fb0c2; font-size: 14px; line-height: 1.75; margin-left: 0; }
+    .foot { margin-top: 26px; color: #7f93a8; font-size: 12px; }
+    .foot a { color: #8bdad4; }
+    a { color: #8bdad4; }
+    a:focus-visible { outline: 2px solid #baf0d8; outline-offset: 4px; }
+    @media (max-width: 480px) { body { padding: 24px 16px; } .card { padding: 22px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="mark-row"><span class="mark" aria-hidden="true">L</span><b>LOKI</b><span>WHO RUNS THIS · PRIVACY · DATA</span></div>
+    <p class="eyebrow">OPERATOR, OWNERSHIP, PRIVACY — STATED PLAINLY</p>
+    <h1>Who is behind <em>Loki</em>.</h1>
+
+    <div class="card">
+      <h2>The operator</h2>
+      <p><strong>{{ operator_name }}</strong> operates this Loki deployment {{ operated_since }}and owns it outright.</p>
+      <p><strong>Contact:</strong> {{ contact_line }}</p>
+      <p><strong>Support &amp; disputes:</strong> write to that contact with the page you were on and what happened; revenue disputes go through the process defined on the revenue page.</p>
+    </div>
+
+    <div class="card">
+      <h2>What Loki is, honestly</h2>
+      <p>Loki is a self-service research, testing and paper-trading workspace with a separate live-trading runner that uses your own broker account. It is <strong>research software, not advice</strong>; nothing here is a recommendation to buy or sell, and simulated results are not money. The commercial fee model is explained on <a href="/revenue">/revenue</a> and is marked <strong>{{ revenue_status }}</strong> there until the operator signs a formal agreement.</p>
+    </div>
+
+    <div class="card">
+      <h2>Privacy, in short</h2>
+      <p>{{ privacy_summary }}</p>
+      <p>The full legal framing lives in the <a href="/terms">Terms of Use</a>, which you tick at the gate. If anything here and there ever disagree, the terms win.</p>
+    </div>
+
+    <div class="card">
+      <h2>Data: where it lives, when it goes</h2>
+      <dl>
+        <div><dt>Browser-only data</dt><dd>journals, game progress and workspace copies stay on your device until you explicitly save them to your account.</dd></div>
+        <div><dt>Cloud account data</dt><dd>what you save to your account is stored in the project database, private to your sign-in.</dd></div>
+        <div><dt>Retention &amp; deletion</dt><dd>{{ retention_summary }} Account export and deletion run through <a href="/account">/account</a>.</dd></div>
+        <div><dt>Money data</dt><dd>revenue books are private operator records; the public revenue page explains the model, never the figures.</dd></div>
+      </dl>
+    </div>
+
+    <p class="foot">Loki {{ version }} · <a href="/terms">Terms of Use</a> · <a href="/revenue">Revenue model</a> · <a href="/">Workspace</a></p>
+  </div>
+</body>
+</html>

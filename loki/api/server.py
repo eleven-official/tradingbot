@@ -213,6 +213,39 @@ async def terms_page(request: Request):
     )
 
 
+@app.get("/transparency", response_class=HTMLResponse)
+async def transparency_page(request: Request):
+    """Who runs Loki, how to reach them, and the plain-language privacy/data summary."""
+    import os
+
+    name = (os.environ.get("LOKI_OPERATOR_NAME") or "").strip()
+    email = (os.environ.get("LOKI_OPERATOR_EMAIL") or "").strip()
+    since = (os.environ.get("LOKI_OPERATOR_SINCE") or "").strip()
+    from loki.api.loki_wording import PRIVACY_SUMMARY, RETENTION_SUMMARY, revenue_status
+
+    status = revenue_status()
+    contact = (
+        f'<a href="mailto:{email}">{email}</a>'
+        if email
+        else "set by this deployment's operator — configure the contact address when publishing"
+    )
+    subject = name or "The operator of this Loki deployment"
+    operated_on = f"(operating since {since}) " if since else ""
+    return templates.TemplateResponse(
+        request=request,
+        name="transparency.html",
+        context={
+            "version": __version__,
+            "operator_name": subject,
+            "operated_since": operated_on,
+            "contact_line": contact,
+            "privacy_summary": PRIVACY_SUMMARY,
+            "retention_summary": RETENTION_SUMMARY,
+            "revenue_status": status,
+        },
+    )
+
+
 @app.get("/account", response_class=HTMLResponse)
 async def account_page(request: Request):
     if not site_access.read_session_cookie_value(request.cookies.get(site_access.SESSION_COOKIE)):

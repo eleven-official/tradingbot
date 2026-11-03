@@ -50,7 +50,7 @@
     <nav class="terms-nav" aria-label="Terms navigation"><a href="/gate">Back to entry</a><a href="#risk">Profit disclaimer</a><a href="#liability">Liability</a></nav>
     <div class="card">
       <h2>1. What Loki is</h2>
-      <p>Loki is a self-service research and trading workspace. The paper simulator runs in <strong>strict paper mode</strong>: simulated orders and simulated money. The separate local Alpaca live runner can submit real orders only after you connect a live account, enter trading limits and press Start LIVE AI trading. Broker orders and positions may remain after you stop the runner or close the page.</p>
+      <p>Loki is a self-service research and trading workspace. The paper simulator runs in <strong>strict paper mode</strong>: simulated orders and simulated money. The separate local Alpaca live runner can submit real orders only after you connect a live account, enter trading limits and press Start LIVE AI trading. Broker orders and positions may remain after you stop the runner or close the page. <strong>Stopping automation never closes existing broker positions — cancel or manage them with your broker.</strong></p>
       <p>Loki is <strong>free to use</strong> — no subscription and no paywall. The one thing the house asks for is its fee: <strong>30% of recorded profits</strong> (§5 below, and the model explained on <a href="/revenue" style="color:#8bdad4">/revenue</a>). Nothing is charged automatically, and no visitor's paper results or game points are ever treated as money.</p>
     </div>
 
@@ -74,16 +74,16 @@
       <ul>
         <li><strong>Paper is paper; live is live.</strong> Simulated balances are not money. Explicitly started live automation submits broker orders under your own account and agreements. Check the selected account and limits before starting. Daily loss pauses prevent new entries, not guaranteed losses or automatic liquidation; protective orders can slip.</li>
         <li>Do not attempt to break the gate, scrape other people's data, or use Loki to harm others.</li>
-        <li>The fee model, when a subject is real, runs on the public page <a href="/revenue" style="color:#8bdad4">/revenue</a>: 30% of recorded profits, computed only from events the operator actually records.</li>
+        <li>The fee model, when a subject is real, runs on the public page <a href="/revenue" style="color:#8bdad4">/revenue</a>: 30% of <strong>net realised profit</strong> — realised gains minus realised losses and expenses, closed trades only — computed only from events the operator actually records, and marked <strong>proposed</strong> there until the operator signs a formal agreement. Disputes go through the process defined on that page, to the contact on <a href="/transparency" style="color:#8bdad4">/transparency</a>.</li>
       </ul>
     </div>
 
     <div class="card">
       <h2>6. Changes and contact</h2>
-      <p>These terms carry a version number. When they change, every browser is asked to tick again at the gate once — the old tick does not carry over. Questions go to the operator of this deployment.</p>
+      <p>These terms carry a version number. When they change, every browser is asked to tick again at the gate once — the old tick does not carry over. Questions go to the operator of this deployment: <a href="/transparency" style="color:#8bdad4">/transparency</a>.</p>
     </div>
 
-    <p class="foot">Loki {{ version }} · <a href="/">Back to the workspace</a> · <a href="/revenue">Revenue model</a></p>
+    <p class="foot">Loki {{ version }} · <a href="/transparency">Who runs Loki</a> · <a href="/revenue">Revenue model</a> · <a href="/">Back to the workspace</a></p>
   </div>
 </body>
 </html>
