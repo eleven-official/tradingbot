@@ -512,45 +512,75 @@ class ProofRequest(BaseModel):
     description: str = Field(min_length=1, max_length=2000)
     symbol: str = Field(default="", max_length=15)
     interval: str = Field(default="1h", max_length=8)
-    bars: int = Field(default=1000, ge=300, le=5000)
-    starting_capital: float = Field(default=10_000.0, gt=0, le=1e9)
-    risk_percent: float = Field(default=1.0, ge=0.05, le=5.0)
+    bars: int = Field(default=1000, ge=300, le=3000)
+    starting_capital: float = Field(default=None, gt=0, le=1e9)
+    risk_percent: float = Field(default=None, ge=0.05, le=5.0)
     max_holding_bars: int = Field(default=20, ge=1, le=100)
 
 
-@app.post("/api/proof/assess")
-async def proof_assess(payload: ProofRequest):
-    """The Proof Engine: plain English -> fixed rules -> falsification battery -> evidence report."""
-    import asyncio
+_PROOF_GATE = asyncio.Semaphore(2)
+_PROOF_RUN_TIMEOUT_SECONDS = 90.0
 
+
+@app.post("/api/proof/assess")
+async def proof_assess(requestable: Request, payload: ProofRequest):
+    """The Proof Engine: plain English -> fixed rules -> falsification battery -> evidence report.
+
+    Abuse protection is explicit: per-identity windowed rate limit, a bounded
+    concurrency gate, and a hard timeout — each run costs three replays and a
+    public-feed fetch, and that cost is capped per deployment.
+    """
     from loki.api.binance_market_data import MarketDataError, get_binance_spot_history
-    from loki.api.proof_engine import ProofError, safe_assess
+    from loki.api.proof_engine import ProofError, compile_spec, rate_limited, safe_assess
+
+    client_ip = requestable.client.host if requestable.client else "unknown"
+    if rate_limited(f"proof:{client_ip}"):
+        raise HTTPException(
+            status_code=429,
+            detail="Proof Engine is rate limited — the same description and dataset reproduce "
+            "the same report, so wait a minute instead of re-running it.",
+        )
 
     # Compile BEFORE touching the feed: a bad description is a text error and
     # must read as one even when public market data is unreachable.
     try:
-        from loki.api.proof_engine import compile_spec
-
         compile_spec(payload.description)
     except ProofError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     try:
-        candles = await asyncio.to_thread(
-            get_binance_spot_history, payload.symbol or "BTCUSDT", payload.interval, payload.bars
+        candles = await asyncio.wait_for(
+            _PROOF_GATE_ACQUIRE(
+                get_binance_spot_history,
+                payload.symbol or "BTCUSDT",
+                payload.interval,
+                payload.bars,
+            ),
+            timeout=_PROOF_RUN_TIMEOUT_SECONDS,
         )
         return safe_assess(
             candles,
             payload.description,
             symbol=payload.symbol,
             interval=payload.interval,
-            starting_capital=payload.starting_capital,
             risk_percent=payload.risk_percent,
+            starting_capital=payload.starting_capital,
             max_holding_bars=payload.max_holding_bars,
         )
     except MarketDataError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
     except ProofError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except asyncio.TimeoutError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="The proof run timed out — try fewer candles while the feed recovers.",
+        ) from error
+
+
+async def _PROOF_GATE_ACQUIRE(fetch, *args):
+    """Bounded concurrency: at most two proof runs compute in this process at once."""
+    async with _PROOF_GATE:
+        return await asyncio.to_thread(fetch, *args)
 
 
 @app.post("/api/research/evaluate")

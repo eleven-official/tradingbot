@@ -451,6 +451,7 @@ button.tag:hover{color:var(--text);border-color:#5a7a63}
 .proof-verdict { border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; margin: 14px 0; background: #0f1c2c; }
 .proof-verdict-rejected { border-color: rgba(255, 138, 128, .5); background: rgba(60, 26, 26, .35); }
 .proof-verdict-insufficient { border-color: rgba(255, 199, 128, .45); background: rgba(64, 46, 18, .28); }
+.proof-verdict-provisional { border-color: rgba(255, 214, 130, .5); background: rgba(74, 56, 20, .32); }
 .proof-verdict-supported { border-color: rgba(139, 218, 212, .55); background: rgba(23, 55, 51, .4); }
 .proof-verdict p { margin: 8px 0 2px; color: #9fb0c2; }
 .proof-verdict b { letter-spacing: .06em; }

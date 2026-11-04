@@ -3,6 +3,7 @@
 This adapter intentionally uses only public market-data endpoints.  It has no
 credential handling, account access, or order-submission code.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,9 +17,10 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import re
 
-
 BINANCE_SPOT_URL = "https://api.binance.com"
-ALLOWED_INTERVALS = frozenset({"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"})
+ALLOWED_INTERVALS = frozenset(
+    {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"}
+)
 SYMBOL_PATTERN = re.compile(r"^[A-Z0-9]{5,20}$")
 _CACHE_TTL_SECONDS = 10.0
 _snapshot_cache: dict[tuple[str, str], tuple[float, "MarketSnapshot"]] = {}
@@ -71,7 +73,9 @@ class MarketSnapshot:
 def _validate_symbol(symbol: str) -> str:
     normalized = str(symbol).upper().strip()
     if not SYMBOL_PATTERN.fullmatch(normalized):
-        raise MarketDataError("symbol must contain 5-20 uppercase letters or digits, for example BTCUSDT")
+        raise MarketDataError(
+            "symbol must contain 5-20 uppercase letters or digits, for example BTCUSDT"
+        )
     return normalized
 
 
@@ -84,7 +88,9 @@ def _validate_interval(interval: str) -> str:
 
 def _fetch_json(path: str, params: dict[str, Any]) -> Any:
     url = f"{BINANCE_SPOT_URL}{path}?{urlencode(params)}"
-    request = Request(url, headers={"Accept": "application/json", "User-Agent": "LokiPaperScout/1.0"})
+    request = Request(
+        url, headers={"Accept": "application/json", "User-Agent": "LokiPaperScout/1.0"}
+    )
     try:
         with urlopen(request, timeout=5) as response:
             payload = response.read().decode("utf-8")
@@ -240,7 +246,10 @@ def _strategy_candidates(
                 (latest["close"] <= lower_band, "Close reached the lower 20-bar band."),
                 (trend != "BEARISH", "Trend is not classified as bearish."),
                 (volume_ratio >= 0.8, "Participation is at least 0.8× baseline."),
-                (latest["close"] > latest["open"] or latest["low"] < previous["low"], "Price showed a reversal attempt."),
+                (
+                    latest["close"] > latest["open"] or latest["low"] < previous["low"],
+                    "Price showed a reversal attempt.",
+                ),
             ],
         ),
     }
@@ -329,27 +338,78 @@ def get_binance_spot_snapshot(symbol: str, interval: str = "1m") -> MarketSnapsh
     return snapshot
 
 
-
-
 def get_binance_spot_history(
     symbol: str, interval: str = "1h", limit: int = 500
 ) -> tuple[dict[str, float], ...]:
-    """Fetch recent completed candles from Binance Spot's public endpoint."""
+    """Fetch recent completed candles from Binance Spot's public endpoint.
+
+    Requests above the single-page cap walk backwards one page at a time
+    (``endTime`` = the oldest collected open time minus one), then the
+    pages are stitched ascending. Duplicate stamps across page boundaries
+    are dropped; true disorder is refused.
+    """
     normalized_symbol = _validate_symbol(symbol)
     normalized_interval = _validate_interval(interval)
-    if isinstance(limit, bool) or not isinstance(limit, int) or not 120 <= limit <= 1000:
-        raise MarketDataError("history bars must be between 120 and 1000")
-    payload = _fetch_json(
-        "/api/v3/klines",
-        {"symbol": normalized_symbol, "interval": normalized_interval, "limit": limit},
-    )
-    if not isinstance(payload, list):
-        raise MarketDataError("Binance Spot returned an unexpected candle response")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 120 <= limit <= 3000:
+        raise MarketDataError("history bars must be between 120 and 3000")
+
+    PAGE_SIZE = 1000
+    _interval_ms = {
+        "1m": 60_000,
+        "3m": 180_000,
+        "5m": 300_000,
+        "15m": 900_000,
+        "30m": 1_800_000,
+        "1h": 3_600_000,
+        "2h": 7_200_000,
+        "4h": 14_400_000,
+        "6h": 21_600_000,
+        "8h": 28_800_000,
+        "12h": 43_200_000,
+        "1d": 86_400_000,
+    }[normalized_interval]
+
+    pages: list[list[Any]] = []
+    end_ms: int | None = None
+    remaining = limit
+    # Hard iteration ceiling: even a gappy feed cannot spin this loop forever
+    # — one page per interval, bounded by the requested depth plus slack.
+    for _ in range(limit // PAGE_SIZE + 3):
+        if remaining <= 0:
+            break
+        params: dict[str, Any] = {
+            "symbol": normalized_symbol,
+            "interval": normalized_interval,
+            "limit": min(remaining, PAGE_SIZE),
+        }
+        if end_ms is not None:
+            params["endTime"] = end_ms
+        payload = _fetch_json("/api/v3/klines", params)
+        if not isinstance(payload, list):
+            raise MarketDataError("Binance Spot returned an unexpected candle response")
+        if not payload:
+            break  # reached the listed dawn of history for this symbol
+        pages.append(payload)
+        remaining -= len(payload)
+        try:
+            oldest_open_ms = int(payload[0][0])
+        except (IndexError, TypeError, ValueError) as error:
+            raise MarketDataError("Binance Spot returned malformed candle data") from error
+        next_end = oldest_open_ms - 1
+        if end_ms is not None and next_end >= end_ms:
+            break  # provider ignored endTime; refuse to walk in circles
+        end_ms = next_end
+        if len(payload) < params["limit"]:
+            break  # exactly one page short: history ended, no older candles
+
+    rows: list[Any] = []
+    for page in reversed(pages):
+        rows.extend(page)
 
     now_ms = time() * 1000
     candles: list[dict[str, float]] = []
     previous_time = -1.0
-    for row in payload:
+    for row in rows:
         if not isinstance(row, (list, tuple)) or len(row) < 7:
             raise MarketDataError("Binance Spot returned malformed candle data")
         candle_time = _number("candle time", row[0]) / 1000
@@ -361,6 +421,8 @@ def get_binance_spot_history(
         volume = _number("candle volume", row[5])
         if close_time_ms > now_ms:
             continue
+        if candle_time == previous_time:
+            continue  # same candle delivered on two pages — keep the first
         if candle_time <= previous_time:
             raise MarketDataError("Binance Spot returned candles out of chronological order")
         if (

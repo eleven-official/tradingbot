@@ -24,6 +24,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
+import time
 from typing import Any, Mapping, Sequence
 
 from loki.api.strategy_backtest import (
@@ -41,7 +43,44 @@ BATTERY = (
 )
 
 _MIN_HOLDOUT_TRADES = 3  # below this the sample cannot speak
-_SUPPORTED_TRADES = 8  # a supported verdict wants this many holdout trades
+_PROVISIONAL_TRADES = 8  # thin: enough to read, never enough to support
+_SUPPORTED_TRADES = 15  # a supported verdict wants this many holdout trades
+
+# Abuse protection for /api/proof/assess: each run is three replays plus a
+# public-feed fetch, so the door shuts per identity before it gets expensive.
+PROOF_RATE_WINDOW_SECONDS = 60.0
+PROOF_RATE_MAX_PER_WINDOW = 8
+_RATE_KEYS_MAX = 512
+_rate_lock = threading.Lock()
+_rate_hits: dict[str, list[float]] = {}
+
+
+def rate_limited(key: str, now: float | None = None) -> bool:
+    """True when the key has had its quota already in the current window."""
+    stamp = time.monotonic() if now is None else float(now)
+    with _rate_lock:
+        hits = _rate_hits.get(key)
+        if hits is None:
+            if len(_rate_hits) >= _RATE_KEYS_MAX:
+                # Bounded key shelf: drop the oldest keys, never grow forever.
+                oldest = sorted(_rate_hits, key=lambda k: min(_rate_hits[k]))
+                for doomed in oldest[: _RATE_KEYS_MAX // 4]:
+                    _rate_hits.pop(doomed, None)
+            hits = []
+            _rate_hits[key] = hits
+        window = [hit for hit in hits if stamp - hit < PROOF_RATE_WINDOW_SECONDS]
+        if len(window) >= PROOF_RATE_MAX_PER_WINDOW:
+            _rate_hits[key] = window
+            return True
+        window.append(stamp)
+        _rate_hits[key] = window
+        return False
+
+
+def reset_rate_limiter() -> None:
+    with _rate_lock:
+        _rate_hits.clear()
+
 
 _FAMILY_WORDS = {
     "trend_following": (
@@ -83,7 +122,7 @@ _DRAWDOWN_RE = re.compile(
     r"(?:max(?:imum)?\s+)?(\d+(?:\.\d+)?)\s*%",
     re.IGNORECASE,
 )
-_CAPITAL_RE = re.compile(r"\$\s*(\d[\d,]*)")
+_CAPITAL_RE = re.compile(r"\$\s*(\d[\d,]*)|(\d[\d,]*)\s*(?:dollars|usd|usdt)\b", re.IGNORECASE)
 _RISK_RE = re.compile(r"risk(?:ing)?\s*(\d+(?:\.\d+)?)\s*%", re.IGNORECASE)
 
 
@@ -117,12 +156,8 @@ def compile_spec(description: str) -> dict[str, Any]:
     do is listed under ``not modelled`` so nothing is silently ignored.
     """
     family, matched = _parse_description(description)
-    declared_drawdown: float | None = None
-    match = _DRAWDOWN_RE.search(description)
-    if match:
-        declared_drawdown = float(match.group(1))
     not_modelled: list[str] = []
-    if re.search(r"\bshort\b|\bshorts?\b|\bsell\b|\bsell\b", description.lower()):
+    if re.search(r"\bshort\b|\bshorts?\b|\bsell\b", description.lower()):
         not_modelled.append("short selling — this replay is long-only")
     indicators = re.findall(
         r"\b(macd|bollinger|ichimoku|stochastic|vwap|order book|fundamentals)\b",
@@ -132,8 +167,22 @@ def compile_spec(description: str) -> dict[str, Any]:
         not_modelled.append(f"{name.upper()} — not part of the fixed rule set")
     if re.search(r"\bintraday scalping?\b", description.lower()):
         not_modelled.append("scalping execution assumptions — replay uses fixed bar fills")
+    declared_drawdown: float | None = None
+    match = _DRAWDOWN_RE.search(description)
+    if match:
+        declared_drawdown = float(match.group(1))
+    declared_risk: float | None = None
+    risk_match = _RISK_RE.search(description)
+    if risk_match:
+        declared_risk = float(risk_match.group(1))
+    declared_capital: float | None = None
+    capital_match = _CAPITAL_RE.search(description)
+    if capital_match:
+        # Two forms: "$N" fills group 1; "N dollars/usd/usdt" fills group 2.
+        digits = capital_match.group(1) or capital_match.group(2)
+        declared_capital = min(float(digits.replace(",", "")), 1e9)
     spec = {
-        "compiler": "deterministic keyword classification; not comprehension",
+        "compiler": "deterministic keyword classification; not comprehension; edit this description between runs to change what runs",
         "matched_words": matched,
         "family": family,
         "family_name": STRATEGY_NAMES[family],
@@ -147,6 +196,20 @@ def compile_spec(description: str) -> dict[str, Any]:
     }
     if declared_drawdown is not None:
         spec["declared_drawdown_limit"] = declared_drawdown
+    else:
+        not_modelled.append("any drawdown limit — none was declared in words")
+    if declared_risk is not None:
+        if not 0.05 <= declared_risk <= 5.0:
+            not_modelled.append(
+                "the declared per-trade risk outside the 0.05%-5% replay band — the nearest bound is applied"
+            )
+        spec["declared_risk_percent"] = declared_risk
+    else:
+        not_modelled.append("per-trade risk — none was declared in words; the default is applied")
+    if declared_capital is not None:
+        spec["declared_capital"] = declared_capital
+    else:
+        not_modelled.append("starting capital — none was declared in words; the default is applied")
     return spec
 
 
@@ -206,12 +269,20 @@ def attempt_falsification(
                 f"Only {trades} closed holdout trades — below {_MIN_HOLDOUT_TRADES}, the window cannot speak.",
             )
         )
+    elif trades < _PROVISIONAL_TRADES:
+        checks.append(
+            _check(
+                "holdout_sample_size",
+                "watch",
+                f"{trades} closed holdout trades — too thin to establish anything; at least {_PROVISIONAL_TRADES} for a readable result, {_SUPPORTED_TRADES}+ for full support.",
+            )
+        )
     elif trades < _SUPPORTED_TRADES:
         checks.append(
             _check(
                 "holdout_sample_size",
                 "watch",
-                f"{trades} closed holdout trades — enough to read, thin for a supported verdict (want {_SUPPORTED_TRADES}+).",
+                f"{trades} closed holdout trades — enough to read, not enough on its own to establish an edge (want {_SUPPORTED_TRADES}+).",
             )
         )
     else:
@@ -407,9 +478,21 @@ def verdict_for(checks: Sequence[Mapping[str, str]]) -> dict[str, Any]:
             "headline": "The idea did not survive falsification — the reasons are listed, not hidden.",
             "reasons": fails,
         }
+    if any(status == "watch" for status in statuses):
+        return {
+            "status": "provisional support (paper research, not advice)",
+            "headline": (
+                "Survived the battery with unresolved warnings — passed this limited test, "
+                "not independent validation; unresolved warnings keep the verdict provisional."
+            ),
+            "reasons": [c["detail"] for c in checks if c["status"] == "watch"],
+        }
     return {
         "status": "tested-supported (paper research, not advice)",
-        "headline": "The idea survived this battery; it still has to live in paper before anything else, and nothing here promises income.",
+        "headline": (
+            "Passed every check in this limited battery — that is not independent validation, "
+            "it still has to live in paper before anything else, and nothing here promises income."
+        ),
         "reasons": [c["detail"] for c in checks if c["status"] == "pass"],
     }
 
@@ -429,35 +512,70 @@ def fingerprint(report_inputs: Mapping[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def dataset_digest(candles: Sequence[Mapping[str, Any]]) -> str:
+    """sha256 over every candle value — the same series must reproduce the
+    same fingerprint, and two different series with matching endpoints or
+    lengths must not."""
+    canonical = [
+        [
+            float(row["time"]),
+            round(float(row["open"]), 10),
+            round(float(row["high"]), 10),
+            round(float(row["low"]), 10),
+            round(float(row["close"]), 10),
+            round(float(row["volume"]), 10),
+        ]
+        for row in candles
+    ]
+    payload = json.dumps(canonical, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def assess(
     candles: Sequence[Mapping[str, Any]],
     description: str,
     *,
     symbol: str = "",
     interval: str = "",
-    starting_capital: float = 10_000.0,
-    risk_percent: float = 1.0,
+    starting_capital: float | None = None,
+    risk_percent: float | None = None,
     max_holding_bars: int = 20,
 ) -> dict[str, Any]:
-    """Full pass: compile, deport to the battery, falsify, report. Bounded raises."""
+    """Full pass: compile, resolve the config, run the battery, falsify, report.
+
+    Values the description declares in words win; explicit keyword arguments
+    override words; the defaults apply only when neither speaks.
+    """
     spec = compile_spec(description)
-    runs = run_battery(candles, spec["family"], starting_capital, risk_percent, max_holding_bars)
+    risk_arg = risk_percent
+    if risk_arg is None:
+        risk_arg = spec.get("declared_risk_percent", 1.0)
+    applied_risk = max(0.05, min(float(risk_arg), 5.0))
+    capital_arg = starting_capital
+    if capital_arg is None:
+        capital_arg = spec.get("declared_capital", 10_000.0)
+    applied_capital = max(1.0, min(float(capital_arg), 1e9))
+    spec["applied_risk_percent"] = applied_risk
+    spec["applied_starting_capital"] = applied_capital
+    runs = run_battery(candles, spec["family"], applied_capital, applied_risk, max_holding_bars)
     checks = attempt_falsification(spec, runs)
     verdict = verdict_for(checks)
     panel = reviewers(checks)
-    first_time = candles[0]["time"]  # run_strategy_backtest already normalized content
-    last_time = candles[-1]["time"]
+    digest = dataset_digest(candles)
     stamp = {
         "engine": "loki-proof-engine",
-        "proof_version": PROOF_VERSION,
-        "family": spec["family"],
-        "starting_capital": starting_capital,
-        "risk_percent": risk_percent,
+        "engine_version": PROOF_VERSION,
+        "spec": spec,
+        "applied_starting_capital": applied_capital,
+        "applied_risk_percent": applied_risk,
         "max_holding_bars": max_holding_bars,
         "battery": [list(level) for level in BATTERY],
+        "data_sha256": digest,
+        "symbol": (symbol or "").strip().upper(),
+        "interval": interval,
         "bar_count": len(candles),
-        "first_time": first_time,
-        "last_time": last_time,
+        "first_time": candles[0]["time"],
+        "last_time": candles[-1]["time"],
     }
     return {
         "engine": "loki-proof-engine",
@@ -472,10 +590,24 @@ def assess(
         "reviewers": panel,
         "verdict": verdict,
         "limitations": list(_LIMITATIONS),
+        "repro": {
+            "engine_version": PROOF_VERSION,
+            "dataset_rows": len(candles),
+            "dataset_sha256": digest,
+            "config": {
+                "family": spec["family"],
+                "applied_starting_capital": applied_capital,
+                "applied_risk_percent": applied_risk,
+                "max_holding_bars": max_holding_bars,
+                "battery": [list(level) for level in BATTERY],
+            },
+            "first_time": candles[0]["time"],
+            "last_time": candles[-1]["time"],
+        },
         "fingerprint": {
             "algorithm": "sha256",
             "value": fingerprint(stamp),
-            "inputs": "rule family, replay config, battery levels, bar count, window endpoints",
+            "inputs": "compiled spec with applied config, battery levels, full canonical candle values, symbol, interval, window endpoints, engine version",
         },
         "disclaimer": (
             "Evidence report, not advice and not a recommendation: describes what happened "

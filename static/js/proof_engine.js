@@ -17,9 +17,22 @@ function proofPercent(value) {
   return Number.isFinite(Number(value)) ? `${Number(value).toFixed(2)}%` : "—";
 }
 
+// fee_bps / slippage_bps arrive in basis points, not percent — 10 bps is
+// 0.10%, so a percent formatter reading them would overstate costs 100x.
+function proofBps(value) {
+  return Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)} bps` : "—";
+}
+
+function proofDollars(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "—";
+  return `$${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
 function verdictClass(status) {
   if (status.startsWith("rejected")) return "proof-verdict-rejected";
   if (status.startsWith("insufficient")) return "proof-verdict-insufficient";
+  if (status.startsWith("provisional")) return "proof-verdict-provisional";
   return "proof-verdict-supported";
 }
 
@@ -66,7 +79,7 @@ function renderProofBattery(battery) {
   const body = document.createElement("tbody");
   for (const run of battery) {
     const row = document.createElement("tr");
-    row.innerHTML = `<td>${run.run}</td><td>${proofPercent(run.fee_bps)}</td><td>${proofPercent(run.slippage_bps)}</td><td>${run.holdout.trade_count}</td><td>${Number(run.holdout.expectancy_r).toFixed(3)}R</td><td>${proofPercent(run.holdout.net_return_percent)}</td><td>${proofPercent(run.benchmark_holdout_return_percent)}</td>`;
+    row.innerHTML = `<td>${run.run}</td><td>${proofBps(run.fee_bps)}</td><td>${proofBps(run.slippage_bps)}</td><td>${run.holdout.trade_count}</td><td>${Number(run.holdout.expectancy_r).toFixed(3)}R</td><td>${proofPercent(run.holdout.net_return_percent)}</td><td>${proofPercent(run.benchmark_holdout_return_percent)}</td>`;
     body.append(row);
   }
   table.append(body);
@@ -104,6 +117,18 @@ function renderProof(data) {
     limit.innerHTML = `<b>declared drawdown limit:</b> ${proofPercent(data.spec.declared_drawdown_limit)}`;
     spec.append(limit);
   }
+  if (data.spec.declared_risk_percent !== undefined && data.spec.declared_risk_percent !== null) {
+    const risk = document.createElement("p");
+    risk.innerHTML = `<b>declared per-trade risk:</b> ${proofPercent(data.spec.declared_risk_percent)} ` +
+      `— applied in the replay: ${proofPercent(data.spec.applied_risk_percent)}`;
+    spec.append(risk);
+  }
+  if (data.spec.declared_capital !== undefined && data.spec.declared_capital !== null) {
+    const capital = document.createElement("p");
+    capital.innerHTML = `<b>declared starting capital:</b> ${proofDollars(data.spec.declared_capital)} ` +
+      `— applied in the replay: ${proofDollars(data.spec.applied_starting_capital)}`;
+    spec.append(capital);
+  }
   if (Array.isArray(data.spec.not_modelled) && data.spec.not_modelled.length) {
     const notModelled = document.createElement("p");
     notModelled.innerHTML = "<b>explicitly not modelled:</b> ";
@@ -133,14 +158,21 @@ function renderProof(data) {
 
   const foot = document.createElement("p");
   foot.className = "caption";
-  foot.innerHTML = `${proofText(data.symbol)} · ${proofText(data.interval)} · ${data.bar_count} completed bars · fingerprint <code></code>`;
+  foot.innerHTML =
+    `${proofText(data.symbol)} · ${proofText(data.interval)} · ${data.bar_count} completed bars · ` +
+    `risk ${proofPercent(data.spec.applied_risk_percent)} · capital ${proofDollars(data.spec.applied_starting_capital)} · ` +
+    `fingerprint <code></code>`;
   foot.querySelector("code").textContent = `${data.fingerprint.algorithm}:${data.fingerprint.value.slice(0, 24)}…`;
+
+  const hint = document.createElement("p");
+  hint.className = "caption";
+  hint.textContent = "These compiled rules are exactly what ran — edit the description and re-run to change the outcome. Same words, same candles, same config gives the same fingerprint.";
 
   body.append(
     band, spec, checksTitle, renderProofChecks(data.checks),
     batteryTitle, renderProofBattery(data.battery),
     reviewersTitle, renderProofReviewers(data.reviewers),
-    limitations, foot,
+    limitations, foot, hint,
   );
   proofForm.results.replaceChildren(body);
   proofForm.results.hidden = false;
