@@ -86,7 +86,7 @@ def flat_candles(count=400):
 
 def compile_probe():
     return proof_engine.compile_spec(
-        "test momentum breakouts with macd confirmation and short bursts, "
+        "test momentum continuation with macd confirmation and short bursts, "
         "strict drawdown limit of 25%"
     )
 
@@ -141,7 +141,7 @@ def test_holdout_sample_crosses_the_fifteen_trade_supported_bar():
     """800 staircase bars -> 16 holdout trades, so sample-size passes the new bar."""
     report = proof_engine.safe_assess(
         breakout_candles(800),
-        "test momentum breakouts with macd confirmation and short bursts",
+        "test momentum continuation with macd confirmation and short bursts",
         symbol="BTCUSDT",
         interval="1h",
     )
@@ -152,7 +152,7 @@ def test_holdout_sample_crosses_the_fifteen_trade_supported_bar():
     # A 700-bar series lands at 14 trades: readable, but flagged as watch.
     thinner = proof_engine.safe_assess(
         breakout_candles(700),
-        "test momentum breakouts with macd confirmation and short bursts",
+        "test momentum continuation with macd confirmation and short bursts",
         symbol="BTCUSDT",
         interval="1h",
     )
@@ -164,7 +164,7 @@ def test_holdout_sample_crosses_the_fifteen_trade_supported_bar():
 def test_candle_level_report_rejects_the_cost_frangible_idea_and_pins_every_find():
     report = proof_engine.safe_assess(
         breakout_candles(800),
-        "test momentum breakouts with macd confirmation and short bursts, "
+        "test momentum continuation with macd confirmation and short bursts, "
         "strict drawdown limit of 25%",
         symbol="BTCUSDT",
         interval="1h",
@@ -186,7 +186,7 @@ def test_candle_level_report_rejects_the_cost_frangible_idea_and_pins_every_find
 
 
 def test_report_is_reproducible_and_sensitive_to_every_input():
-    description = "test momentum breakouts with macd confirmation and short bursts"
+    description = "test momentum continuation with macd confirmation and short bursts"
     same = proof_engine.safe_assess(
         breakout_candles(800), description, symbol="BTCUSDT", interval="1h"
     )["fingerprint"]["value"]
@@ -216,17 +216,17 @@ def test_fingerprint_marks_two_datasets_apart_even_with_matching_endpoints():
     """Same length, same window endpoints, one minted verb magnet changed in a series."""
     rows = breakout_candles(800)
     report_a = proof_engine.safe_assess(
-        rows, "test momentum breakouts", symbol="BTCUSDT", interval="1h"
+        rows, "test momentum continuation", symbol="BTCUSDT", interval="1h"
     )
     report_b = proof_engine.safe_assess(
-        rows, "test momentum breakouts", symbol="BTCUSDT", interval="1h"
+        rows, "test momentum continuation", symbol="BTCUSDT", interval="1h"
     )
     assert report_a["fingerprint"]["value"] == report_b["fingerprint"]["value"]
 
     mutated = [dict(row) for row in rows]
     mutated[400]["close"] += 0.05  # mid-gap valid: open <= close <= high holds
     report_c = proof_engine.safe_assess(
-        mutated, "test momentum breakouts", symbol="BTCUSDT", interval="1h"
+        mutated, "test momentum continuation", symbol="BTCUSDT", interval="1h"
     )
     assert report_c["fingerprint"]["value"] != report_a["fingerprint"]["value"]
 
@@ -319,22 +319,55 @@ def test_dollar_sign_capital_declared_with_commas_parses():
     assert spec["declared_capital"] == 12345.0
 
 
-def test_declared_risk_is_clamped_into_the_replay_band_and_named():
+def test_out_of_band_declared_risk_is_refused_never_quietly_shrunk():
+    """A requested 12% risk must not silently become 5% — refusal with reasons."""
+    with pytest.raises(ProofError) as too_high:
+        proof_engine.safe_assess(
+            breakout_candles(800),
+            "momentum idea, risk 12% per trade",
+            symbol="BTCUSDT",
+            interval="1h",
+        )
+    assert "outside the replay band" in str(too_high.value)
+    assert "12" in str(too_high.value)  # the engine states the number it refused
+
+    with pytest.raises(ProofError, match="outside the replay band"):
+        proof_engine.safe_assess(breakout_candles(800), "momentum idea, risk 0.01%", interval="1h")
+
+    with pytest.raises(ProofError, match="outside the replay band"):
+        proof_engine.safe_assess(
+            breakout_candles(800), "momentum idea, capital 2,000,000,000 dollars", interval="1h"
+        )
+    with pytest.raises(ProofError, match="outside the replay band"):
+        proof_engine.safe_assess(breakout_candles(800), "momentum idea, $0 capital", interval="1h")
+    # The compile stage passed the words through untouched; the replay refused.
+    assert (
+        proof_engine.compile_spec("momentum idea, risk 12% per trade")["declared_risk_percent"]
+        == 12.0
+    )
+
+
+def test_version_and_method_revision_are_stamped_on_every_report():
+    assert proof_engine.PROOF_VERSION == "proof-2.0.0"
     report = proof_engine.safe_assess(
-        breakout_candles(800),
-        "momentum idea, risk 12% per trade",
-        symbol="BTCUSDT",
-        interval="1h",
+        breakout_candles(800), "momentum idea", symbol="BTCUSDT", interval="1h"
     )
-    spec = report["spec"]
-    assert spec["declared_risk_percent"] == 12.0
-    assert spec["applied_risk_percent"] == 5.0  # the band ceiling
-    joined = "; ".join(spec["not_modelled"])
-    assert "0.05%-5%" in joined
-    below_floor = proof_engine.safe_assess(
-        breakout_candles(800), "momentum idea, risk 0.01%", interval="1h"
-    )
-    assert below_floor["spec"]["applied_risk_percent"] == 0.05
+    assert report["proof_version"] == "proof-2.0.0"
+    assert report["repro"]["engine_version"] == "proof-2.0.0"
+    assert report["repro"]["method_revision"] == report["method_revision"]
+    assert report["method_revision"]  # never blank — an unversioned deploy says so
+    assert "method revision" in report["fingerprint"]["inputs"]
+
+
+def test_method_revision_names_the_deployed_commit(monkeypatch):
+    monkeypatch.setenv("VERCEL_GIT_COMMIT_SHA", "abc123deploy")
+    assert proof_engine.method_revision() == "abc123deploy"
+    monkeypatch.delenv("VERCEL_GIT_COMMIT_SHA")
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "render99")
+    assert proof_engine.method_revision() == "render99"
+    for var in ("RENDER_GIT_COMMIT", "GITHUB_SHA"):
+        monkeypatch.delenv(var, raising=False)
+    assert proof_engine.method_revision() == "unversioned-local"
 
 
 def test_kwargs_override_words_and_defaults_fill_the_silence():
@@ -361,7 +394,7 @@ def test_kwargs_override_words_and_defaults_fill_the_silence():
 def test_wording_never_promises_income():
     report = proof_engine.safe_assess(
         breakout_candles(800),
-        "test momentum breakouts with macd confirmation and short bursts",
+        "test momentum continuation with macd confirmation and short bursts",
         interval="1h",
     )
     blob = (report["verdict"]["headline"] + " " + report["disclaimer"]).lower()
@@ -394,7 +427,7 @@ def test_api_accepts_a_description_and_returns_the_report(monkeypatch):
     response = client.post(
         "/api/proof/assess",
         json={
-            "description": "test momentum breakouts with macd confirmation and short bursts",
+            "description": "test momentum continuation with macd confirmation and short bursts",
             "symbol": "BTCUSDT",
             "interval": "1h",
             "bars": 800,
@@ -695,3 +728,142 @@ def test_ui_offers_the_paginated_three_thousand_depth():
         encoding="utf-8"
     )
     assert ".proof-verdict-provisional" in css
+
+
+def test_ui_defers_head_scripts_and_names_the_drawdown_measure():
+    """Audit round: page weight lands after paint, and the example wording
+    matches what the engine actually measures."""
+    html = (Path(__file__).resolve().parents[1] / "templates" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    for src in (
+        "/api/account/storage-context.js",
+        "/static/js/scoped_storage.js",
+        "/static/js/cloud_sync.js",
+    ):
+        tag_start = html.index(f'src="{src}')
+        tag = html[html.rindex("<script", 0, tag_start) : html.index("</script>", tag_start)]
+        assert "defer" in tag, src
+    # Every external script on the page defers, so none blocks first paint.
+    chunks = html.split("<script ")
+    for chunk in chunks[1:]:
+        assert 'src="' not in chunk or "defer" in chunk[: chunk.index(">") + 1]
+    # The drawdown example describes overall peak-to-trough decline.
+    assert "one-candle drawdown" not in html
+    assert "drawdown limit of 25% (overall peak-to-trough)" in html
+
+
+def test_conflicting_family_words_refuse_to_pick_silently():
+    """\"momentum breakout\" names two families; the word map must not decide."""
+    with pytest.raises(ProofError) as thrown:
+        proof_engine.compile_spec("momentum breakout")
+    message = str(thrown.value)
+    assert "more than one rule family" in message
+    assert "trend_following" in message and "breakout" in message
+    assert "name exactly one" in message.lower()
+    # Single-family wording, even with several family words, still compiles.
+    spec = proof_engine.compile_spec("momentum continuation trend hold")
+    assert spec["family"] == "trend_following"
+    assert set(spec["matched_words"]) == {"momentum", "continuation", "trend"}
+
+
+def test_drawdown_limit_is_accepted_in_both_word_orders_and_measured_overall():
+    spec_natural = proof_engine.compile_spec("momentum idea, strict drawdown limit of 25%")
+    spec_reversed = proof_engine.compile_spec("momentum idea, a strict 25% drawdown limit")
+    spec_overall = proof_engine.compile_spec("momentum idea, 25% overall drawdown")
+    for spec in (spec_natural, spec_reversed, spec_overall):
+        assert spec["declared_drawdown_limit"] == 25.0
+    assert "peak-to-trough" in spec_natural["sizing_rule"]
+
+
+def test_drawdown_check_detail_names_the_measure():
+    report = proof_engine.safe_assess(
+        breakout_candles(800),
+        "test momentum continuation with macd confirmation and short bursts, "
+        "strict drawdown limit of 25%",
+        symbol="BTCUSDT",
+        interval="1h",
+    )
+    drawdown = next(c for c in report["checks"] if c["check"] == "declared_drawdown_respected")
+    assert "peak-to-trough" in drawdown["detail"]
+
+
+def test_route_deadline_covers_the_backtests_not_just_the_feed(monkeypatch):
+    """A slow assessment burns the same deadline as a slow feed: 503, promptly."""
+    import threading
+
+    import loki.api.proof_engine
+
+    compute_gate = threading.Event()
+
+    def slow_assess(*args, **kwargs):
+        compute_gate.wait(2.0)
+        return loki.api.proof_engine.safe_assess(*args, **kwargs)
+
+    monkeypatch.setattr(
+        binance_market_data,
+        "get_binance_spot_history",
+        lambda *args: breakout_candles(300),
+    )
+    monkeypatch.setattr(loki.api.proof_engine, "safe_assess", slow_assess)
+    monkeypatch.setattr(server, "_PROOF_RUN_TIMEOUT_SECONDS", 0.05)
+    response = client.post(
+        "/api/proof/assess",
+        json={"description": "momentum idea", "symbol": "BTCUSDT", "interval": "1h", "bars": 300},
+    )
+    compute_gate.set()
+    assert response.status_code == 503
+    assert "timed out" in response.json()["detail"]
+
+
+def test_rate_store_defaults_to_memory_and_shared_store_is_selectable(monkeypatch):
+    import loki.api.proof_rate_store as store_module
+
+    for var in ("UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    assert isinstance(store_module.select_backend(), store_module.MemoryStore)
+
+    monkeypatch.setenv("UPSTASH_REDIS_REST_URL", "https://example.upstash.io")
+    monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "tok")
+    backend = store_module.select_backend()
+    assert isinstance(backend, store_module.UpstashStore)
+
+    calls = []
+    expires = []
+
+    def fake_rest(self, path):
+        if path.startswith("/incr/"):
+            calls.append(path)
+            return len(calls)  # 1, 2, 3 ... creeping counter
+        expires.append(path)
+        return 1  # pexpire ack
+
+    monkeypatch.setattr(store_module.UpstashStore, "_rest", fake_rest)
+    verdicts = [backend.hit("proof:1.2.3.4", now=float(1000 + i)) for i in range(9)]
+    assert verdicts == [False] * 8 + [True]
+    assert len(expires) == 1  # armed once, on the bucket's first hit
+
+
+def test_shared_store_outage_falls_back_to_the_local_counter(monkeypatch):
+    import loki.api.proof_rate_store as store_module
+
+    backend = store_module.UpstashStore("https://example.upstash.io", "tok")
+
+    def dead_rest(self, path):
+        raise OSError("store unreachable")
+
+    monkeypatch.setattr(store_module.UpstashStore, "_rest", dead_rest)
+    verdicts = [backend.hit("proof:5.6.7.8", now=float(2000 + i)) for i in range(9)]
+    assert verdicts[:8] == [False] * 8
+    assert verdicts[8] is True  # the floor still shuts the door
+
+
+def test_memory_store_is_exact_under_a_synthetic_clock():
+    import loki.api.proof_rate_store as store_module
+
+    backend = store_module.MemoryStore()
+    base = 1000.0
+    assert [backend.hit("k", now=base + i * 0.1) for i in range(8)] == [False] * 8
+    assert backend.hit("k", now=base + 0.9) is True
+    assert backend.hit("other", now=base) is False
+    assert backend.hit("k", now=base + 60.1) is False

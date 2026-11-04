@@ -23,18 +23,38 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
-import threading
 import time
 from typing import Any, Mapping, Sequence
 
+from loki.api import proof_rate_store
 from loki.api.strategy_backtest import (
     BacktestInputError,
     STRATEGY_NAMES,
     run_strategy_backtest,
 )
 
-PROOF_VERSION = "proof-1.0.0"
+# Bumped with every methodology change: thresholds, verdict bands, fingerprint
+# scope, declared-value handling. Old fingerprints were compiled under the old
+# methodology and are comparable only against reports stamped with it.
+PROOF_VERSION = "proof-2.0.0"
+
+_REVISION_ENV_VARS = ("VERCEL_GIT_COMMIT_SHA", "RENDER_GIT_COMMIT", "GITHUB_SHA")
+
+
+def method_revision() -> str:
+    """The deployed revision the run executed under, or an honest local marker.
+
+    Read at report time so each evidence report names the exact code revision,
+    not assumptions about when the process was built.
+    """
+    for var in _REVISION_ENV_VARS:
+        value = os.environ.get(var)
+        if value:
+            return value
+    return "unversioned-local"
+
 
 BATTERY = (
     ("base", 10.0, 5.0),
@@ -48,38 +68,20 @@ _SUPPORTED_TRADES = 15  # a supported verdict wants this many holdout trades
 
 # Abuse protection for /api/proof/assess: each run is three replays plus a
 # public-feed fetch, so the door shuts per identity before it gets expensive.
-PROOF_RATE_WINDOW_SECONDS = 60.0
-PROOF_RATE_MAX_PER_WINDOW = 8
-_RATE_KEYS_MAX = 512
-_rate_lock = threading.Lock()
-_rate_hits: dict[str, list[float]] = {}
+# Where the counters live (per-process memory vs a shared Upstash Redis) is
+# the rate store's decision; this module only forwards.
+PROOF_RATE_WINDOW_SECONDS = proof_rate_store.PROOF_RATE_WINDOW_SECONDS
+PROOF_RATE_MAX_PER_WINDOW = proof_rate_store.PROOF_RATE_MAX_PER_WINDOW
+rate_store = proof_rate_store.select_backend()
 
 
 def rate_limited(key: str, now: float | None = None) -> bool:
-    """True when the key has had its quota already in the current window."""
-    stamp = time.monotonic() if now is None else float(now)
-    with _rate_lock:
-        hits = _rate_hits.get(key)
-        if hits is None:
-            if len(_rate_hits) >= _RATE_KEYS_MAX:
-                # Bounded key shelf: drop the oldest keys, never grow forever.
-                oldest = sorted(_rate_hits, key=lambda k: min(_rate_hits[k]))
-                for doomed in oldest[: _RATE_KEYS_MAX // 4]:
-                    _rate_hits.pop(doomed, None)
-            hits = []
-            _rate_hits[key] = hits
-        window = [hit for hit in hits if stamp - hit < PROOF_RATE_WINDOW_SECONDS]
-        if len(window) >= PROOF_RATE_MAX_PER_WINDOW:
-            _rate_hits[key] = window
-            return True
-        window.append(stamp)
-        _rate_hits[key] = window
-        return False
+    """True when the key has used up its run quota in the current window."""
+    return rate_store.hit(key, now)
 
 
 def reset_rate_limiter() -> None:
-    with _rate_lock:
-        _rate_hits.clear()
+    rate_store.reset()
 
 
 _FAMILY_WORDS = {
@@ -119,7 +121,10 @@ _FAMILY_WORDS = {
 
 _DRAWDOWN_RE = re.compile(
     r"drawdown(?:\s+limit)?(?:\s+(?:of|under|below|max|maximum|at most|less than))?\s*"
-    r"(?:max(?:imum)?\s+)?(\d+(?:\.\d+)?)\s*%",
+    r"(?:max(?:imum)?\s+)?(\d+(?:\.\d+)?)\s*%"
+    # Also accept the reversed order, e.g. "a strict 25% drawdown limit",
+    # so the number's position never decides whether the limit exists.
+    r"|\b(\d+(?:\.\d+)?)\s*%\s+(?:one-candle\s+|overall\s+|daily\s+)?drawdown",
     re.IGNORECASE,
 )
 _CAPITAL_RE = re.compile(r"\$\s*(\d[\d,]*)|(\d[\d,]*)\s*(?:dollars|usd|usdt)\b", re.IGNORECASE)
@@ -130,22 +135,51 @@ class ProofError(ValueError):
     """A description the engine honestly cannot compile."""
 
 
+def _family_match(word: str, lowered: str) -> bool:
+    """Whole-word keyword match with an optional plural 's'.
+
+    Substring checks misfire on nested text ('sma' inside 'small') and the
+    conflict detector makes every misfire visible, so matching honors word
+    boundaries instead.
+    """
+    return re.search(rf"(?<!\w){re.escape(word)}s?(?!\w)", lowered) is not None
+
+
 def _parse_description(description: str) -> tuple[str, list[str]]:
     if not isinstance(description, str) or not description.strip():
         raise ProofError("Describe the idea in words — the engine compiles text, not silence.")
     if len(description) > 2000:
         raise ProofError("Keep the description under 2000 characters.")
     lowered = description.lower()
+    matched_pairs: list[tuple[str, str]] = []
+    seen_families: dict[str, list[str]] = {}
     for family, words in _FAMILY_WORDS.items():
-        for word in words:
-            if word in lowered:
-                return family, [word]
-    raise ProofError(
-        "No supported rule family found. Name the idea in terms the replay runs: "
-        f"momentum / trend ({STRATEGY_NAMES['trend_following']}), breakout "
-        f"({STRATEGY_NAMES['breakout']}), or pullback reclaim "
-        f"({STRATEGY_NAMES['pullback_reclaim']})."
-    )
+        matched_words = [word for word in words if _family_match(word, lowered)]
+        if matched_words:
+            seen_families[family] = matched_words
+            matched_pairs.append((family, matched_words[0]))
+    if not matched_pairs:
+        raise ProofError(
+            "No supported rule family found. Name the idea in terms the replay runs: "
+            "momentum / trend (EMA trend continuation), breakout "
+            "(Volume-confirmed breakout), or pullback reclaim "
+            "(Trend pullback reclaim)."
+        )
+    if len(seen_families) > 1:
+        # A multiply-classified description would run rules the user never
+        # meant — refuse and name both, rather than letting the word map
+        # silently pick the first family it happens to check.
+        listed = "; ".join(
+            f"{family} ({STRATEGY_NAMES[family]}) via the word '{word}'"
+            for family, word in matched_pairs
+        )
+        raise ProofError(
+            "The description names more than one rule family at once — "
+            f"{listed}. The engine does not silently pick between them: "
+            "name exactly one in terms the replay runs."
+        )
+    family = matched_pairs[0][0]
+    return family, seen_families[family]
 
 
 def compile_spec(description: str) -> dict[str, Any]:
@@ -168,9 +202,10 @@ def compile_spec(description: str) -> dict[str, Any]:
     if re.search(r"\bintraday scalping?\b", description.lower()):
         not_modelled.append("scalping execution assumptions — replay uses fixed bar fills")
     declared_drawdown: float | None = None
-    match = _DRAWDOWN_RE.search(description)
-    if match:
-        declared_drawdown = float(match.group(1))
+    drawdown_match = _DRAWDOWN_RE.search(description)
+    if drawdown_match:
+        # Two accepted orders; exactly one of the two groups is filled.
+        declared_drawdown = float(drawdown_match.group(1) or drawdown_match.group(2))
     declared_risk: float | None = None
     risk_match = _RISK_RE.search(description)
     if risk_match:
@@ -180,7 +215,7 @@ def compile_spec(description: str) -> dict[str, Any]:
     if capital_match:
         # Two forms: "$N" fills group 1; "N dollars/usd/usdt" fills group 2.
         digits = capital_match.group(1) or capital_match.group(2)
-        declared_capital = min(float(digits.replace(",", "")), 1e9)
+        declared_capital = float(digits.replace(",", ""))
     spec = {
         "compiler": "deterministic keyword classification; not comprehension; edit this description between runs to change what runs",
         "matched_words": matched,
@@ -191,7 +226,10 @@ def compile_spec(description: str) -> dict[str, Any]:
             "entry fills on the next candle open with adverse slippage"
         ),
         "exit_rule": "protective stop at entry minus 1.5 ATR, target at entry plus 3.0 ATR (2-to-1), earliest touched wins; ambiguous same-candle touch scores as stop; time exit if neither",
-        "sizing_rule": "fixed-percent risk sizing per trade, capped by available equity",
+        "sizing_rule": (
+            "fixed-percent risk sizing per trade, capped by available equity; "
+            "drawdown limits are measured as overall peak-to-trough equity decline, not per candle"
+        ),
         "not_modelled": not_modelled,
     }
     if declared_drawdown is not None:
@@ -199,10 +237,8 @@ def compile_spec(description: str) -> dict[str, Any]:
     else:
         not_modelled.append("any drawdown limit — none was declared in words")
     if declared_risk is not None:
-        if not 0.05 <= declared_risk <= 5.0:
-            not_modelled.append(
-                "the declared per-trade risk outside the 0.05%-5% replay band — the nearest bound is applied"
-            )
+        # Out-of-band values are evaluated (and refused) at replay time in
+        # assess(); compile only records what the words said.
         spec["declared_risk_percent"] = declared_risk
     else:
         not_modelled.append("per-trade risk — none was declared in words; the default is applied")
@@ -362,7 +398,7 @@ def attempt_falsification(
                     _check(
                         "declared_drawdown_respected",
                         "pass",
-                        f"Holdout max drawdown {observed_dd}% stayed within the declared {limit}% limit.",
+                        f"Holdout peak-to-trough drawdown {observed_dd}% stayed within the declared overall {limit}% limit.",
                     )
                 )
             else:
@@ -370,7 +406,8 @@ def attempt_falsification(
                     _check(
                         "declared_drawdown_respected",
                         "fail",
-                        f"Holdout max drawdown {observed_dd}% breached the declared {limit}% limit.",
+                        f"Holdout peak-to-trough drawdown {observed_dd}% breached the declared overall {limit}% limit. "
+                        "(Measured as the deepest equity decline across the window, not per candle or per trade.)",
                     )
                 )
         else:
@@ -378,7 +415,7 @@ def attempt_falsification(
                 _check(
                     "declared_drawdown_respected",
                     "watch",
-                    f"No drawdown limit declared in the description; holdout max drawdown was {base['max_drawdown_percent']}%.",
+                    f"No drawdown limit declared in the description; holdout overall peak-to-trough drawdown was {base['max_drawdown_percent']}%.",
                 )
             )
         edge = base["net_return_percent"] - battery[0]["benchmark_holdout_return_percent"]
@@ -544,17 +581,31 @@ def assess(
     """Full pass: compile, resolve the config, run the battery, falsify, report.
 
     Values the description declares in words win; explicit keyword arguments
-    override words; the defaults apply only when neither speaks.
+    override words; the defaults apply only when neither speaks. A resolved
+    value outside its band is refused, never quietly shrunk.
     """
     spec = compile_spec(description)
     risk_arg = risk_percent
     if risk_arg is None:
         risk_arg = spec.get("declared_risk_percent", 1.0)
-    applied_risk = max(0.05, min(float(risk_arg), 5.0))
+    applied_risk = float(risk_arg)
     capital_arg = starting_capital
     if capital_arg is None:
         capital_arg = spec.get("declared_capital", 10_000.0)
-    applied_capital = max(1.0, min(float(capital_arg), 1e9))
+    applied_capital = float(capital_arg)
+    # Declared numbers are honoured exactly or refused with reasons — a
+    # silent clamp would mean the replay ran something the visitor never
+    # approved.
+    if not 0.05 <= applied_risk <= 5.0:
+        raise ProofError(
+            f"declared per-trade risk {applied_risk}% sits outside the replay band of 0.05% to 5%. "
+            "The engine refuses to quietly shrink a declared number — name a value inside the band."
+        )
+    if not 1.0 <= applied_capital <= 1e9:
+        raise ProofError(
+            f"declared starting capital {applied_capital} sits outside the replay band of $1 to $1,000,000,000. "
+            "The engine refuses to quietly shrink a declared number — name a value inside the band."
+        )
     spec["applied_risk_percent"] = applied_risk
     spec["applied_starting_capital"] = applied_capital
     runs = run_battery(candles, spec["family"], applied_capital, applied_risk, max_holding_bars)
@@ -562,9 +613,11 @@ def assess(
     verdict = verdict_for(checks)
     panel = reviewers(checks)
     digest = dataset_digest(candles)
+    revision = method_revision()
     stamp = {
         "engine": "loki-proof-engine",
         "engine_version": PROOF_VERSION,
+        "method_revision": revision,
         "spec": spec,
         "applied_starting_capital": applied_capital,
         "applied_risk_percent": applied_risk,
@@ -580,6 +633,7 @@ def assess(
     return {
         "engine": "loki-proof-engine",
         "proof_version": PROOF_VERSION,
+        "method_revision": revision,
         "mode": "evidence-report",
         "symbol": (symbol or "").strip().upper(),
         "interval": interval,
@@ -592,6 +646,7 @@ def assess(
         "limitations": list(_LIMITATIONS),
         "repro": {
             "engine_version": PROOF_VERSION,
+            "method_revision": revision,
             "dataset_rows": len(candles),
             "dataset_sha256": digest,
             "config": {
@@ -607,7 +662,7 @@ def assess(
         "fingerprint": {
             "algorithm": "sha256",
             "value": fingerprint(stamp),
-            "inputs": "compiled spec with applied config, battery levels, full canonical candle values, symbol, interval, window endpoints, engine version",
+            "inputs": "compiled spec with applied config, battery levels, full canonical candle values, symbol, interval, window endpoints, engine version, method revision",
         },
         "disclaimer": (
             "Evidence report, not advice and not a recommendation: describes what happened "

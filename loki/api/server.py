@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -520,15 +521,30 @@ class ProofRequest(BaseModel):
 
 _PROOF_GATE = asyncio.Semaphore(2)
 _PROOF_RUN_TIMEOUT_SECONDS = 90.0
+# Dedicated pool for the fetch + three replays. Cancellation marks the future
+# but cannot stop a running thread, so the work belongs to its own pool: when
+# the deadline fires the client still gets a prompt 503, and the portal's
+# default-executor drain never waits on proof work.
+_PROOF_EXECUTOR: ThreadPoolExecutor | None = None
+
+
+def _proof_executor() -> ThreadPoolExecutor:
+    global _PROOF_EXECUTOR
+    if _PROOF_EXECUTOR is None:
+        _PROOF_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="loki-proof")
+    return _PROOF_EXECUTOR
 
 
 @app.post("/api/proof/assess")
 async def proof_assess(requestable: Request, payload: ProofRequest):
     """The Proof Engine: plain English -> fixed rules -> falsification battery -> evidence report.
 
-    Abuse protection is explicit: per-identity windowed rate limit, a bounded
-    concurrency gate, and a hard timeout — each run costs three replays and a
-    public-feed fetch, and that cost is capped per deployment.
+    Abuse protection is explicit: a per-identity run quota (in-process, or
+    shared across instances via the configured Upstash store), a bounded
+    two-slot concurrency gate, and a single deadline covering the *whole*
+    job — the public-feed fetch and all three replays. When the deadline
+    fires, the request returns promptly and the two-slot gate still bounds
+    any work still finishing on its worker thread.
     """
     from loki.api.binance_market_data import MarketDataError, get_binance_spot_history
     from loki.api.proof_engine import ProofError, compile_spec, rate_limited, safe_assess
@@ -547,25 +563,36 @@ async def proof_assess(requestable: Request, payload: ProofRequest):
         compile_spec(payload.description)
     except ProofError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+    async def _bounded_proof_run():
+        # One gate and one deadline around fetch AND compute: the report the
+        # client waits for can never exceed this process's 90-second budget.
+        # Work runs on the dedicated proof pool so a deadline retry can not
+        # wedge the request loop's default executor.
+        loop = asyncio.get_running_loop()
+
+        def fetch_candles():
+            return get_binance_spot_history(
+                payload.symbol or "BTCUSDT", payload.interval, payload.bars
+            )
+
+        def run_assessment():
+            return safe_assess(
+                candles,
+                payload.description,
+                symbol=payload.symbol,
+                interval=payload.interval,
+                risk_percent=payload.risk_percent,
+                starting_capital=payload.starting_capital,
+                max_holding_bars=payload.max_holding_bars,
+            )
+
+        async with _PROOF_GATE:
+            candles = await loop.run_in_executor(_proof_executor(), fetch_candles)
+            return await loop.run_in_executor(_proof_executor(), run_assessment)
+
     try:
-        candles = await asyncio.wait_for(
-            _PROOF_GATE_ACQUIRE(
-                get_binance_spot_history,
-                payload.symbol or "BTCUSDT",
-                payload.interval,
-                payload.bars,
-            ),
-            timeout=_PROOF_RUN_TIMEOUT_SECONDS,
-        )
-        return safe_assess(
-            candles,
-            payload.description,
-            symbol=payload.symbol,
-            interval=payload.interval,
-            risk_percent=payload.risk_percent,
-            starting_capital=payload.starting_capital,
-            max_holding_bars=payload.max_holding_bars,
-        )
+        return await asyncio.wait_for(_bounded_proof_run(), timeout=_PROOF_RUN_TIMEOUT_SECONDS)
     except MarketDataError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
     except ProofError as error:
@@ -575,12 +602,6 @@ async def proof_assess(requestable: Request, payload: ProofRequest):
             status_code=503,
             detail="The proof run timed out — try fewer candles while the feed recovers.",
         ) from error
-
-
-async def _PROOF_GATE_ACQUIRE(fetch, *args):
-    """Bounded concurrency: at most two proof runs compute in this process at once."""
-    async with _PROOF_GATE:
-        return await asyncio.to_thread(fetch, *args)
 
 
 @app.post("/api/research/evaluate")
