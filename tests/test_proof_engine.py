@@ -85,10 +85,7 @@ def flat_candles(count=400):
 
 
 def compile_probe():
-    return proof_engine.compile_spec(
-        "test momentum continuation with macd confirmation and short bursts, "
-        "strict drawdown limit of 25%"
-    )
+    return proof_engine.compile_spec("test momentum continuation, " "strict drawdown limit of 25%")
 
 
 def test_compile_maps_the_family_and_surfaces_what_it_will_not_model():
@@ -96,9 +93,64 @@ def test_compile_maps_the_family_and_surfaces_what_it_will_not_model():
     assert spec["family"] == "trend_following"  # "momentum" leads the word map
     assert spec["family_name"] == "EMA trend continuation"
     assert spec["declared_drawdown_limit"] == 25.0
-    assert "short selling — this replay is long-only" in spec["not_modelled"]
-    assert any("MACD" in item for item in spec["not_modelled"])
     assert "deterministic keyword classification" in spec["compiler"]
+
+
+def test_unsupported_requirements_block_the_run_instead_of_being_ignored():
+    """The audit critical: dropping the words' core rules silently would run a
+    different strategy than described, so every unsupported requirement BLOCKS
+    the compile and the refusal names each one."""
+    with pytest.raises(ProofError) as thrown:
+        proof_engine.compile_spec("test momentum continuation with macd confirmation")
+    message = str(thrown.value)
+    assert "cannot run" in message
+    assert "MACD" in message  # the offending word is named
+
+    with pytest.raises(ProofError, match="long-only"):
+        proof_engine.compile_spec("test momentum continuation with short bursts of selling")
+
+    with pytest.raises(ProofError, match="fixed-dollar per-trade risk"):
+        proof_engine.compile_spec("test momentum continuation, risk $250 per trade")
+
+    with pytest.raises(ProofError, match="fixed-dollar per-trade risk"):
+        proof_engine.compile_spec("test momentum continuation, risk 250 dollars per trade")
+
+    with pytest.raises(ProofError, match="scalping"):
+        proof_engine.compile_spec("test momentum continuation as an intraday scalp")
+
+    # Combination descriptions list EVERY unsupported requirement at once —
+    # the engine never drip-feeds refusals one requirement per attempt.
+    combined = (
+        "test momentum continuation with macd confirmation and short bursts, "
+        "risk $75 per trade, intraday scalps"
+    )
+    with pytest.raises(ProofError) as thrown:
+        proof_engine.compile_spec(combined)
+    combined_message = str(thrown.value)
+    for fragment in ("MACD", "long-only", "fixed-dollar per-trade risk", "scalping"):
+        assert fragment in combined_message
+
+
+def test_requirements_block_before_the_feed_is_touched(monkeypatch):
+    """Compile pre-flights in the route, so a blocked description is a 422 text
+    error even when market data is unreachable — the feed is never fetched."""
+
+    def must_not_fetch(*args, **kwargs):
+        raise AssertionError("feed fetched for a description that cannot compile")
+
+    monkeypatch.setattr(binance_market_data, "get_binance_spot_history", must_not_fetch)
+    response = client.post(
+        "/api/proof/assess",
+        json={
+            "description": "test momentum continuation with macd confirmation",
+            "symbol": "BTCUSDT",
+            "interval": "1h",
+            "bars": 300,
+        },
+    )
+    assert response.status_code == 422
+    assert "cannot run" in response.json()["detail"]
+    assert "MACD" in response.json()["detail"]
 
 
 def test_compile_writes_the_rules_out_before_anything_runs():
@@ -138,21 +190,23 @@ def test_battery_reruns_the_same_fixed_rules_at_higher_costs():
 
 
 def test_holdout_sample_crosses_the_fifteen_trade_supported_bar():
-    """800 staircase bars -> 16 holdout trades, so sample-size passes the new bar."""
+    """800 staircase bars -> 16 holdout trades: sample-size passes, but the
+    new uncertainty check keeps the result a limited historical diagnostic."""
     report = proof_engine.safe_assess(
         breakout_candles(800),
-        "test momentum continuation with macd confirmation and short bursts",
+        "test momentum continuation",
         symbol="BTCUSDT",
         interval="1h",
     )
     statuses = {check["check"]: check["status"] for check in report["checks"]}
     assert statuses["holdout_sample_size"] == "pass"
-    trades = next(c for c in report["checks"] if c["check"] == "holdout_sample_size")
-    assert "closed holdout trades" in trades["detail"]
+    assert statuses["holdout_uncertainty"] == "watch"
+    uncertainty = next(c for c in report["checks"] if c["check"] == "holdout_uncertainty")
+    assert "limited historical diagnostic" in uncertainty["detail"]
     # A 700-bar series lands at 14 trades: readable, but flagged as watch.
     thinner = proof_engine.safe_assess(
         breakout_candles(700),
-        "test momentum continuation with macd confirmation and short bursts",
+        "test momentum continuation",
         symbol="BTCUSDT",
         interval="1h",
     )
@@ -161,11 +215,26 @@ def test_holdout_sample_crosses_the_fifteen_trade_supported_bar():
     assert "enough to read, not enough" in thin_status["detail"]
 
 
+def test_forty_trade_samples_pass_the_uncertainty_check():
+    """2000 staircase bars -> 40 holdout trades: the uncertainty band stops
+    being a deciding weakness, so this check passes with 'ample' wording."""
+    report = proof_engine.safe_assess(
+        breakout_candles(2000),
+        "test momentum continuation",
+        symbol="BTCUSDT",
+        interval="1h",
+    )
+    statuses = {check["check"]: check["status"] for check in report["checks"]}
+    assert statuses["holdout_sample_size"] == "pass"
+    assert statuses["holdout_uncertainty"] == "pass"
+    uncertainty = next(c for c in report["checks"] if c["check"] == "holdout_uncertainty")
+    assert "ample" in uncertainty["detail"]
+
+
 def test_candle_level_report_rejects_the_cost_frangible_idea_and_pins_every_find():
     report = proof_engine.safe_assess(
         breakout_candles(800),
-        "test momentum continuation with macd confirmation and short bursts, "
-        "strict drawdown limit of 25%",
+        "test momentum continuation, " "strict drawdown limit of 25%",
         symbol="BTCUSDT",
         interval="1h",
     )
@@ -186,7 +255,7 @@ def test_candle_level_report_rejects_the_cost_frangible_idea_and_pins_every_find
 
 
 def test_report_is_reproducible_and_sensitive_to_every_input():
-    description = "test momentum continuation with macd confirmation and short bursts"
+    description = "test momentum continuation"
     same = proof_engine.safe_assess(
         breakout_candles(800), description, symbol="BTCUSDT", interval="1h"
     )["fingerprint"]["value"]
@@ -348,12 +417,12 @@ def test_out_of_band_declared_risk_is_refused_never_quietly_shrunk():
 
 
 def test_version_and_method_revision_are_stamped_on_every_report():
-    assert proof_engine.PROOF_VERSION == "proof-2.0.0"
+    assert proof_engine.PROOF_VERSION == "proof-2.1.0"
     report = proof_engine.safe_assess(
         breakout_candles(800), "momentum idea", symbol="BTCUSDT", interval="1h"
     )
-    assert report["proof_version"] == "proof-2.0.0"
-    assert report["repro"]["engine_version"] == "proof-2.0.0"
+    assert report["proof_version"] == "proof-2.1.0"
+    assert report["repro"]["engine_version"] == "proof-2.1.0"
     assert report["repro"]["method_revision"] == report["method_revision"]
     assert report["method_revision"]  # never blank — an unversioned deploy says so
     assert "method revision" in report["fingerprint"]["inputs"]
@@ -394,7 +463,7 @@ def test_kwargs_override_words_and_defaults_fill_the_silence():
 def test_wording_never_promises_income():
     report = proof_engine.safe_assess(
         breakout_candles(800),
-        "test momentum continuation with macd confirmation and short bursts",
+        "test momentum continuation",
         interval="1h",
     )
     blob = (report["verdict"]["headline"] + " " + report["disclaimer"]).lower()
@@ -427,7 +496,7 @@ def test_api_accepts_a_description_and_returns_the_report(monkeypatch):
     response = client.post(
         "/api/proof/assess",
         json={
-            "description": "test momentum continuation with macd confirmation and short bursts",
+            "description": "test momentum continuation",
             "symbol": "BTCUSDT",
             "interval": "1h",
             "bars": 800,
@@ -779,8 +848,7 @@ def test_drawdown_limit_is_accepted_in_both_word_orders_and_measured_overall():
 def test_drawdown_check_detail_names_the_measure():
     report = proof_engine.safe_assess(
         breakout_candles(800),
-        "test momentum continuation with macd confirmation and short bursts, "
-        "strict drawdown limit of 25%",
+        "test momentum continuation, " "strict drawdown limit of 25%",
         symbol="BTCUSDT",
         interval="1h",
     )
@@ -867,3 +935,109 @@ def test_memory_store_is_exact_under_a_synthetic_clock():
     assert backend.hit("k", now=base + 0.9) is True
     assert backend.hit("other", now=base) is False
     assert backend.hit("k", now=base + 60.1) is False
+
+
+def test_typed_drawdown_phrasings_are_refused_never_converted():
+    """A per-day or per-candle drawdown is a different measurement from the
+    engine's overall peak-to-trough read — both word orders are refused and
+    nothing quietly becomes an overall limit."""
+    for description in (
+        "momentum idea, 10% daily drawdown",
+        "momentum idea, daily drawdown limit of 10%",
+        "momentum idea, one-candle drawdown limit of 10%",
+        "momentum idea, a strict 10% per-candle drawdown",
+    ):
+        with pytest.raises(ProofError) as thrown:
+            proof_engine.compile_spec(description)
+        message = str(thrown.value)
+        assert "different measurement" in message or "not the measurement" in message
+        assert "refuses to convert" in message
+        # The engine names the offending phrasing it found in the words.
+        assert "drawdown" in message
+        # Nothing got measured: no report exists to judge — the compile raised.
+
+    # ...while the overall measurement still reads exactly as written.
+    assert (
+        proof_engine.compile_spec("momentum idea, 30% overall drawdown")["declared_drawdown_limit"]
+        == 30.0
+    )
+
+
+def test_deadline_stops_the_battery_between_levels():
+    """Abandoned work holds a worker slot; the run checks the budget at each
+    seam and stops itself instead of finishing something nobody waits for."""
+    import time
+
+    with pytest.raises(proof_engine.ProofDeadlineExceeded) as thrown:
+        proof_engine.run_battery(
+            breakout_candles(300),
+            "trend_following",
+            10_000.0,
+            1.0,
+            20,
+            deadline=time.monotonic() - 1,
+        )
+    assert "mid-battery" in str(thrown.value)
+    assert "budget" in str(thrown.value)
+
+    # The deadline threads through assess() and safe_assess() to the battery.
+    with pytest.raises(proof_engine.ProofDeadlineExceeded):
+        proof_engine.safe_assess(
+            breakout_candles(300),
+            "test momentum continuation",
+            symbol="BTCUSDT",
+            interval="1h",
+            deadline=time.monotonic() - 1,
+        )
+
+
+def test_route_maps_a_mid_battery_deadline_to_service_unavailable(monkeypatch):
+    """The engine's own budget raise reads as 503 — not the 422 that other
+    ProofErrors earn — because the words were fine and the budget died."""
+    import time
+
+    import loki.api.proof_engine
+
+    def expired_assess(*args, **kwargs):
+        assert kwargs.get("deadline") is not None  # the route passes the budget
+        raise loki.api.proof_engine.ProofDeadlineExceeded("budget ran out mid-replay")
+
+    monkeypatch.setattr(
+        binance_market_data,
+        "get_binance_spot_history",
+        lambda *args: breakout_candles(300),
+    )
+    monkeypatch.setattr(loki.api.proof_engine, "safe_assess", expired_assess)
+    monkeypatch.setattr(server, "_PROOF_RUN_TIMEOUT_SECONDS", 90.0)
+    response = client.post(
+        "/api/proof/assess",
+        json={"description": "momentum idea", "symbol": "BTCUSDT", "interval": "1h", "bars": 300},
+    )
+    assert response.status_code == 503
+    assert "mid-replay" in response.json()["detail"]
+
+
+def test_upstash_store_flags_degraded_state_and_recovers(monkeypatch):
+    """Fail-safe, not fail-open: when the shared store dies the limiter runs
+    on its local floor AND says so; recovery clears the flag on first success."""
+    import loki.api.proof_rate_store as store_module
+
+    backend = store_module.UpstashStore("https://example.upstash.io", "tok")
+    assert backend.degraded is False
+
+    monkeypatch.setattr(store_module.UpstashStore, "_rest", lambda self, path: 1)
+    assert backend.hit("proof:9.9.9.9") is False
+    assert backend.degraded is False
+
+    def dead_rest(self, path):
+        raise OSError("store unreachable")
+
+    monkeypatch.setattr(store_module.UpstashStore, "_rest", dead_rest)
+    assert backend.hit("proof:9.8.7.6") is False  # the floor answers
+    assert backend.degraded is True
+
+    monkeypatch.setattr(store_module.UpstashStore, "_rest", lambda self, path: 1)
+    assert backend.hit("proof:9.9.9.9") is False
+    assert backend.degraded is False  # recovery clears it
+
+    assert store_module.MemoryStore().degraded is False

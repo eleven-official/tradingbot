@@ -38,7 +38,7 @@ from loki.api.strategy_backtest import (
 # Bumped with every methodology change: thresholds, verdict bands, fingerprint
 # scope, declared-value handling. Old fingerprints were compiled under the old
 # methodology and are comparable only against reports stamped with it.
-PROOF_VERSION = "proof-2.0.0"
+PROOF_VERSION = "proof-2.1.0"
 
 _REVISION_ENV_VARS = ("VERCEL_GIT_COMMIT_SHA", "RENDER_GIT_COMMIT", "GITHUB_SHA")
 
@@ -65,6 +65,7 @@ BATTERY = (
 _MIN_HOLDOUT_TRADES = 3  # below this the sample cannot speak
 _PROVISIONAL_TRADES = 8  # thin: enough to read, never enough to support
 _SUPPORTED_TRADES = 15  # a supported verdict wants this many holdout trades
+_STRONG_TRADES = 40  # below this, uncertainty alone keeps the verdict provisional
 
 # Abuse protection for /api/proof/assess: each run is three replays plus a
 # public-feed fetch, so the door shuts per identity before it gets expensive.
@@ -124,7 +125,19 @@ _DRAWDOWN_RE = re.compile(
     r"(?:max(?:imum)?\s+)?(\d+(?:\.\d+)?)\s*%"
     # Also accept the reversed order, e.g. "a strict 25% drawdown limit",
     # so the number's position never decides whether the limit exists.
-    r"|\b(\d+(?:\.\d+)?)\s*%\s+(?:one-candle\s+|overall\s+|daily\s+)?drawdown",
+    # Only "overall" is honoured: any other measurement qualifier is
+    # refused by _TYPED_DRAWDOWN_RE below, never converted.
+    r"|\b(\d+(?:\.\d+)?)\s*%\s+(?:overall\s+|max(?:imum)?\s+)?drawdown",
+    re.IGNORECASE,
+)
+
+_TYPED_DRAWDOWN_RE = re.compile(
+    # A drawdown named per-day / per-candle / per-week etc. is a *different
+    # measurement* from the engine's overall peak-to-trough read. It is
+    # refused outright: converting it would test a rule the words never wrote.
+    r"(?:daily|weekly|monthly|intraday|one[-\s]?candle|per[-\s]?candle|session(?:al)?)"
+    r"[^.;]{0,32}?drawdown"
+    r"|drawdown[^.;]{0,32}?(?:daily|weekly|monthly|intraday|one[-\s]?candle|per[-\s]?candle|session(?:al)?)",
     re.IGNORECASE,
 )
 _CAPITAL_RE = re.compile(r"\$\s*(\d[\d,]*)|(\d[\d,]*)\s*(?:dollars|usd|usdt)\b", re.IGNORECASE)
@@ -133,6 +146,10 @@ _RISK_RE = re.compile(r"risk(?:ing)?\s*(\d+(?:\.\d+)?)\s*%", re.IGNORECASE)
 
 class ProofError(ValueError):
     """A description the engine honestly cannot compile."""
+
+
+class ProofDeadlineExceeded(ProofError):
+    """The replay budget ran out mid-battery; the report stops cleanly."""
 
 
 def _family_match(word: str, lowered: str) -> bool:
@@ -190,18 +207,70 @@ def compile_spec(description: str) -> dict[str, Any]:
     do is listed under ``not modelled`` so nothing is silently ignored.
     """
     family, matched = _parse_description(description)
+    lowered = description.lower()
     not_modelled: list[str] = []
-    if re.search(r"\bshort\b|\bshorts?\b|\bsell\b", description.lower()):
-        not_modelled.append("short selling — this replay is long-only")
-    indicators = re.findall(
-        r"\b(macd|bollinger|ichimoku|stochastic|vwap|order book|fundamentals)\b",
-        description.lower(),
+    # Requirements the engine cannot run are blockers, not footnotes: a report
+    # that quietly dropped the words' core rules would describe a different
+    # strategy than the one tested. Every refusal lists them all.
+    blockers: list[str] = []
+    indicator_hits = sorted(
+        set(
+            re.findall(
+                r"\b(?:macd|bollinger|ichimoku|stochastic|vwap|order book|fundamentals)\b",
+                lowered,
+            )
+        )
     )
-    for name in sorted(set(indicators)):
-        not_modelled.append(f"{name.upper()} — not part of the fixed rule set")
-    if re.search(r"\bintraday scalping?\b", description.lower()):
-        not_modelled.append("scalping execution assumptions — replay uses fixed bar fills")
+    if indicator_hits:
+        named = ", ".join(name.upper() for name in indicator_hits)
+        blockers.append(
+            f"indicator conditions ({named}) — the fixed rule set runs none of these, "
+            "so the replay could not test the described entry"
+        )
+    if re.search(r"(?<![\w-])shorts?(?![\w-])", lowered) or re.search(
+        r"(?<![\w-])(?:selling|sells?)\b", lowered
+    ):
+        blockers.append(
+            "short selling / sell-side rules — this replay is long-only, "
+            "so a direction flip would run something else entirely"
+        )
+    if re.search(r"\bscalp(?:s|ing)?\b", lowered):
+        blockers.append(
+            "scalping execution — the replay fills once per completed candle "
+            "with fixed slippage, not tick-level scalps"
+        )
+    if re.search(r"\brisk(?:ing)?\s*(?:\$|usdt?\b|dollars?\b)", lowered) or re.search(
+        r"\brisk(?:ing)?\s*\d[\d,]*(?:\.\d+)?\s*(?:usdt?|dollars?)\b", lowered
+    ):
+        blockers.append(
+            "fixed-dollar per-trade risk — sizing runs as fixed percent of equity; "
+            "a dollar amount is a different sizing model"
+        )
+    if blockers:
+        listed = "; ".join(f"{item}" for item in blockers)
+        raise ProofError(
+            "The description asks for requirements the engine cannot run — "
+            f"{listed}. Ignoring them silently would produce a verdict for a "
+            "different strategy than the words described, so no evidence report "
+            "is issued. Reword the idea using only what the replay runs: the "
+            "fixed rule families (momentum / trend, breakout, pullback reclaim), "
+            "an overall peak-to-trough drawdown limit, percent-of-equity risk, "
+            "and a starting capital figure."
+        )
     declared_drawdown: float | None = None
+    typed_drawdown = _TYPED_DRAWDOWN_RE.search(lowered)
+    if typed_drawdown:
+        # A per-day, per-candle or other per-period decline is a different
+        # measurement from overall peak-to-trough. It is never converted —
+        # the description is refused with the offending phrasing named.
+        raise ProofError(
+            "The drawdown in this description is not the measurement the replay "
+            "makes (it was typed as daily / per-candle / per-week or similar, via "
+            f"'{typed_drawdown.group(0).strip()}'). The engine measures overall "
+            "peak-to-trough equity decline over the tested window and refuses to "
+            "convert a different rule into it. Either declare an overall drawdown "
+            "limit or describe the per-period rule separately."
+        )
     drawdown_match = _DRAWDOWN_RE.search(description)
     if drawdown_match:
         # Two accepted orders; exactly one of the two groups is filled.
@@ -259,10 +328,22 @@ def run_battery(
     starting_capital: float,
     risk_percent: float,
     max_holding_bars: int,
+    *,
+    deadline: float | None = None,
 ) -> list[dict[str, Any]]:
-    """One fixed rule set, replayed at each cost level. Parameters do not move."""
+    """One fixed rule set, replayed at each cost level. Parameters do not move.
+
+    ``deadline`` is a time.monotonic() instant. It is checked at each seam
+    between battery levels: when the budget is gone the run stops there and
+    raises instead of finishing expensive work nobody is waiting for.
+    """
     runs = []
     for label, fee, slippage in BATTERY:
+        if deadline is not None and time.monotonic() > deadline:
+            raise ProofDeadlineExceeded(
+                "The proof run's replay budget ran out mid-battery — the run stops here "
+                "instead of finishing abandoned work. Try fewer bars or a faster interval."
+            )
         result = run_strategy_backtest(
             candles,
             family,
@@ -329,6 +410,32 @@ def attempt_falsification(
                 f"{trades} closed holdout trades on unseen chronological bars.",
             )
         )
+
+    if trades >= _SUPPORTED_TRADES:
+        # A 15-trade pass is a *pass*, but honest evidence naming requires
+        # its own check: 15-39 closed trades leave wide uncertainty around
+        # every number, so a watch here caps real-replay verdicts at
+        # "provisional support" regardless of the other checks.
+        if trades < _STRONG_TRADES:
+            checks.append(
+                _check(
+                    "holdout_uncertainty",
+                    "watch",
+                    f"{trades} holdout trades leave wide uncertainty around every number in "
+                    f"this report — it reads as a limited historical diagnostic; "
+                    f"{_STRONG_TRADES}+ trades would narrow the band enough that sample "
+                    "size stops being a deciding weakness.",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "holdout_uncertainty",
+                    "pass",
+                    f"{trades} holdout trades — ample for the uncertainty band to stop "
+                    "being the deciding weakness in this limited diagnostic.",
+                )
+            )
 
     expectancy = base["expectancy_r"]
     if trades >= _MIN_HOLDOUT_TRADES:
@@ -527,8 +634,9 @@ def verdict_for(checks: Sequence[Mapping[str, str]]) -> dict[str, Any]:
     return {
         "status": "tested-supported (paper research, not advice)",
         "headline": (
-            "Passed every check in this limited battery — that is not independent validation, "
-            "it still has to live in paper before anything else, and nothing here promises income."
+            "Passed every check in this limited battery — a limited historical diagnostic, "
+            "not independent validation; the idea still has to live in paper before anything "
+            "else, and nothing here promises income."
         ),
         "reasons": [c["detail"] for c in checks if c["status"] == "pass"],
     }
@@ -577,12 +685,15 @@ def assess(
     starting_capital: float | None = None,
     risk_percent: float | None = None,
     max_holding_bars: int = 20,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
     """Full pass: compile, resolve the config, run the battery, falsify, report.
 
     Values the description declares in words win; explicit keyword arguments
     override words; the defaults apply only when neither speaks. A resolved
-    value outside its band is refused, never quietly shrunk.
+    value outside its band is refused, never quietly shrunk. ``deadline``
+    (a time.monotonic() instant) stops the battery between levels when the
+    run's budget is gone.
     """
     spec = compile_spec(description)
     risk_arg = risk_percent
@@ -608,7 +719,9 @@ def assess(
         )
     spec["applied_risk_percent"] = applied_risk
     spec["applied_starting_capital"] = applied_capital
-    runs = run_battery(candles, spec["family"], applied_capital, applied_risk, max_holding_bars)
+    runs = run_battery(
+        candles, spec["family"], applied_capital, applied_risk, max_holding_bars, deadline=deadline
+    )
     checks = attempt_falsification(spec, runs)
     verdict = verdict_for(checks)
     panel = reviewers(checks)
@@ -677,7 +790,14 @@ def safe_assess(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """assess(), with input errors converted to ProofError-shaped text."""
-    allowed = {"symbol", "interval", "starting_capital", "risk_percent", "max_holding_bars"}
+    allowed = {
+        "symbol",
+        "interval",
+        "starting_capital",
+        "risk_percent",
+        "max_holding_bars",
+        "deadline",
+    }
     try:
         return assess(candles, description, **{k: v for k, v in kwargs.items() if k in allowed})
     except BacktestInputError as error:

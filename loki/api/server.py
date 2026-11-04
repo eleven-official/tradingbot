@@ -541,13 +541,21 @@ async def proof_assess(requestable: Request, payload: ProofRequest):
 
     Abuse protection is explicit: a per-identity run quota (in-process, or
     shared across instances via the configured Upstash store), a bounded
-    two-slot concurrency gate, and a single deadline covering the *whole*
-    job — the public-feed fetch and all three replays. When the deadline
-    fires, the request returns promptly and the two-slot gate still bounds
-    any work still finishing on its worker thread.
+    two-slot concurrency gate, and a budget covering the *whole* job — the
+    public-feed fetch and all three replays. The engine itself checks the
+    budget at each seam between battery levels and stops cleanly (503)
+    instead of finishing work abandoned by a cancelled client; the request
+    timeout backs that up, and the two-slot gate still bounds any orphaned
+    worker thread's runway.
     """
     from loki.api.binance_market_data import MarketDataError, get_binance_spot_history
-    from loki.api.proof_engine import ProofError, compile_spec, rate_limited, safe_assess
+    from loki.api.proof_engine import (
+        ProofDeadlineExceeded,
+        ProofError,
+        compile_spec,
+        rate_limited,
+        safe_assess,
+    )
 
     client_ip = requestable.client.host if requestable.client else "unknown"
     if rate_limited(f"proof:{client_ip}"):
@@ -567,9 +575,12 @@ async def proof_assess(requestable: Request, payload: ProofRequest):
     async def _bounded_proof_run():
         # One gate and one deadline around fetch AND compute: the report the
         # client waits for can never exceed this process's 90-second budget.
-        # Work runs on the dedicated proof pool so a deadline retry can not
-        # wedge the request loop's default executor.
+        # The clock starts when the run begins, and proof_engine also checks
+        # it between battery levels so an abandoned job stops itself instead
+        # of burning capacity nobody is waiting on. Work runs on the dedicated
+        # proof pool so a retry can not wedge the request loop's executor.
         loop = asyncio.get_running_loop()
+        deadline = time.monotonic() + _PROOF_RUN_TIMEOUT_SECONDS
 
         def fetch_candles():
             return get_binance_spot_history(
@@ -585,6 +596,7 @@ async def proof_assess(requestable: Request, payload: ProofRequest):
                 risk_percent=payload.risk_percent,
                 starting_capital=payload.starting_capital,
                 max_holding_bars=payload.max_holding_bars,
+                deadline=deadline,
             )
 
         async with _PROOF_GATE:
@@ -595,6 +607,12 @@ async def proof_assess(requestable: Request, payload: ProofRequest):
         return await asyncio.wait_for(_bounded_proof_run(), timeout=_PROOF_RUN_TIMEOUT_SECONDS)
     except MarketDataError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+    except ProofDeadlineExceeded as error:
+        # The budget ran out mid-battery and the run stopped at the next seam.
+        raise HTTPException(
+            status_code=503,
+            detail=str(error),
+        ) from error
     except ProofError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except asyncio.TimeoutError as error:

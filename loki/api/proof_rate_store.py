@@ -49,6 +49,11 @@ class MemoryStore:
         self._lock = threading.Lock()
         self._hits: dict[str, list[float]] = {}
 
+    @property
+    def degraded(self) -> bool:
+        """Always False: the local counter never degrades, it is the floor."""
+        return False
+
     def hit(self, key: str, now: float | None = None) -> bool:
         stamp = time.monotonic() if now is None else float(now)
         window = PROOF_RATE_WINDOW_SECONDS
@@ -82,13 +87,25 @@ class UpstashStore:
     Every deployment instance reads and writes the same counters, so the
     per-identity quota is real across the platform, not per instance.
     On any store error the in-process memory store keeps counting, so an
-    outage degrades to the floor instead of disabling the cap.
+    outage degrades to the floor instead of disabling the cap. The
+    ``degraded`` property reports that state so callers (and tests) can
+    see the limiter is running on its floor, not on the shared wall.
     """
 
     def __init__(self, url: str, token: str) -> None:
         self._url = url.rstrip("/")
         self._token = token
         self._fallback = MemoryStore()
+        self._degraded = False
+
+    @property
+    def degraded(self) -> bool:
+        """True once a store error pushed the counter onto the local floor.
+
+        Cleared on the first successful shared-store exchange — the flag
+        tracks the limiter's health, not a permanent verdict on the store.
+        """
+        return self._degraded
 
     def _rest(self, path: str) -> int:
         request = Request(
@@ -112,10 +129,12 @@ class UpstashStore:
             if count == 1:
                 # First hit in the bucket arms the window's expiry.
                 self._rest(f"/pexpire/{encoded}/{int(PROOF_RATE_WINDOW_SECONDS * 1000)}")
+            self._degraded = False
             return count > PROOF_RATE_MAX_PER_WINDOW
         except (OSError, URLError, HTTPError, ValueError, KeyError, TypeError):
             # Shared store unreachable or unreadable: the local counter still
             # enforces the same quota for requests that land on this instance.
+            self._degraded = True
             return self._fallback.hit(key, stamp)
 
     def reset(self) -> None:
