@@ -171,7 +171,8 @@ def _fact_score(weight: float, created_at: float, now: float) -> float:
     can outrank months-old ones the way a trader weights 'new tape' — while
     admin-taught facts keep their heavier base weight forever."""
     age_hours = max(0.0, (now - created_at) / 3600.0)
-    recency = 1.4 * (0.5 ** (age_hours / _FACT_HALF_LIFE))
+    pulse = 0.5 ** (age_hours / _FACT_HALF_LIFE)
+    recency = 1.4 * float(pulse)
     return float(weight) * 0.6 + recency
 
 
@@ -326,7 +327,7 @@ def detect_symbol(message: str) -> Optional[str]:
             continue
         if len(token) == 1 and token not in {"T", "F"}:
             continue
-        return token
+        return str(token)
     return None
 
 
@@ -414,7 +415,6 @@ class AccessBody(BaseModel):
 
     name: str = Field(min_length=1, max_length=_NAME_MAX)
     code: str = Field(default="", max_length=80)  # empty = open room (the default)
-
 
 class MessageBody(BaseModel):
     model_config = ConfigDict(extra="forbid")

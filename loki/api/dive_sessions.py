@@ -29,7 +29,7 @@ import unicodedata
 from datetime import date as _date, datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -58,7 +58,7 @@ def load_bank() -> Dict[str, Any]:
     text = _BANK_PATH.read_text(encoding="utf-8")
     start = text.index("window.LokiDiveBank = ") + len("window.LokiDiveBank = ")
     end = text.rindex("}")  # the literal closes the file; nothing else follows
-    data = json.loads(text[start : end + 1])
+    data: Dict[str, Any] = json.loads(text[start : end + 1])
     tiers = data.get("tiers")
     prompts = data.get("prompts")
     if not isinstance(tiers, list) or len(tiers) != 6:
@@ -69,18 +69,21 @@ def load_bank() -> Dict[str, Any]:
 
 
 def _prompt_at(index: int) -> Dict[str, Any]:
-    prompts = load_bank()["prompts"]
+    prompts: List[Any] = load_bank()["prompts"]
     if not 0 <= index < len(prompts):
         raise HTTPException(400, "That prompt index is not in the bank.")
-    return prompts[index]
+    prompt: Dict[str, Any] = prompts[index]
+    return prompt
 
 
 def tier_points(tier_index: int) -> int:
-    return load_bank()["tiers"][tier_index]["points"]
+    tier: Dict[str, Any] = load_bank()["tiers"][tier_index]
+    return int(tier["points"])
 
 
 def tier_name(tier_index: int) -> str:
-    return load_bank()["tiers"][tier_index]["name"]
+    tier: Dict[str, Any] = load_bank()["tiers"][tier_index]
+    return str(tier["name"])
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +223,7 @@ def daily_seed(day: str) -> int:
     return int(day.replace("-", ""), 10) & 0xFFFFFFFF
 
 
-def _mulberry32(seed: int):
+def _mulberry32(seed: int) -> Callable[[], float]:
     """Bit-exact port of mulberry32 (the browser-standard PRNG, uint32 math)."""
     state = seed & 0xFFFFFFFF
 
@@ -420,7 +423,7 @@ def challenge_publish(request: Request, body: ChallengePublishBody) -> Dict[str,
             raise HTTPException(400, "Pick a board name (2-24 letters, numbers, spaces or dashes).")
         client_key = request.client.host if request.client else "unknown"
     else:
-        raise _HTTPException(
+        raise HTTPException(
             503,
             "This deployment hosts no shared score store, so nothing was "
             "recorded — your best daily run still lives in this browser.",
