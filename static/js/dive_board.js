@@ -76,7 +76,10 @@
         const row = document.createElement('li');
         row.className = 'dive-board-row' + (index < 3 ? ' dive-board-podium' : '') + (state.mode !== 'shared' && mine && entry.nickname.toLowerCase() === mine ? ' dive-board-mine' : '');
         const rank = `<span class="dive-board-rank">${index + 1}</span>`;
-        const name = `<span class="dive-board-name">${esc(entry.nickname)}</span>`;
+        const verified = entry.verified
+          ? '<span class="dive-board-verified" title="The server replayed this run itself before the board accepted it">✓ verified</span>'
+          : '<span class="dive-board-self" title="Reported by the browser; not server-checked">self-reported</span>';
+        const name = `<span class="dive-board-name">${esc(entry.nickname)}</span>${verified}`;
         const best = `<span class="dive-board-best">${Math.round(entry.best)} pts</span>`;
         const dives = `<span class="dive-board-dives">${entry.dives} publication${entry.dives === 1 ? '' : 's'}</span>`;
         const when = `<span class="dive-board-when">${ago(entry.updated_at)}</span>`;
@@ -99,7 +102,7 @@
       const hint = $('dive-publish-note');
       if (hint && showForm) {
         hint.textContent = state.mode === 'shared'
-          ? (state.sessionNickname ? `Publishing is a click. Your browser best is ${best} points. Your account owns its row, even when another player uses the same nickname. Scores are self-reported, not cheat-verified.` : 'Sign in to publish your score and keep your progress across devices.')
+          ? (state.sessionNickname ? `Publishing is a click. Your browser best is ${best} points. Your account owns its row, even when another player uses the same nickname. Scores are self-reported unless you publish a verified daily run (server-replayed, marked ✓ on the board).` : 'Sign in to publish your score and keep your progress across devices.')
           : `Publishing is a click. This local-development board trusts the name, not the person. Self-reported scores.`;
       }
       prefill();

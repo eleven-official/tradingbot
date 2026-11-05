@@ -381,11 +381,13 @@
             <div class="dive-modes" role="group" aria-label="Dive mode">
               <button id="dive-mode-classic" class="dive-mode-pick" type="button" aria-pressed="true">Classic · 7 rounds</button>
               <button id="dive-mode-endless" class="dive-mode-pick" type="button" aria-pressed="false">Endless · miss twice</button>
+              <button id="dive-mode-daily" class="dive-mode-pick" type="button" aria-pressed="false" title="The same seven prompts in the same order for every player today — verified by the server, publishable with a verified mark">Daily · same for everyone</button>
             </div>
             <div class="dive-start-row">
               <button id="dive-start-btn" class="button primary" type="button">Begin the dive →</button>
               <span class="dive-stat" id="dive-best">No dive yet</span>
               <span class="dive-stat" id="dive-dives">Fresh waters</span>
+              <span class="dive-stat" id="dive-level" title="Levels rise as lifetime points bank locally — 500 points per level.">Depth level 1</span>
               <span class="dive-stat dive-challenge" id="dive-challenge"></span>
               <span class="dive-stat dive-streak" id="dive-streak" hidden></span>
             </div>
@@ -397,6 +399,7 @@
               <div id="dive-journal-list" class="dive-journal-list"></div>
             </details>
             <p class="caption">Rarity tiers are assigned in our hand-written bank, not measured from other players. Valid answers outside the bank may not match. Inspired by krillion.io; unlimited replays, no account needed, and results stay in this browser unless you publish your best under a board name yourself.</p>
+            <p class="caption dive-autosave-note">💾 Autosaved: your own info (best dives, badges, journal, streak) is saved on this device automatically every time you open Loki Dive. It never leaves your browser.</p>
           </div>
           <div id="dive-play" class="dive-screen" hidden>
             <div class="dive-topbar"><span id="dive-round" class="tag">Round 1 of 7</span><div class="dive-tools"><span id="dive-clock" class="dive-clock" role="timer" aria-label="Time remaining">25s</span><button id="dive-sound-btn" class="button secondary dive-sound" type="button" aria-pressed="true" title="Tiny synth blips: finds ding, misses thud, saved in this browser">Sound on</button><button id="dive-sonar-btn" class="button secondary dive-sonar" type="button" title="One ping per dive — hear the shape of the deepest find, never its name">Sonar ping</button><button id="dive-surface-btn" class="button secondary dive-surface" type="button" hidden title="End the endless dive and surface with what you have — mid-round finds stay">Surface now</button><button id="dive-pause" class="button secondary" type="button" aria-pressed="false">Pause</button></div></div>
@@ -411,6 +414,7 @@
               <button id="dive-skip" class="button secondary dive-skip" type="button" title="Surrender this round to the current — it counts as a miss">Skip →</button>
             </form>
             <div id="dive-feedback" class="dive-feedback" role="status" aria-live="polite" hidden></div>
+            <button id="dive-report-btn" class="button secondary dive-report" type="button" hidden title="Log the answer you expected — it stays on this device until you choose to send it">My answer should count</button>
             <p id="dive-examples" class="dive-examples" hidden></p>
             <button id="dive-next" class="button primary dive-next" type="button" hidden>Next round →</button>
             <div class="dive-depthstrip"><span class="dive-depthtrack" aria-hidden="true"><span id="dive-depthbar" class="dive-depthfill"></span></span><small>Depth <strong id="dive-depth-num">0 m</strong></small></div>
@@ -424,6 +428,8 @@
             <p id="dive-end-extra" class="caption"></p>
             <div id="dive-end-rows" class="dive-end-rows"></div>
             <div class="button-row"><button id="dive-again-btn" class="button primary" type="button">Dive again · unlimited →</button><button id="dive-copy" class="button secondary" type="button">Copy result</button></div>
+            <p id="dive-end-verified" class="caption" role="status" hidden></p>
+            <div class="button-row"><button id="dive-publish-daily" class="button secondary" type="button" hidden title="Server replayed this run before the board accepts it">Publish verified daily run →</button></div>
           </div>
         </div>
       </section>

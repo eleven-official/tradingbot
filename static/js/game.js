@@ -44,6 +44,8 @@
   const LS_BADGES = "loki_dive_badges";   // earned milestone ids (this browser only)
   const LS_STREAK = "loki_dive_streak";   // { last: 'YYYY-MM-DD', count } — consecutive dive days
   const LS_CH_WINS = "loki_dive_challenge_wins"; // how many daily targets cleared, lifetime
+  const LS_LIFETIME = "loki_dive_lifetime"; // total points banked over every dive — drives levels
+  const LEVEL_STEP = 500; // each level is 500 lifetime points deeper than the last
   const HISTORY_LIMIT = 10;
 
   const state = {
@@ -57,7 +59,8 @@
     streakBonus: 0,
     manualPaused: false,
     fixed: 0, // spelling corrections this dive
-    mode: "classic", // classic (7 fixed rounds) | endless (miss twice, tightening clock)
+    mode: "classic", // classic (7 fixed rounds) | endless (miss twice, tightening clock) | daily (the shared seven)
+    maxStreak: 0,
     misses: 0,       // endless: unanswered rounds so far this dive
     roundMs: ROUND_MS,
     bestEndless: 0,  // endless personal best, kept locally
@@ -423,6 +426,94 @@
     try { window.localStorage.setItem(key, String(value)); } catch { /* private mode */ }
   }
 
+  /* ---------- level ladder: lifetime points → diver level ---------- */
+  function diverLevel(total) {
+    // floor(total / 500) + 1 — level 1 at 0, level 2 at 500, level 99 at 49,000+
+    return Math.floor(Math.max(0, Number(total) || 0) / LEVEL_STEP) + 1;
+  }
+  function readLifetime() {
+    return storage(LS_LIFETIME, 0);
+  }
+  function bankLifetime(runPoints) {
+    const banked = readLifetime() + Math.max(0, Number(runPoints) || 0);
+    saveStorage(LS_LIFETIME, banked); // the run already rides under MAX_SCORE locally
+    return banked;
+  }
+  function renderLevel() {
+    const node = els["dive-level"];
+    if (!node) return;
+    const total = readLifetime();
+    const level = diverLevel(total);
+    const toNext = LEVEL_STEP - (total % LEVEL_STEP);
+    node.textContent = "Depth level " + level + " · " + toNext + " pts to level " + (level + 1);
+    node.title = "Levels rise as lifetime points bank locally in this browser — 500 points per level. Never published anywhere.";
+  }
+
+  /* ---------- autosave: the browser's own facts, saved to this device ---------- */
+  /* One snapshot of this browser's Loki Dive state, written to this device
+   * every time the game is opened (and updated after every run). Nothing here
+   * is ever sent to the server — the snapshot lives beside the other keys in
+   * localStorage and is meant to survive a browser restart / disk tidy-up. */
+  const LS_AUTOSAVE = "loki_dive_last_open"; // snapshot of this browser's own info, this device only
+  const AUTOSAVE_JOURNAL_MAX = 120;  // journal entries kept in the snapshot
+  const AUTOSAVE_HISTORY_MAX = 10;   // history summary rides raw — same bound as the history key
+  const AUTOSAVE_BYTES_MAX = 20000;  // larger snapshots would hint at drift; skip them
+
+  function autosaveSnapshot() {
+    try {
+      const readJSON = (key, fallback) => {
+        try {
+          const raw = JSON.parse(window.localStorage.getItem(key) || "null");
+          return raw === null || raw === undefined ? fallback : raw;
+        } catch { return fallback; }
+      };
+      const journal = readJSON(LS_JOURNAL, {});
+      if (journal && typeof journal === "object" && !Array.isArray(journal)) {
+        const keys = Object.keys(journal).sort().slice(-AUTOSAVE_JOURNAL_MAX);
+        const bounded = {};
+        keys.forEach((k) => { bounded[k] = journal[k]; });
+        journal = bounded;
+      }
+      const streak = readJSON(LS_STREAK, { last: "", count: 0 });
+      const snapshot = {
+        when: new Date().toISOString(),        // UTC — saved-on-device note uses this
+        mode: state.mode,
+        best: storage(LS_BEST, 0),
+        best_endless: storage(LS_BEST_ENDLESS, 0),
+        dives: storage(LS_DIVES, 0),
+        challenge_wins: storage(LS_CH_WINS, 0),
+        lifetime: readLifetime(),
+        level: diverLevel(readLifetime()),
+        badges: readJSON(LS_BADGES, []),
+        journal,
+        streak: {
+          last: streak && streak.last ? String(streak.last) : "",
+          count: Math.max(0, Number(streak && streak.count) || 0),
+        },
+        history: readJSON(LS_HISTORY, []).slice(-AUTOSAVE_HISTORY_MAX),
+        recent: readJSON(LS_RECENT, []).slice(-RECENT_LIMIT * 2),
+        note: "saved automatically on this device when Loki Dive was opened",
+      };
+      const body = JSON.stringify(snapshot);
+      if (body.length > AUTOSAVE_BYTES_MAX) return false; // bounded; something's off upstream — skip writing
+      window.localStorage.setItem(LS_AUTOSAVE, body);
+      return true;
+    } catch { /* storage refused (private mode, disk full) — the game still plays */ return false; }
+  }
+
+  function readAutosave() {
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(LS_AUTOSAVE) || "null");
+      return raw && typeof raw === "object" && raw.when && raw.note ? raw : null;
+    } catch { return null; }
+  }
+
+  function exportData() {
+    /* Good-citizen export: shows the exact snapshot this browser keeps. */
+    const snap = readAutosave();
+    return snap ? { saved_locally_on_this_device: true, snapshot: snap } : { saved_locally_on_this_device: false, snapshot: null };
+  }
+
   /* ---------- tiny synth blips (no assets, no network; a toggle lives in the tools row) ---------- */
   let audioCtx = null;
   function soundOn() {
@@ -559,7 +650,6 @@
     els["dive-overlay"].hidden = true;
     els["dive-pause"].textContent = "Pause";
     els["dive-pause"].setAttribute("aria-pressed", "false");
-    state.order = freshOrder();
     state.cursor = 0;
     state.round = 0;
     state.points = 0;
@@ -568,14 +658,43 @@
     state.streak = 0;
     state.streakBonus = 0;
     state.rounds = [];
-    state.dives += 1;
-    saveStorage(LS_DIVES, state.dives);
     state.misses = 0;
+    state.maxStreak = 0;
+    state.dailyAnswers = []; // one raw answer per position, for server verification
+    state.dailyDate = "";
     state.surfaced = false;
     state.sonarUsed = false;
     state.roundMs = ROUND_MS;
     if (els["dive-surface-btn"]) els["dive-surface-btn"].hidden = state.mode !== "endless";
     if (els["dive-sonar-btn"]) els["dive-sonar-btn"].disabled = false; // one fresh ping per dive
+    if (state.mode === "daily") { startDailyRun(); return; } // order comes from the server; fetch first
+    state.order = freshOrder();
+    beginRun();
+  }
+  function startDailyRun() {
+    /* Daily mode: one shared run per day, prompts issued by the server so a
+     * run can later be replayed and verified. No server, no daily dive —
+     * the honest message says so and the start screen stays put. */
+    if (typeof window.fetch !== "function") { dailyOffline(); return; }
+    window.fetch("/api/dive/challenge/order", { method: "GET" }).then((res) => {
+      if (!res.ok) throw new Error("daily order unavailable");
+      return res.json();
+    }).then((data) => {
+      if (!data || !Array.isArray(data.order) || data.order.length !== ROUNDS_PER_DIVE) throw new Error("bad order");
+      state.order = data.order.slice(0, ROUNDS_PER_DIVE);
+      state.dailyDate = data.date || "";
+      beginRun();
+    }).catch(dailyOffline);
+  }
+  function dailyOffline() {
+    if (els["dive-status-note"]) els["dive-status-note"].textContent =
+      "The shared daily order couldn't load right now — that needs a connection to the server. Classic and Endless still dive offline.";
+    state.mode = "classic";
+    pickMode("classic");
+  }
+  function beginRun() {
+    state.dives += 1;
+    saveStorage(LS_DIVES, state.dives);
     renderBest();
     refreshSky();
     renderSky();
@@ -606,6 +725,7 @@
     els["dive-skip"].disabled = false;
     els["dive-pause"].disabled = false;
     els["dive-examples"].hidden = true;
+    hideReportButton();
     if (els["dive-progress"]) els["dive-progress"].hidden = state.mode === "endless"; // the fixed 7-dot ladder reads classic only
     state.roundMs = state.mode === "endless"
       ? Math.max(ROUND_MS_FLOOR, ROUND_MS - (state.round - 1) * ENDLESS_TIGHTEN_MS)
@@ -666,6 +786,7 @@
       feedback("Type one answer first — the clock is kind enough.", "warn");
       return;
     }
+    if (state.mode === "daily") state.dailyAnswers[state.round - 1] = raw; // kept for server replay
     const match = findAnswer(state.current.index, raw);
     if (match) {
       state.accepted = true;
@@ -674,6 +795,7 @@
       const pts = tier.points;
       state.points += pts;
       state.streak += 1;
+      state.maxStreak = Math.max(state.maxStreak, state.streak);
       let combo = 0;
       if (state.streak >= HOT_STREAK) {
         combo = COMBO_BONUS;
@@ -684,6 +806,7 @@
       state.rounds.push({ q: state.current.prompt.q, tier: match.hit.tier, points: pts + combo, answer: shown, fixed: match.fixed });
       playFind();
       bumpScore();
+      if (state.streak === 5) awardBadge("streak-flame"); // paid the moment the fifth land hits — no waiting
       feedback("✓ " + shown + " — " + tier.name + "! +" + pts + " points · " + fmtM(pts * POINTS_PER_METRE)
         + (combo ? " 🔥 streak ×" + state.streak + " (+" + combo + ")" : ""), "good");
       renderDepth();
@@ -694,6 +817,8 @@
       const line = MISS_LINES[Math.floor(Math.random() * MISS_LINES.length)];
       /* the line teaches the ladder honestly: the deepest shelf's real value from the bank */
       feedback(line + " The deepest shelf here pays " + shelf.points + " pts (" + shelf.name + ").", "warn");
+      state.lastMissRaw = raw; // kept so "my answer should count" knows what was typed
+      showReportButton();
       playMiss();
       if (els["dive-answer"]) { els["dive-answer"].select(); }
     }
@@ -719,6 +844,7 @@
     state.streak = 0;
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
+    if (state.mode === "daily") state.dailyAnswers[state.round - 1] = ""; // a skip is exactly that: no answer
     if (state.mode === "endless") state.misses += 1;
     playMiss();
     feedback("Round skipped. Discover a few answers below, then dive again.", "warn");
@@ -731,6 +857,7 @@
     state.streak = 0;
     state.phase = "between";
     state.rounds.push({ q: state.current.prompt.q, tier: null, points: 0, answer: "", fixed: false });
+    if (state.mode === "daily") { if (state.dailyAnswers[state.round - 1] === undefined) state.dailyAnswers[state.round - 1] = ""; }
     if (state.mode === "endless") state.misses += 1;
     feedback(state.mode === "endless" && state.misses >= MISS_LIMIT
       ? "Time's up — pressure " + state.misses + "/" + MISS_LIMIT + " ends the endless dive."
@@ -858,6 +985,16 @@
     show("dive-end");
     renderHistory();
     renderSpark();
+    if (
+      state.mode === "daily"
+      && typeof window.fetch === "function"
+      && state.order.length === ROUNDS_PER_DIVE
+    ) {
+      verifyDailyRun(); // server replay decides the verified card; the end card shows regardless
+    } else if (els["dive-end-verified"]) {
+      els["dive-end-verified"].hidden = true;
+      els["dive-end-verified"].textContent = "";
+    }
     if (state.mode !== "endless" && window.LokiDiveBoard && typeof window.LokiDiveBoard.diveEnded === "function") {
       window.LokiDiveBoard.diveEnded(totalPoints());
     }
@@ -868,10 +1005,18 @@
       if (r.tier >= 4) awardBadge("deep-cut");
       if (r.tier >= 5) awardBadge("zillion");
     });
-    if (state.streak >= 5) awardBadge("streak-flame");
+    if (state.streak >= 5 || state.maxStreak >= 5) awardBadge("streak-flame"); // belt-braces: best streak this dive counts too
     if (endless && state.rounds.length >= 15) awardBadge("survivor"); // endured the tightening waters
     recordJournal();
     syncDerivedBadges(depth);
+    const banked = bankLifetime(totalPoints()); // level ladder banks this run too
+    if (els["dive-end-extra"] && banked) {
+      const extra = els["dive-end-extra"];
+      extra.textContent = extra.textContent
+        + ` Depth level ${diverLevel(banked)} — next at ${(diverLevel(banked)) * LEVEL_STEP + LEVEL_STEP} lifetime pts.`;
+    }
+    renderLevel();
+    autosaveSnapshot(); // the run's outcomes refresh the on-device snapshot immediately
     els["dive-again-btn"].focus({ preventScroll: true });
     if (!challenge.done && totalPoints() >= challenge.target) {
       challenge.done = true;
@@ -884,6 +1029,96 @@
       renderChallenge();
     }
     if (els["dive-copy"]) els["dive-copy"].textContent = "Copy result";
+  }
+  /* ---------- daily verification + verified publish (server replays the run) ---------- */
+  function dailyPayload() {
+    return {
+      date: state.dailyDate || undefined,
+      rounds: state.order.map((idx, pos) => ({ i: idx, a: state.dailyAnswers[pos] || "" })),
+    };
+  }
+  function verifyDailyRun() {
+    const card = els["dive-end-verified"];
+    if (!card) return;
+    card.hidden = false;
+    card.textContent = "Checking this daily run against the shared order…";
+    if (els["dive-publish-daily"]) els["dive-publish-daily"].hidden = true;
+    window.fetch("/api/dive/challenge/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(dailyPayload()),
+    }).then((res) => {
+      if (!res.ok) return res.json().then((b) => { throw new Error(b.detail || "not verifiable"); }, () => { throw new Error("not verifiable"); });
+      return res.json();
+    }).then((v) => {
+      if (!v || !v.verified) throw new Error("not verifiable");
+      state.verified = {
+        date: v.date, total: v.total_points, found: v.found_count,
+        base: v.base_points, streak: v.streak_bonus, sweep: v.clean_sweep,
+      };
+      card.textContent = "✅ Verified by the server — replayed against the same bank: "
+        + v.total_points + " pts · " + v.found_count + "/7 found"
+        + (v.clean_sweep ? " · clean sweep" : "") + (v.streak_bonus ? " · streak combo +" + v.streak_bonus : "");
+      if (els["dive-publish-daily"]) els["dive-publish-daily"].hidden = v.total_points <= 0;
+    }).catch(() => {
+      state.verified = null;
+      card.textContent = "Daily run not verified: the server couldn't replay this run against today's shared order, so it can't go to the board as verified.";
+      if (els["dive-publish-daily"]) els["dive-publish-daily"].hidden = true;
+    });
+  }
+  function publishVerified(ev) {
+    if (ev) ev.preventDefault();
+    const btn = els["dive-publish-daily"];
+    if (btn) btn.disabled = true;
+    window.fetch("/api/dive/challenge/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname: (els["dive-board-name"] && els["dive-board-name"].value) || "", date: state.dailyDate, rounds: dailyPayload().rounds }),
+    }).then((res) => {
+      if (res.status === 429) throw new Error("One board publish per 20 seconds — give it a breath.");
+      if (!res.ok) return res.json().then((b) => { throw new Error(b.detail || "publish refused"); }, () => { throw new Error("publish refused"); });
+      return res.json();
+    }).then(() => {
+      awardBadge("broadcaster");
+      if (card2()) card2().textContent = "✅ Published to the board with the verified mark.";
+    }).catch((err) => {
+      if (card2()) card2().textContent = "Publish refused: " + (err.message || "try again shortly.");
+    }).finally(() => { if (btn) btn.disabled = false; });
+    function card2() { return document.getElementById("dive-publish-note"); }
+  }
+  /* ---------- miss reports ("my answer should count") ---------- */
+  const LS_REPORTS = "loki_dive_reports"; // queued suggestions, this browser until sent
+  const REPORT_LIMIT = 200;
+  function readReports() {
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(LS_REPORTS) || "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch { return []; }
+  }
+  function queueReport(promptText, rawAnswer) {
+    try {
+      const reports = readReports();
+      reports.push({ q: promptText, a: rawAnswer, t: new Date().toISOString() });
+      window.localStorage.setItem(LS_REPORTS, JSON.stringify(reports.slice(-REPORT_LIMIT)));
+    } catch { /* storage refused — the report simply stays unlogged */ }
+  }
+  function showReportButton(fontSizeUnused) {
+    const btn = els["dive-report-btn"];
+    if (!btn) return;
+    btn.hidden = false;
+    btn.textContent = "My answer should count";
+  }
+  function hideReportButton() {
+    const btn = els["dive-report-btn"];
+    if (btn) btn.hidden = true;
+  }
+  function onReportClick() {
+    const raw = state.lastMissRaw || "";
+    const promptText = state.current && state.current.prompt ? state.current.prompt.q : "";
+    if (!raw || !promptText) return;
+    queueReport(promptText, raw);
+    hideReportButton();
+    feedback("Logged on this device (" + readReports().length + " queued): stays in your browser unless you choose to send it. Thanks for the tip.", "info");
   }
   function copyResult(ev) {
     if (ev) ev.preventDefault();
@@ -1020,10 +1255,11 @@
     }
   }
   function pickMode(mode) {
-    state.mode = mode === "endless" ? "endless" : "classic";
+    state.mode = mode === "daily" ? "daily" : mode === "endless" ? "endless" : "classic";
     try { localStorage.setItem(LS_MODE, state.mode); } catch { /* the choice simply resets next visit */ }
     if (els["dive-mode-classic"]) els["dive-mode-classic"].setAttribute("aria-pressed", String(state.mode === "classic"));
     if (els["dive-mode-endless"]) els["dive-mode-endless"].setAttribute("aria-pressed", String(state.mode === "endless"));
+    if (els["dive-mode-daily"]) els["dive-mode-daily"].setAttribute("aria-pressed", String(state.mode === "daily"));
     renderBest();
   }
 
@@ -1200,8 +1436,8 @@
       "dive-skip", "dive-count", "dive-history", "dive-overlay", "dive-pause", "dive-challenge",
       "dive-submit", "dive-next", "dive-examples", "dive-score", "dive-combo", "dive-progress",
       "dive-badges", "dive-streak", "dive-sky", "dive-spark",
-      "dive-mode-classic", "dive-mode-endless", "dive-surface-btn",
-      "dive-sonar-btn", "dive-sound-btn",
+      "dive-mode-classic", "dive-mode-endless", "dive-mode-daily", "dive-surface-btn",
+      "dive-sonar-btn", "dive-sound-btn", "dive-report-btn", "dive-end-verified", "dive-publish-daily", "dive-level",
       "dive-journal", "dive-journal-head", "dive-journal-list"].forEach((id) => { els[id] = $(id); });
     if (!els["dive-start"] && !els["dive-play"]) return; // section missing — stay silent
 
@@ -1217,11 +1453,12 @@
     let savedMode = "classic";
     try {
       const rawMode = localStorage.getItem(LS_MODE);
-      if (rawMode === "endless") savedMode = "endless"; // string stored as string — numeric helpers never see it
+      if (rawMode === "endless" || rawMode === "daily") savedMode = rawMode; // string stored as string — numeric helpers never see it
     } catch { /* storage blocked — classic is the landing mode */ }
     state.mode = savedMode;
     if (els["dive-mode-classic"]) els["dive-mode-classic"].setAttribute("aria-pressed", String(state.mode === "classic"));
     if (els["dive-mode-endless"]) els["dive-mode-endless"].setAttribute("aria-pressed", String(state.mode === "endless"));
+    if (els["dive-mode-daily"]) els["dive-mode-daily"].setAttribute("aria-pressed", String(state.mode === "daily"));
     loadChallenge();
     renderLegend();
     renderBest();
@@ -1231,7 +1468,9 @@
     renderStreak();
     renderJournal();
     renderDepth();
+    renderLevel();
     show("dive-start");
+    autosaveSnapshot(); // opening the game saves this browser's own info to this device
 
     state.visible = document.hidden ? false : true;
     if (els["dive-start-btn"]) els["dive-start-btn"].addEventListener("click", (ev) => { ev.preventDefault(); startRun(); });
@@ -1239,6 +1478,9 @@
     if (els["dive-skip"]) els["dive-skip"].addEventListener("click", skipRound);
     if (els["dive-mode-classic"]) els["dive-mode-classic"].addEventListener("click", () => { pickMode("classic"); });
     if (els["dive-mode-endless"]) els["dive-mode-endless"].addEventListener("click", () => { pickMode("endless"); });
+    if (els["dive-mode-daily"]) els["dive-mode-daily"].addEventListener("click", () => { pickMode("daily"); });
+    if (els["dive-report-btn"]) els["dive-report-btn"].addEventListener("click", onReportClick);
+    if (els["dive-publish-daily"]) els["dive-publish-daily"].addEventListener("click", publishVerified);
     if (els["dive-surface-btn"]) els["dive-surface-btn"].addEventListener("click", () => {
       if (state.mode === "endless" && (state.phase === "round" || state.phase === "between")) {
         if (state.phase === "round") state.surfaced = true; // an unanswered round isn't scored; say so on the end card
@@ -1274,5 +1516,8 @@
     badges: () => readBadges(),
     mode: () => state.mode,
     journal: () => loadJournal(),
+    exportData,
+    autosave: () => autosaveSnapshot(),
+    lastSaved: () => readAutosave(),
     refreshSky: () => { try { refreshSky(); renderSky(); } catch { /* HUD never blocks play */ } } };
 })();

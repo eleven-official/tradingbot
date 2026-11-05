@@ -28,6 +28,7 @@ from loki.api.news_desk import router as news_desk_router
 from loki.api.ai_chat import router as ai_chat_router
 from loki.api.fusion import router as fusion_router
 from loki.api.dive_board import router as dive_board_router
+from loki.api.dive_sessions import router as dive_sessions_router
 from loki.api.revenue import router as revenue_router
 from loki.api.broker_workspace import router as broker_workspace_router
 
@@ -56,6 +57,7 @@ from loki.api.news_desk import router as news_desk_router
 
 app.include_router(news_desk_router)
 app.include_router(dive_board_router)
+app.include_router(dive_sessions_router)
 app.include_router(revenue_router)
 app.include_router(member_router)
 from loki.api.cloud_research import router as cloud_research_router

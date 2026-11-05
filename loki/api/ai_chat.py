@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ai/chat", tags=["Sentient AI chat"])
 
-DEFAULT_CHAT_CODE = "slaterisgay"
+DEFAULT_CHAT_CODE = ""  # open by default: the chat door needs only a name. Set LOKI_CHAT_CODE to lock it behind a passcode again.
 ADMIN_NAME = "joshua mathew"
 COOKIE_NAME = "loki_chat"
 COOKIE_MAX_AGE = 14 * 24 * 3600
@@ -72,8 +72,14 @@ _PROCESS_SECRET = secrets.token_bytes(32)
 
 
 def _chat_code() -> str:
+    # Empty by default: the room is open — a name is a person, no password gate.
+    # Operators can still opt into a passcode door with LOKI_CHAT_CODE.
     raw = os.environ.get("LOKI_CHAT_CODE") or DEFAULT_CHAT_CODE
     return " ".join(str(raw).split()).lower()
+
+
+def chat_room_locked() -> bool:
+    return bool(_chat_code())
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +413,7 @@ class AccessBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=_NAME_MAX)
-    code: str = Field(min_length=1, max_length=80)
+    code: str = Field(default="", max_length=80)  # empty = open room (the default)
 
 
 class MessageBody(BaseModel):
@@ -561,7 +567,8 @@ async def chat_access(payload: AccessBody, response: Response, request: Request)
     cookie. Wrong names are still identities — they just stay members.
     """
     submitted = " ".join(payload.code.split()).lower()
-    if not hmac.compare_digest(submitted, _chat_code()):
+    code_required = chat_room_locked()
+    if code_required and not hmac.compare_digest(submitted, _chat_code()):
         raise HTTPException(403, "Wrong passcode — the door stays shut.")
     name = _normalize_name(payload.name)
     if not name:
@@ -577,8 +584,9 @@ async def chat_access(payload: AccessBody, response: Response, request: Request)
         "admin": admin,
         "memory_url": "/ai-chat",
         "intro": (
-            "Loki's private room unlocked. The AI reads the market internet, "
-            "keeps a persistent memory, and answers in its own voice."
+            "Loki's private room unlocked — no password, just a name. The AI "
+            "reads the market internet, keeps a persistent memory, and "
+            "answers in its own voice."
         ),
     }
 

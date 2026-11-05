@@ -26,5 +26,7 @@ def test_chips_and_copy_button_are_wired():
 def test_rooms_gates_and_words_stay_honest():
     template = open("templates/ai_chat.html", encoding="utf-8").read()
     assert "It never places orders" in template
-    assert "PASSCODE AREA" in template
+    # the room opened up: the gate is a name, not a passcode — the page must say so
+    assert "OPEN ROOM" in template
+    assert "no passcode needed" in template.lower()
     assert "LOKI'S MEMORY" in template

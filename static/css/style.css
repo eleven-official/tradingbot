@@ -386,6 +386,8 @@ button.tag:hover{color:var(--text);border-color:#5a7a63}
 .dive-board-row:nth-child(2) .dive-board-rank{color:var(--green)}
 .dive-board-row:nth-child(3) .dive-board-rank{color:var(--green)}
 .dive-board-name{flex:1 1 auto;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dive-board-verified{flex:0 0 auto;font-size:10px;color:var(--green);border:1px solid var(--green);border-radius:999px;padding:1px 7px;letter-spacing:.3px}
+.dive-board-self{flex:0 0 auto;font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 7px;letter-spacing:.3px}
 .dive-board-best{flex:0 0 auto;font-weight:700;color:var(--green)}
 .dive-board-dives,.dive-board-when{flex:0 0 auto;color:var(--muted);font-size:11px}
 .dive-board-mine{background:#17251e;border-left:3px solid var(--amber);padding-left:9px}
@@ -415,6 +417,8 @@ button.tag:hover{color:var(--text);border-color:#5a7a63}
 .dive-mode-pick{padding:9px 15px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--muted);font-weight:600;font-size:13px;letter-spacing:.2px}
 .dive-mode-pick:hover{border-color:var(--green);color:var(--text)}
 .dive-mode-pick[aria-pressed="true"]{background:var(--panel-raised);border-color:var(--green);color:var(--green)}
+.dive-autosave-note{color:var(--muted)}
+.dive-report{margin-top:8px}
 .dive-surface{border-color:var(--amber);color:var(--amber)}
 .dive-surface:hover{border-color:var(--text);color:var(--text)}
 .dive-journal{margin:14px 0 0;border-top:1px dashed var(--line);padding-top:10px}

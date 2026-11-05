@@ -62,16 +62,15 @@
     </header>
 
     <section class="card" id="gate" hidden>
-      <p class="eyebrow">PASSCODE AREA</p>
-      <h1>Loki's private room <em>is locked.</em></h1>
-      <p class="muted">Enter the code to talk to the AI that reads the market internet and remembers you.</p>
+      <p class="eyebrow">OPEN ROOM · NO PASSWORD</p>
+      <h1>Loki's private room <em>is one name away.</em></h1>
+      <p class="muted">Pick a name and talk to the AI that reads the market internet and remembers you. No passcode needed.</p>
       <form id="gateForm" novalidate>
-        <label class="field" for="gateCode">Access code</label>
-        <input id="gateCode" autocomplete="off" maxlength="80" placeholder="The code olivia gave you" />
+        <input id="gateCode" autocomplete="off" maxlength="80" hidden value="" aria-hidden="true" />
         <label class="field" for="gateName">Your name in the room</label>
         <input id="gateName" autocomplete="off" maxlength="24" placeholder="How should Loki greet you?" />
         <p class="err" id="gateErr" role="alert"></p>
-        <button class="primary" type="submit" id="gateBtn">Unlock the room →</button>
+        <button class="primary" type="submit" id="gateBtn">Enter the room →</button>
       </form>
       <p class="muted" style="margin-top:14px;font-size:12px">The AI in here is research-only: quotes, headlines, memory. It never places orders.</p>
     </section>

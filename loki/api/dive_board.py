@@ -19,6 +19,7 @@ Three honest storage modes, decided by what the deployment actually has:
   written there would evaporate between requests, so nothing is accepted
   and the endpoint says why rather than accepting scores it would lose.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,10 +40,10 @@ from loki.api.member_data import database, require_member
 
 router = APIRouter(prefix="/api/dive", tags=["Dive leaderboard"])
 
-MAX_ROWS = 500            # server-local cap; the shallowest names lose their seat
-BOARD_LIMIT = 25          # rows served to a browser
-WRITE_COOLDOWN = 20.0     # per-client-IP seconds between accepted publishes
-MAX_SCORE = 1_000_000     # no honest dive reaches this; rejects absurd junk
+MAX_ROWS = 500  # server-local cap; the shallowest names lose their seat
+BOARD_LIMIT = 25  # rows served to a browser
+WRITE_COOLDOWN = 20.0  # per-client-IP seconds between accepted publishes
+MAX_SCORE = 1_000_000  # no honest dive reaches this; rejects absurd junk
 
 _SAVE_LOCK = threading.Lock()
 _WRITES: Dict[str, List[float]] = {}
@@ -95,15 +96,37 @@ def _supa_quote(value: str) -> str:
     return value.replace(" ", "%20").replace(",", "%2C").replace('"', "%22")
 
 
-def _supa_send(method: str, path: str, *, json_body: Optional[dict] = None, headers: Optional[dict] = None) -> http_requests.Response:
+def _supa_send(
+    method: str, path: str, *, json_body: Optional[dict] = None, headers: Optional[dict] = None
+) -> http_requests.Response:
     url, key = site_access._supabase_config()
     base_headers = site_access._supa_headers(key)
     if headers:
         base_headers.update(headers)
     try:
-        return http_requests.request(method, f"{url}{path}", json=json_body, headers=base_headers, timeout=15)
+        return http_requests.request(
+            method, f"{url}{path}", json=json_body, headers=base_headers, timeout=15
+        )
     except http_requests.RequestException as exc:
         raise HTTPException(503, "The shared board is unreachable; try again shortly.") from exc
+
+
+def _supa_detail(response: http_requests.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:  # pragma: no cover — non-json replies simply say so
+        return ""
+    message = body.get("message") or ""
+    hint = body.get("hint") or ""
+    code = body.get("code") or ""
+    return f"{code} {message} {hint}".lower()
+
+
+_QUIRK_MISSING = (
+    "The verified-run ranking flag is not set up yet — the shared board still "
+    "works for self-reported scores. Re-run supabase/schema_member_data.sql "
+    "once (updated file) to add the verified column."
+)
 
 
 def _guard(response: http_requests.Response) -> None:
@@ -113,33 +136,99 @@ def _guard(response: http_requests.Response) -> None:
         raise HTTPException(503, "The shared board service had a hiccup; try again shortly.")
 
 
-def _shared_read() -> Dict[str, Any]:
+def _shared_rows(columns: str) -> List[Dict[str, Any]]:
     response = _supa_send(
         "GET",
-        f"/rest/v1/member_dive_scores?select=nickname,best_score,dives,updated_at&order=best_score.desc,updated_at.asc,user_id.asc&limit={BOARD_LIMIT}",
+        f"/rest/v1/member_dive_scores?select={columns}"
+        f"&order=best_score.desc,updated_at.asc,user_id.asc&limit={BOARD_LIMIT}",
     )
     _guard(response)
+    return response.json() or []
+
+
+def _shared_read() -> Dict[str, Any]:
+    try:
+        rows = _shared_rows("nickname,best_score,dives,verified,updated_at")
+    except HTTPException as exc:
+        # an unmigrated table cannot serve the verified column at all; the
+        # board degrades to the honest self-reported list instead of dying
+        if "verified" in str(exc.detail) or 404 == getattr(exc, "status_code", 0):
+            rows = _shared_rows("nickname,best_score,dives,updated_at")
+        elif "verified" in _supa_detail_type(exc):  # column-not-found flavour
+            rows = _shared_rows("nickname,best_score,dives,updated_at")
+        else:
+            raise
     entries: List[Dict[str, Any]] = []
-    for row in response.json() or []:
-        entries.append({
-            "nickname": str(row.get("nickname") or "?"),
-            "best": int(row.get("best_score") or 0),
-            "dives": int(row.get("dives") or 0),
-            "updated_at": str(row.get("updated_at") or ""),
-        })
+    for row in rows:
+        entries.append(
+            {
+                "nickname": str(row.get("nickname") or "?"),
+                "best": int(row.get("best_score") or 0),
+                "dives": int(row.get("dives") or 0),
+                "verified": bool(row.get("verified")),
+                "updated_at": str(row.get("updated_at") or ""),
+            }
+        )
     return {"mode": "shared", "note": _mode_note("shared"), "entries": entries}
+
+
+def _supa_detail_type(exc: HTTPException) -> str:
+    try:
+        return str(exc.detail)
+    except Exception:  # pragma: no cover — detail is always a string here
+        return ""
 
 
 def shared_write(uid: str, nickname: str, best: int) -> Dict[str, Any]:
     """Atomic maximum and count, keyed by the verified account, not its label."""
-    rows = database("POST", "/rest/v1/rpc/publish_member_dive", {"p_user_id": uid, "p_nickname": nickname, "p_best": best})
+    rows = database(
+        "POST",
+        "/rest/v1/rpc/publish_member_dive",
+        {"p_user_id": uid, "p_nickname": nickname, "p_best": best},
+    )
     row = rows[0]
-    return {"mode": "shared", "note": _mode_note("shared"), "nickname": nickname, "best": row["best_score"], "dives": row["dives"]}
+    return {
+        "mode": "shared",
+        "note": _mode_note("shared"),
+        "nickname": nickname,
+        "best": row["best_score"],
+        "dives": row["dives"],
+    }
+
+
+def shared_write_verified(uid: str, nickname: str, best: int) -> Dict[str, Any]:
+    """Same atomic upsert, raised with the verified-run flag.
+
+    ``p_verified`` rides only on this verified call: self-reported publishes
+    keep the exact 3-argument RPC body above, so an unmigrated database never
+    breaks the plain score route. A missing ``p_verified`` parameter (or a
+    missing column) surfaces as the migration quirk message, not a mystery 503.
+    """
+    try:
+        rows = database(
+            "POST",
+            "/rest/v1/rpc/publish_member_dive",
+            {"p_user_id": uid, "p_nickname": nickname, "p_best": best, "p_verified": True},
+        )
+    except HTTPException as exc:
+        if "schema_member_data.sql" in str(getattr(exc, "detail", "")):
+            raise HTTPException(503, _QUIRK_MISSING) from exc
+        raise
+    row = rows[0]
+    return {
+        "mode": "shared",
+        "note": _mode_note("shared"),
+        "nickname": nickname,
+        "best": row["best_score"],
+        "dives": row["dives"],
+        "verified": True,
+    }
 
 
 # ---------------------------------------------------------------------------
 # Server-local (file) board
 # ---------------------------------------------------------------------------
+
 
 def _file_load() -> Dict[str, Any]:
     path = _data_dir()
@@ -169,22 +258,65 @@ def local_write(nickname: str, best: int) -> Dict[str, Any]:
         board = _file_load()
         previous = board.get(nickname) or {}
         kept_best = max(best, int(previous.get("best") or 0))
-        board[nickname] = {"best": kept_best, "dives": int(previous.get("dives") or 0) + 1, "updated_at": _now_iso()}
+        board[nickname] = {
+            "best": kept_best,
+            "dives": int(previous.get("dives") or 0) + 1,
+            "updated_at": _now_iso(),
+        }
         if len(board) > MAX_ROWS:
-            keep = sorted(board.items(), key=lambda item: item[1].get("best", 0), reverse=True)[:MAX_ROWS]
+            keep = sorted(board.items(), key=lambda item: item[1].get("best", 0), reverse=True)[
+                :MAX_ROWS
+            ]
             board = dict(keep)  # strictly the deepest names stay; no tie-unsafe deletion
         _file_save(board)
         row = board[nickname]
-    return {"mode": "server-local", "note": _mode_note("server-local"), "nickname": nickname, "best": row["best"], "dives": row["dives"]}
+    return {
+        "mode": "server-local",
+        "note": _mode_note("server-local"),
+        "nickname": nickname,
+        "best": row["best"],
+        "dives": row["dives"],
+    }
 
 
 def local_read() -> Dict[str, Any]:
     return {"mode": "server-local", "note": _mode_note("server-local"), "entries": _file_entries()}
 
 
+def local_write_verified(nickname: str, best: int) -> Dict[str, Any]:
+    """Server-local verified publish: identical atomic max, flag carried."""
+    with _SAVE_LOCK:
+        board = _file_load()
+        previous = board.get(nickname) or {}
+        kept_best = max(best, int(previous.get("best") or 0))
+        kept_verified = bool(previous.get("verified")) or True
+        board[nickname] = {
+            "best": kept_best,
+            "dives": int(previous.get("dives") or 0) + 1,
+            "verified": kept_verified,
+            "updated_at": _now_iso(),
+        }
+        if len(board) > MAX_ROWS:
+            keep = sorted(board.items(), key=lambda item: item[1].get("best", 0), reverse=True)[
+                :MAX_ROWS
+            ]
+            board = dict(keep)
+        _file_save(board)
+        row = board[nickname]
+    return {
+        "mode": "server-local",
+        "note": _mode_note("server-local"),
+        "nickname": nickname,
+        "best": row["best"],
+        "dives": row["dives"],
+        "verified": True,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Throttle + routes
 # ---------------------------------------------------------------------------
+
 
 def _throttled(client_ip: str) -> bool:
     now = time.time()
@@ -200,7 +332,9 @@ def _throttled(client_ip: str) -> bool:
 class DiveScoreBody(BaseModel):
     nickname: str = Field(default="", max_length=32)
     best: int = Field(ge=0, le=MAX_SCORE)
-    dives: Optional[int] = Field(default=None, ge=0, le=1_000_000)  # accepted for API shape; the server counts its own
+    dives: Optional[int] = Field(
+        default=None, ge=0, le=1_000_000
+    )  # accepted for API shape; the server counts its own
 
 
 @router.get("/leaderboard")

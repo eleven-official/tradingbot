@@ -1,4 +1,5 @@
-/* The private room: passcode → chat with the memory-backed AI.
+/* The room: a name → chat with the memory-backed AI. No passcode by default;
+ * operators can still gate it with LOKI_CHAT_CODE and the door re-locks.
  *
  * Server contract (loki/api/ai_chat.py):
  *   POST /api/ai/chat/access   {name, code} → signed cookie, admin claim by name
@@ -147,6 +148,7 @@
       }
       identity = { ok: true, name: data.name, admin: !!data.admin };
       showRoom();
+      $('msgInput').focus();
     } catch (error) {
       $('gateErr').textContent = 'Connection glitch — try again.';
     } finally {

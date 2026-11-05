@@ -85,16 +85,26 @@ def _join(client_, name="guest", code=None):
     )
 
 
-def test_wrong_code_is_rejected_and_right_code_opens(memory_path, no_internet):
-    denied = _join(client, code="slayterisgay")  # the workspace code is NOT the chat code
-    assert denied.status_code == 403
-    assert client.cookies.get(ai_chat.COOKIE_NAME) is None
-    opened = _join(client, name="olivia", code="SLATERISGAY")
+def test_the_room_opens_with_a_name_no_password_needed(memory_path, no_internet):
+    """The chat door is open by default: a name is all it asks."""
+    opened = client.post(
+        "/api/ai/chat/access", json={"name": "olivia", "code": "whatever"}
+    )
     assert opened.status_code == 200
     data = opened.json()
     assert data["name"] == "Olivia"
     assert data["admin"] is False
     assert client.cookies.get(ai_chat.COOKIE_NAME)
+    assert "no password" in data["intro"].lower()
+
+
+def test_an_operator_can_still_lock_the_room_behind_a_code(monkeypatch, memory_path, no_internet):
+    """LOKI_CHAT_CODE puts the passcode door back — opt-in, never the default."""
+    monkeypatch.setattr(ai_chat, "DEFAULT_CHAT_CODE", "slaterisgay")
+    denied = client.post("/api/ai/chat/access", json={"name": "someone", "code": "slayterisgay"})
+    assert denied.status_code == 403
+    opened = client.post("/api/ai/chat/access", json={"name": "olivia", "code": "SLATERISGAY"})
+    assert opened.status_code == 200 and opened.json()["name"] == "Olivia"
 
 
 def test_admin_name_recognition_is_normalization_proof(memory_path, no_internet):
