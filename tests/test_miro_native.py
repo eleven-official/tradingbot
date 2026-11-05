@@ -3,7 +3,6 @@
 import ast
 import hashlib
 import json
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 import pytest

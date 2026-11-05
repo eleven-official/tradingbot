@@ -1,7 +1,6 @@
 """Paper ledger accounting, lifecycle statistics and stress are real arithmetic."""
 
 from copy import deepcopy
-import math
 
 import pytest
 

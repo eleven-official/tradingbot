@@ -9,11 +9,10 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from loki_v8 import train as train_module
 from loki_v8.backtest import Trade
-from loki_v8.config import LokiConfig, default_config
+from loki_v8.config import default_config
 
 
 def synthetic_bars(n=420, seed=7):
@@ -84,7 +83,6 @@ class TestTrainSymbol:
         df = synthetic_bars()
         cfg = default_config()
         split_idx = int(len(df) * 0.7)
-        split_time = df.index[split_idx]
 
         # Every simulated trade was entered BEFORE the split, so after the
         # out-of-sample filter the validation set must be empty.

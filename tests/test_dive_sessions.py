@@ -7,8 +7,6 @@ literal and the game.js algorithm — so server and client can never drift.
 from __future__ import annotations
 
 import json
-import re
-import unicodedata
 from pathlib import Path
 
 import pytest
@@ -22,7 +20,6 @@ from loki.api.dive_sessions import (
     daily_order,
     daily_seed,
     day_key,
-    fold_answer,
     load_bank,
     match_answer,
     normalize_answer,
@@ -200,7 +197,7 @@ def test_wrong_round_order_is_refused_not_rescored():
 
 def test_wrong_round_count_is_refused():
     day = "2026-05-04"
-    short = daily_payload_short = _rounds_for(day, {})[:6]
+    short = _rounds_for(day, {})[:6]
     with pytest.raises(Exception):
         replay_daily(day, short)
     with pytest.raises(Exception):

@@ -19,9 +19,35 @@
 
   let identity = { ok: false, name: '', admin: false };
 
+  const NAME_KEY = 'loki_chat_name';   // remembered on-device to skip gate friction — never a credential
+  const DRAFT_KEY = 'loki_chat_draft'; // a half-typed message survives a reload
+  const DRAFT_MAX = 2000;
+
+  function rememberedName() {
+    try { return String(window.localStorage.getItem(NAME_KEY) || '').slice(0, 24); } catch { return ''; }
+  }
+  function rememberName(value) {
+    try { if (value) window.localStorage.setItem(NAME_KEY, String(value).slice(0, 24)); } catch { /* private mode */ }
+  }
+  function saveDraft(value) {
+    try { window.localStorage.setItem(DRAFT_KEY, String(value || '').slice(0, DRAFT_MAX)); } catch { /* private mode */ }
+  }
+  function restoreDraft() {
+    try { return String(window.localStorage.getItem(DRAFT_KEY) || ''); } catch { return ''; }
+  }
+  function clearDraft() {
+    try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* private mode */ }
+  }
+
   function showGate() {
     $('gate').hidden = false;
     $('room').hidden = true;
+    const prior = rememberedName();
+    if (prior && !$('gateName').value) {
+      $('gateName').value = prior;
+      $('gateHint').textContent = `welcome back, ${prior} — remembered on this device, not on any server.`;
+      $('gateHint').hidden = false;
+    }
   }
 
   function showRoom() {
@@ -39,6 +65,9 @@
     bubble('join', identity.admin
       ? 'Loki: admin recognized — memory and teaching unlocked.'
       : 'Loki: unlocked. Ask me anything about the tape — I remember this room.');
+    const draft = restoreDraft();
+    if (draft) { $('msgInput').value = draft; }
+    $('msgInput').focus();
     refreshMemory();
   }
 
@@ -147,14 +176,16 @@
         return;
       }
       identity = { ok: true, name: data.name, admin: !!data.admin };
+      rememberName($('gateName').value.trim());
       showRoom();
-      $('msgInput').focus();
     } catch (error) {
       $('gateErr').textContent = 'Connection glitch — try again.';
     } finally {
       btn.disabled = false;
     }
   });
+
+  $('msgInput').addEventListener('input', () => saveDraft($('msgInput').value));
 
   const composerSubmit = async (rawText) => {
     const text = String(rawText == null ? $('msgInput').value : rawText).trim();
@@ -163,6 +194,7 @@
     btn.disabled = true;
     bubble('user', text);
     $('msgInput').value = '';
+    clearDraft();
     try {
       const res = await fetch('/api/ai/chat/message', {
         method: 'POST',

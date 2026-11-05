@@ -994,7 +994,6 @@ def test_deadline_stops_the_battery_between_levels():
 def test_route_maps_a_mid_battery_deadline_to_service_unavailable(monkeypatch):
     """The engine's own budget raise reads as 503 — not the 422 that other
     ProofErrors earn — because the words were fine and the budget died."""
-    import time
 
     import loki.api.proof_engine
 

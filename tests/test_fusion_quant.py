@@ -4,7 +4,7 @@ import math
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from core.fusion.quant import ShadowConfig, analyze_factors, evaluate_factor_panel, run_shadow_replay
+from core.fusion.quant import analyze_factors, evaluate_factor_panel, run_shadow_replay
 from third_party.vibe_trading.indicators import compute_rsi
 
 

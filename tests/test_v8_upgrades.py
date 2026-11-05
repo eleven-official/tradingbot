@@ -8,7 +8,6 @@ monkeypatch the network layer.
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from loki_v8 import train as T
 from loki_v8.backtest import Trade
@@ -269,7 +268,6 @@ class TestTrainerUpgrades:
         assert max(e_sharpe, e_winrate, key=lambda e: T._rank_key(e, "win_rate")) is e_winrate
 
     def test_apply_best_copies_weights(self):
-        import dataclasses
 
         cfg = LokiConfig()
         params = {

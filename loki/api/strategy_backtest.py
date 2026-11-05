@@ -5,6 +5,7 @@ The replay includes adverse slippage, round-trip fees, capped spot exposure,
 and a chronological holdout window. Results are historical diagnostics, not
 forecasts or recommendations.
 """
+
 from __future__ import annotations
 
 from math import isfinite
@@ -31,8 +32,7 @@ def _normalize_candles(candles: Sequence[Mapping[str, Any]]) -> list[dict[str, f
     for row in candles:
         try:
             candle = {
-                key: float(row[key])
-                for key in ("time", "open", "high", "low", "close", "volume")
+                key: float(row[key]) for key in ("time", "open", "high", "low", "close", "volume")
             }
         except (KeyError, TypeError, ValueError) as error:
             raise BacktestInputError("candle rows must contain finite OHLCV values") from error
@@ -72,7 +72,9 @@ def _rsi_at(closes: Sequence[float], index: int, period: int = 14) -> float:
     return 100 - 100 / (1 + relative_strength)
 
 
-def _indicator_series(candles: Sequence[Mapping[str, float]]) -> tuple[list[float], list[float], list[float]]:
+def _indicator_series(
+    candles: Sequence[Mapping[str, float]],
+) -> tuple[list[float], list[float], list[float]]:
     closes = [candle["close"] for candle in candles]
     fast_ema = _ema_series(closes, 20)
     slow_ema = _ema_series(closes, 50)
@@ -201,7 +203,9 @@ def _simulate_segment(
         last_exit_index = min(end - 1, entry_index + max_holding_bars - 1)
         exit_index = last_exit_index
         exit_price: float | None = None
-        exit_reason = "time" if last_exit_index == entry_index + max_holding_bars - 1 else "sample_end"
+        exit_reason = (
+            "time" if last_exit_index == entry_index + max_holding_bars - 1 else "sample_end"
+        )
 
         for candle_index in range(entry_index, last_exit_index + 1):
             resolved = _resolve_exit(candles[candle_index], stop_price, target_price)
@@ -286,7 +290,11 @@ def run_strategy_backtest(
         raise BacktestInputError("capital must be positive and risk must be between 0.05% and 5%")
     if not 0 <= fee_bps <= 100 or not 0 <= slippage_bps <= 100:
         raise BacktestInputError("fee and slippage must be between 0 and 100 basis points")
-    if isinstance(max_holding_bars, bool) or not isinstance(max_holding_bars, int) or not 1 <= max_holding_bars <= 100:
+    if (
+        isinstance(max_holding_bars, bool)
+        or not isinstance(max_holding_bars, int)
+        or not 1 <= max_holding_bars <= 100
+    ):
         raise BacktestInputError("maximum holding time must be between 1 and 100 candles")
 
     normalized = _normalize_candles(candles)
@@ -297,12 +305,32 @@ def run_strategy_backtest(
     fee_rate = fee_bps / 10000
     slippage_rate = slippage_bps / 10000
     training = _simulate_segment(
-        normalized, 50, split, strategy_key, starting_capital, risk_percent,
-        fee_rate, slippage_rate, max_holding_bars, fast_ema, slow_ema, atr,
+        normalized,
+        50,
+        split,
+        strategy_key,
+        starting_capital,
+        risk_percent,
+        fee_rate,
+        slippage_rate,
+        max_holding_bars,
+        fast_ema,
+        slow_ema,
+        atr,
     )
     out_of_sample = _simulate_segment(
-        normalized, split, len(normalized), strategy_key, starting_capital, risk_percent,
-        fee_rate, slippage_rate, max_holding_bars, fast_ema, slow_ema, atr,
+        normalized,
+        split,
+        len(normalized),
+        strategy_key,
+        starting_capital,
+        risk_percent,
+        fee_rate,
+        slippage_rate,
+        max_holding_bars,
+        fast_ema,
+        slow_ema,
+        atr,
     )
     return {
         "strategy": {"key": strategy_key, "name": STRATEGY_NAMES[strategy_key]},

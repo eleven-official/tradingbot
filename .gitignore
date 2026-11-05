@@ -88,3 +88,4 @@ state/
 # The cloud state endpoint is source code, not a runtime state directory.
 !/cloud/app/api/state/
 !/cloud/app/api/state/route.ts
+.pytest-wall.xml

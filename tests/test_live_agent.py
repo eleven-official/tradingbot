@@ -1,6 +1,5 @@
 """Offline live-order lifecycle tests. No broker credentials or network used."""
 from datetime import datetime, timezone
-import json
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest

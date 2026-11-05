@@ -38,7 +38,6 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from loki.api.market_feed import MarketFeedError, fetch_quote, latest_headlines_for_query
-from loki.version import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -150,10 +149,16 @@ def record_turn(role: str, name: str, text: str) -> None:
 
 
 def add_fact(kind: str, text: str, source: str = "", weight: float = 1.0) -> int:
+    """Store one fact; an exact-text duplicate updates the original instead of
+    piling a second copy into recall — sweeps hit the same headlines daily."""
+    trimmed = text[:_FACT_LEN]
     with _DB_LOCK, _connect() as conn:
+        existing = conn.execute("SELECT id FROM facts WHERE text = ?", (trimmed,)).fetchone()
+        if existing:
+            return int(existing["id"])
         cursor = conn.execute(
             "INSERT INTO facts (kind, text, source, weight, created_at) VALUES (?,?,?,?,?)",
-            (kind, text[:_FACT_LEN], source[:300], float(weight), time.time()),
+            (kind, trimmed, source[:300], float(weight), time.time()),
         )
         conn.execute(
             "DELETE FROM facts WHERE id NOT IN "
@@ -177,6 +182,8 @@ def _fact_score(weight: float, created_at: float, now: float) -> float:
 
 
 def recall_facts(limit: int = 6) -> List[Dict[str, Any]]:
+    """Rank memory for recall: dedupe near-identical text, tier admins ahead,
+    then fill with the highest-scored internet facts so fresh tape still leads."""
     limit = max(1, min(limit, 12))
     with _DB_LOCK, _connect() as conn:
         rows = conn.execute(
@@ -185,12 +192,25 @@ def recall_facts(limit: int = 6) -> List[Dict[str, Any]]:
             (limit * 6,),
         ).fetchall()
     now = time.time()
-    ranked = sorted(
-        [dict(row) for row in rows],
+    seen: set[str] = set()
+    admins: List[Dict[str, Any]] = []
+    others: List[Dict[str, Any]] = []
+    for row in rows:
+        entry = dict(row)
+        key = " ".join(str(entry.get("text") or "").lower().split())
+        if not key or key in seen:
+            continue  # same text already in the pool — recall diversity wins
+        seen.add(key)
+        (admins if entry.get("kind") == "admin" else others).append(entry)
+    admin_quota = max(1, limit // 2)
+    ranked: List[Dict[str, Any]] = admins[:admin_quota]
+    remaining = limit - len(ranked)
+    scored = sorted(
+        others,
         key=lambda row: (_fact_score(row["weight"], row["created_at"], now), row["created_at"]),
         reverse=True,
     )
-    return ranked[:limit]
+    return ranked + scored[:remaining]
 
 
 def recall_turns(limit: int = 12) -> List[Dict[str, Any]]:
@@ -416,6 +436,7 @@ class AccessBody(BaseModel):
     name: str = Field(min_length=1, max_length=_NAME_MAX)
     code: str = Field(default="", max_length=80)  # empty = open room (the default)
 
+
 class MessageBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -471,6 +492,54 @@ def _intent(text: str) -> str:
     return "chat"
 
 
+def _daypart() -> str:
+    hour = time.gmtime().tm_hour  # UTC — the room stands for anyone, anywhere
+    if 5 <= hour < 12:
+        return "Morning"
+    if 12 <= hour < 18:
+        return "Afternoon"
+    return "Evening"
+
+
+def _fresh_news_block(fresh: List[Dict[str, Any]]) -> List[str]:
+    parts: List[str] = []
+    if not fresh:
+        return parts
+    quoted = "; ".join(str(entry["text"]) for entry in fresh[:3])
+    parts.append(
+        f"Fresh off the internet ({len(fresh)} headline"
+        f"{'s' if len(fresh) != 1 else ''}): {quoted}"
+    )
+    sources = " · ".join(str(entry.get("source") or "") for entry in fresh[:3]).strip(" ·")
+    if sources:
+        parts.append(f"Sources: {sources}")
+    return parts
+
+
+def _memory_block(facts: List[Dict[str, Any]], fresh_texts: set[str], had_fresh: bool) -> List[str]:
+    parts: List[str] = []
+    seen: set[str] = set()
+    recalled: List[Dict[str, Any]] = []
+    for entry in facts:
+        line = " ".join(str(entry.get("text") or "").split())
+        if not line or line in fresh_texts or line in seen:
+            continue  # never repeat one fact twice in the same reply
+        seen.add(line)
+        recalled.append(entry)
+    recalled = recalled[:3]
+    if recalled:
+        quoted = "; ".join(str(entry.get("text") or "") for entry in recalled)
+        parts.append(
+            f"Memory recall ({len(recalled)} fact" f"{'s' if len(recalled) != 1 else ''}): {quoted}"
+        )
+    elif not had_fresh:
+        parts.append(
+            "My memory on this is still thin — ask again after the next internet "
+            "sweep, or teach me a fact, and I will hold it."
+        )
+    return parts
+
+
 def _compose_reply(
     text: str,
     name: str,
@@ -482,65 +551,56 @@ def _compose_reply(
     symbol: Optional[str],
 ) -> str:
     intent = _intent(text)
-    parts: List[str] = []
     if intent == "greeting":
-        parts.append(f"Hey {name or 'friend'} — room's open, memory is loaded, research mode on.")
         taught = sum(1 for entry in facts if entry.get("kind") == "admin")
         net = len(facts) - taught
-        parts.append(
-            f"On the shelf right now: {taught} taught fact{'s' if taught != 1 else ''} and {net} internet fact{'s' if net != 1 else ''}. Name a ticker or ask away."
-        )
+        lines = [
+            f"{_daypart()}, {name or 'friend'} — room's open, memory loaded, research mode on.",
+            f"On the shelf right now: {taught} taught and {net} netted from the "
+            "internet. Name a ticker or ask away.",
+        ]
         if is_admin:
-            parts.append("joshua — admin perks active: teach and wipe are unlocked.")
-        parts.append("Everything here: research, not advice; no orders.")
-        return "\n".join(parts)
+            lines.append("joshua — teach and wipe stay unlocked for you.")
+        lines.append("Everything in this room is research, not advice; no orders.")
+        return "\n".join(lines)
+
+    fresh = [entry for entry in learned if entry.get("fresh")]
+    fresh_texts = {" ".join(str(entry["text"]).split()) for entry in fresh}
+    parts: List[str] = []
     if is_admin:
-        parts.append("joshua — admin recognized; memory and teaching are unlocked.")
+        parts.append("joshua at the desk — memory and teaching unlocked.")
     else:
-        parts.append(f"{name or 'friend'} — memory on, research open.")
-    if intent == "question":
+        parts.append(f"{name or 'friend'} — memory is on, still reading the tape.")
+    if intent == "question" and len(facts) <= 2 and not fresh:
         parts.append(
-            "What I am, honestly: a reasoning engine over real inputs — my own market "
-            "memory, public internet feeds, and what you've taught me. Nothing here "
+            "Honest shape of this answer: I'm a reasoning engine over my market "
+            "memory, public feeds, and what you've taught me — nothing here "
             "submits orders."
         )
     if symbol:
-        parts.append(f"You named {symbol} — checking it against memory and the live tape.")
+        parts.append(f"Focus: {symbol} — matched against memory and the live tape.")
     else:
         parts.append(
             "No ticker named — I keep watching the macro basket: stocks, the Fed, Bitcoin."
         )
-    fresh = [entry for entry in learned if entry.get("fresh")]
-    if fresh:
-        quoted = "; ".join(str(entry["text"]) for entry in fresh[:3])
-        parts.append(
-            f"Just learned from the internet ({len(fresh)} headline"
-            f"{'s' if len(fresh) != 1 else ''}): {quoted}"
-        )
-        sources = " · ".join(str(entry.get("source") or "") for entry in fresh[:3]).strip(" ·")
-        if sources:
-            parts.append(f"Sources: {sources}")
-    if quote_block := _quote_block(quote):
+    quote_block = _quote_block(quote)
+    if quote_block:
         parts.append(quote_block)
-    if facts:
-        recalled = "; ".join(str(entry.get("text") or "") for entry in facts[:3])
-        parts.append(
-            f"Memory recall ({len(facts)} fact{'s' if len(facts) != 1 else ''}): {recalled}"
-        )
-    elif not fresh:
-        parts.append(
-            "My memory on this is still thin — ask again after the next internet "
-            "sweep, or teach me a fact, and I will hold it."
-        )
-    if turns_used:
-        parts.append(f"Our room's history stays alive in me: {turns_used} turns deep.")
+    elif symbol and intent == "trade":
+        parts.append(f"No live price for {symbol} right now — the tape is quiet here.")
+    parts.extend(_fresh_news_block(fresh))
+    parts.extend(_memory_block(facts, fresh_texts, bool(fresh)))
     if intent == "trade":
+        change = quote.get("change_pct") if isinstance(quote, dict) else None
+        lean = "risk-on" if isinstance(change, (int, float)) and change >= 0 else "risk-off"
         parts.append(
-            "On trade asks: I grade setups from graded history and never promise "
-            "outcomes — research, not advice; no orders."
+            f"Tape leans {lean}. I grade setups from real history and say what I see — "
+            "no promised outcomes. Research, not advice; no orders."
         )
     else:
         parts.append("Everything above: research, not advice; no orders.")
+    if turns_used:
+        parts.append(f"Our room holds {turns_used} turns of history, and none of it drains.")
     return "\n".join(parts)
 
 
@@ -710,7 +770,7 @@ def _relevant_facts(message: str, pool: List[Dict[str, Any]], limit: int) -> Lis
         wanted.add(symbol_upper.lower())
 
     def score(fact: Dict[str, Any]) -> float:
-        hay = f"{fact.get('text','')} {fact.get('source','')}".lower()
+        hay = f"{fact.get('text', '')} {fact.get('source', '')}".lower()
         overlap = sum(1 for token in wanted if token in hay)
         base = float(fact.get("weight", 1.0)) * 0.35
         return overlap * 2.0 + base

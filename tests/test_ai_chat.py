@@ -237,6 +237,7 @@ def test_recall_prefers_facts_about_the_named_symbol(memory_path, no_internet):
         "Nov 03: Bitcoin spot volumes ease for a third day",
         source="https://finance.yahoo.com/news/btc-vol",
     )
+    assert noise > 0
     ai_chat.add_fact("admin", "taught: watch the 10-handle", weight=3.0)
     ai_chat._last_sweep[0] = 0.0
     reply = client.post("/api/ai/chat/message", json={"text": "what's SPY doing today?"})

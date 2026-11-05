@@ -4,6 +4,7 @@ The planner deliberately has no broker or network dependency.  It turns a
 proposed entry, stop and target into a bounded plan that callers can inspect
 before deciding whether to submit anything to a separate execution system.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,7 +47,7 @@ class RiskPlan:
 
 
 _QUANTITY_PRECISION = 8
-_QUANTITY_SCALE = 10 ** _QUANTITY_PRECISION
+_QUANTITY_SCALE = 10**_QUANTITY_PRECISION
 
 
 def _floor_quantity(value: float) -> float:
@@ -85,12 +86,8 @@ def build_risk_plan(request: RiskPlanInput) -> RiskPlan:
     entry_price = _positive_number("entry_price", request.entry_price)
     stop_price = _positive_number("stop_price", request.stop_price)
     target_price = _positive_number("target_price", request.target_price)
-    max_notional_percent = _positive_number(
-        "max_notional_percent", request.max_notional_percent
-    )
-    minimum_reward_risk = _positive_number(
-        "minimum_reward_risk", request.minimum_reward_risk
-    )
+    max_notional_percent = _positive_number("max_notional_percent", request.max_notional_percent)
+    minimum_reward_risk = _positive_number("minimum_reward_risk", request.minimum_reward_risk)
 
     if risk_percent > 100 or max_notional_percent > 100:
         raise RiskPlanError("risk_percent and max_notional_percent cannot exceed 100")
@@ -110,12 +107,8 @@ def build_risk_plan(request: RiskPlanInput) -> RiskPlan:
     risk_budget = capital * (risk_percent / 100)
     max_notional = capital * (max_notional_percent / 100)
     reward_risk_ratio = reward_per_unit / risk_per_unit
-    if not all(
-        isfinite(value) for value in (risk_budget, max_notional, reward_risk_ratio)
-    ):
-        raise RiskPlanError(
-            "The calculated risk values are outside the safe numeric range"
-        )
+    if not all(isfinite(value) for value in (risk_budget, max_notional, reward_risk_ratio)):
+        raise RiskPlanError("The calculated risk values are outside the safe numeric range")
 
     risk_quantity = risk_budget / risk_per_unit
     notional_quantity = max_notional / entry_price
@@ -165,4 +158,3 @@ def build_risk_plan(request: RiskPlanInput) -> RiskPlan:
         estimated_loss=estimated_loss,
         projected_profit=projected_profit,
     )
-

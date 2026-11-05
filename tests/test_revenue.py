@@ -7,7 +7,6 @@ public revenue page explains the model without leaking a number. Nothing
 auto-charges anyone — this wave is the ledger, not a billing collector.
 """
 import pathlib
-import re
 from decimal import Decimal
 
 from fastapi.testclient import TestClient

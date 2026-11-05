@@ -10,7 +10,6 @@ tests guard structure and content.
 
 import json
 import re
-from html.parser import HTMLParser
 from pathlib import Path
 import unicodedata
 
@@ -186,7 +185,6 @@ class TestBankIntegrity:
 
     def test_questions_are_unique_and_varied(self):
         assert len(BANK_TEST.qs) == len(set(BANK_TEST.qs)), "a question repeats"
-        domains = {q.split()[-2] if len(q.split()) > 2 else q for q in BANK_TEST.qs}
 
     def test_fresh_domains_landed_with_the_sparkline_wave(self):
         for question in (

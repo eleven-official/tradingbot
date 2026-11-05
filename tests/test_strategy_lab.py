@@ -72,7 +72,6 @@ class StrategyLabTests(unittest.TestCase):
         # Flat trend with violent oscillation: labels must read high
         # volatility rather than ranging because the vol test wins.
         rows = sample_bars(220, pattern="flat")
-        base = datetime.fromisoformat(rows[0]["timestamp"])
         for index, row in enumerate(rows[:]):
             if index > 130 and index < 190:
                 swing = 8 * (1 if index % 2 == 0 else -1)

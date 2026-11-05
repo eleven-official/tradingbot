@@ -9,7 +9,6 @@ refused, and the acceptance cookie carries a signed version stamp so a
 future terms change re-gates every browser exactly once.
 """
 import pathlib
-import time
 
 from fastapi.testclient import TestClient
 
