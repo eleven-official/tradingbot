@@ -62,7 +62,6 @@ jobs:
     
     - name: Type check with mypy
       run: mypy loki
-      continue-on-error: true
     
     - name: Run tests with pytest
       run: |

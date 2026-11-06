@@ -21,6 +21,21 @@ from loki.api.server import app
 client = TestClient(app)
 
 
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        ("history", "chat"),
+        ("hello, what is SPY doing?", "question"),
+        ("hey, should I buy SPY?", "trade"),
+        ("good morning", "greeting"),
+        ("hello there friend", "greeting"),
+        ("show the wholesale market", "chat"),
+    ],
+)
+def test_intent_uses_words_and_preserves_questions(message, expected):
+    assert ai_chat._intent(message) == expected
+
+
 @pytest.fixture()
 def memory_path(tmp_path, monkeypatch):
     monkeypatch.setattr(ai_chat, "_REQUEST_COUNTS", {})

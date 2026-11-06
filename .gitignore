@@ -3,8 +3,6 @@ config.yaml
 .env
 .env.*
 !.env.example
-# rag_service.py is required by trading_bot.py / agents.py / langgraph_agent.py
-# at import time - it must be committed or a fresh clone crashes on import.
 test_order.py
 test_fno_order.py
 
@@ -17,6 +15,8 @@ ngrok
 *.sqlite3
 *.db-journal
 *.db-wal
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Output & log files
 output/
@@ -30,8 +30,11 @@ _incoming/
 cache/
 news_cache/
 .pytest_cache/
+.mypy_cache/
 .coverage
 .coverage.*
+coverage.xml
+bandit-report.json
 htmlcov/
 .tox/
 .nox/
@@ -58,10 +61,6 @@ node_modules/
 .vercel/
 .turbo/
 *.tsbuildinfo
-cloud/.next/
-cloud/node_modules/
-cloud/out/
-cloud/.turbo/
 
 # IDE & OS-specific files
 .idea/
@@ -81,9 +80,6 @@ fusion.config.local.json
 paper-exports/
 state/real/
 state/paper_ai/
-
-# Private strategy-engine state and account snapshots
-state/
 
 # The cloud state endpoint is source code, not a runtime state directory.
 !/cloud/app/api/state/

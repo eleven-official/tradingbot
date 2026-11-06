@@ -210,6 +210,7 @@ def train_instrument(rows, symbol, years, *, source):
         json.dumps(selected, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     ).hexdigest()
     trials = []
+    threshold: float | None
     for threshold in THRESHOLDS:
         plain = replay(bars, validation, model, threshold, scorer=predict)
         cost2 = replay(
@@ -305,4 +306,3 @@ def train_instrument(rows, symbol, years, *, source):
             "Provider rights apply; Yahoo/vendor revisions and adjustments can change every statistic. Wilson trade intervals are descriptive and do not correct serial dependence.",
         ],
     }
-

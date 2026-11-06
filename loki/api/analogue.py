@@ -1,6 +1,6 @@
 """Explicit local-only historical research, separate from broker-order APIs."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import Field
@@ -27,42 +27,44 @@ class ForecastRequest(StrictModel):
     bars: list[dict] = Field(min_length=20, max_length=10000)
 
 
-def private(request, response):
+def private(request: Request, response: Response) -> None:
     _require_local_action(request)
     _private_response(response)
 
 
 @router.get("")
-def catalog(request: Request, response: Response):
+def catalog(request: Request, response: Response) -> dict[str, Any]:
     private(request, response)
-    return _call(analogue_store.catalog)
+    return dict(_call(analogue_store.catalog))
 
 
 @router.post("/evaluate")
-def evaluate(payload: ResearchRequest, request: Request, response: Response):
+def evaluate(payload: ResearchRequest, request: Request, response: Response) -> dict[str, Any]:
     private(request, response)
     values = payload.model_dump()
     rows = values.pop("bars")
     report, artifact = _call(analogue.build, rows, **values)
-    return _call(analogue_store.save, report, artifact)
+    return dict(_call(analogue_store.save, report, artifact))
 
 
 @router.get("/{identifier}")
-def saved(identifier: str, request: Request, response: Response):
+def saved(identifier: str, request: Request, response: Response) -> dict[str, Any]:
     private(request, response)
     report = _call(analogue_store.load, identifier)[0]
     return dict(report, readiness=analogue.readiness(report))
 
 
 @router.post("/{identifier}/forecast")
-def forecast(identifier: str, payload: ForecastRequest, request: Request, response: Response):
+def forecast(
+    identifier: str, payload: ForecastRequest, request: Request, response: Response
+) -> dict[str, Any]:
     private(request, response)
     report, artifact = _call(analogue_store.load, identifier)
-    return _call(analogue.forecast, report, artifact, payload.bars)
+    return dict(_call(analogue.forecast, report, artifact, payload.bars))
 
 
 @router.post("/{identifier}/forecast-latest")
-def forecast_latest(identifier: str, request: Request, response: Response):
+def forecast_latest(identifier: str, request: Request, response: Response) -> dict[str, Any]:
     private(request, response)
     report, artifact = _call(analogue_store.load, identifier)
     if artifact.get("version") != analogue.VERSION:

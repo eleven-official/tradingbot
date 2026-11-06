@@ -13,7 +13,7 @@ import re
 
 import numpy as np
 
-from core.strategy_lab import validate_bars
+from core.strategy_lab import Bar, validate_bars
 
 VERSION = 'loki_historical_analogue_v3'
 LOOKBACK, NEIGHBORS = 20, 31
@@ -41,7 +41,7 @@ def _thin(indices, cap, gap):
     if len(indices) == 0:
         return []
     stride = max(1, math.ceil(len(indices) / cap))
-    result = []
+    result: list[int] = []
     for index in indices[::stride]:
         index = int(index)
         if not result or index - result[-1] >= gap:
@@ -59,7 +59,8 @@ def prepare(rows, symbol, timeframe, years, horizon, *, require_coverage=True):
         raise ValueError(f'Supply {minimum}–{maximum} completed OHLCV candles')
     instrument = INSTRUMENTS[symbol]
     intraday = timeframe != '1d'
-    bars, segments, segment = [], [], 0
+    bars: list[Bar] = []
+    segments, segment = [], 0
     previous_session = previous_contract = None
     for offset in range(0,len(rows),10000):
         chunk = validate_bars(rows[offset:offset+10000])
@@ -270,7 +271,7 @@ def build(rows,*,symbol,timeframe,years,horizon=3,commission=0.01,slippage_ticks
                'outcome_at':bars[i+horizon].timestamp.isoformat(),'gross_return':r,
                'contract':rows[i].get('contract')} for i,r in zip(train,returns)]
     volatility_cutoff=float(np.median(x[:,7]))
-    regime_members={}
+    regime_members: dict[str, list[int]] = {}
     for index,features in enumerate(x):
         regime_members.setdefault(regime(features,volatility_cutoff),[]).append(index)
     distance_limits={}

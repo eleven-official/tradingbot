@@ -3,10 +3,11 @@ from datetime import datetime, timedelta, timezone
 import re
 import threading
 import time
+from typing import Any
 
 HISTORY_YEARS = (5, 10, 15, 20)
 MAX_HISTORY_BARS = 10000
-_recent_cache = {}
+_recent_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _recent_lock = threading.Lock()
 RECENT_TTL_SECONDS = 300
 

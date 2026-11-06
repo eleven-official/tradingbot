@@ -76,7 +76,7 @@ def signal_series(bars, rule):
         change = close / closes[i - 1] - 1 if i else 0.0
         returns.append(returns[-1] + change)
         squares.append(squares[-1] + change * change)
-    result = []
+    result: list[dict[str, bool | float]] = []
     for i, close in enumerate(closes):
         if i < WARMUP:
             result.append({"enter": False, "hold": False, "ready": False})

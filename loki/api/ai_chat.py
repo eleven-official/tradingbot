@@ -523,13 +523,14 @@ _GREETING_WORDS = ("hi", "hello", "hey", "yo", "sup", "morning", "evening")
 
 
 def _intent(text: str) -> str:
-    lower = " " + text.lower() + " "
-    if any(f" {word}" in lower for word in _GREETING_WORDS) and len(text.split()) <= 6:
-        return "greeting"
-    if any(word in lower for word in _TRADE_WORDS):
+    words = set(re.findall(r"[a-z]+", text.lower()))
+    if words.intersection(_TRADE_WORDS):
         return "trade"
-    if any(word in lower for word in _QUESTION_WORDS):
+    if words.intersection(_QUESTION_WORDS) or "?" in text:
         return "question"
+    greeting_fillers = {"good", "there", "friend", "loki", "everyone"}
+    if words.intersection(_GREETING_WORDS) and words <= set(_GREETING_WORDS) | greeting_fillers:
+        return "greeting"
     return "chat"
 
 

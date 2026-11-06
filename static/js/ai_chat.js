@@ -14,8 +14,6 @@
 'use strict';
 (() => {
   const $ = (id) => document.getElementById(id);
-  const escapeHtml = (value) =>
-    String(value ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
   let identity = { ok: false, name: '', admin: false };
 
@@ -238,40 +236,67 @@
     chip.addEventListener('click', () => composerSubmit(chip.dataset.ask));
   });
 
+  let adminPending = false;
+  async function adminAction(path, body) {
+    if (adminPending) return null;
+    adminPending = true;
+    const buttons = [...$('adminBox').querySelectorAll('button')];
+    buttons.forEach((button) => { button.disabled = true; });
+    try {
+      const res = await fetch(`/api/ai/chat/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
+        body: body ? JSON.stringify(body) : undefined
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data.detail || 'Action failed.'));
+      $('adminNote').textContent = String(data.note || 'Saved.');
+      await refreshMemory();
+      return data;
+    } catch (error) {
+      $('adminNote').textContent = error.name === 'TypeError' || error.name === 'TimeoutError'
+        ? 'Connection interrupted. Refresh memory before retrying; the action may have completed.'
+        : String(error.message || 'Action failed.').slice(0, 200);
+      return null;
+    } finally {
+      adminPending = false;
+      buttons.forEach((button) => { button.disabled = false; });
+    }
+  }
+
   $('teachForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const fact = $('teachInput').value.trim();
     if (!fact) return;
-    const res = await fetch('/api/ai/chat/teach', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(10000),
-      body: JSON.stringify({ fact })
-    });
-    const data = await res.json().catch(() => ({}));
-    $('adminNote').textContent = res.ok
-      ? String(data.note || 'Fact stored.')
-      : String(data.detail || 'Teach failed — admin only.');
-    if (res.ok) {
+    if (await adminAction('teach', { fact })) {
       $('teachInput').value = '';
-      refreshMemory();
     }
   });
 
   $('wipeBtn').addEventListener('click', async () => {
     if (!window.confirm('Wipe every fact and turn from Loki\'s memory? The wipe itself is journaled.')) return;
-    const res = await fetch('/api/ai/chat/wipe', { method: 'POST', signal: AbortSignal.timeout(10000) });
-    const data = await res.json().catch(() => ({}));
-    $('adminNote').textContent = res.ok
-      ? `Wiped ${data.wiped} rows.`
-      : String(data.detail || 'Wipe failed — admin only.');
-    if (res.ok) refreshMemory();
+    await adminAction('wipe');
   });
 
   $('logoutBtn').addEventListener('click', async () => {
-    await fetch('/api/ai/chat/logout', { method: 'POST', signal: AbortSignal.timeout(5000) }).catch(() => {});
-    identity = { ok: false, name: '', admin: false };
-    showGate();
+    const button = $('logoutBtn');
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const res = await fetch('/api/ai/chat/logout', { method: 'POST', signal: AbortSignal.timeout(5000) });
+      if (!res.ok) throw new Error('Logout failed');
+      identity = { ok: false, name: '', admin: false };
+      $('stream').replaceChildren();
+      $('msgInput').value = '';
+      $('operatorCode').value = '';
+      clearDraft();
+      showGate();
+    } catch {
+      bubble('ai', 'Sign-out was not confirmed. Check your connection and try leaving again.', false);
+    } finally {
+      button.disabled = false;
+    }
   });
 
   (async function init() {

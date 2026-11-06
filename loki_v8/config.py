@@ -118,7 +118,7 @@ def load_config(path: str) -> LokiConfig:
     text = p.read_text(encoding="utf-8")
     if p.suffix.lower() in (".yaml", ".yml"):
         try:
-            import yaml  # type: ignore
+            import yaml
 
             data = yaml.safe_load(text) or {}
         except ImportError as exc:

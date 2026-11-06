@@ -8,7 +8,7 @@ import pytest
 from core.fusion import analogue_store, instrument_history
 from loki.api import analogue as api
 from loki.api.server import app
-from test_analogue import rows, built  # shared labelled synthetic fixtures — pytest fixtures, not dead imports
+from test_analogue import rows, built  # noqa: F401 — fixtures discovered by pytest
 
 
 @pytest.fixture

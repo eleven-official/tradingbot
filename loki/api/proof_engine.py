@@ -285,7 +285,7 @@ def compile_spec(description: str) -> dict[str, Any]:
         # Two forms: "$N" fills group 1; "N dollars/usd/usdt" fills group 2.
         digits = capital_match.group(1) or capital_match.group(2)
         declared_capital = float(digits.replace(",", ""))
-    spec = {
+    spec: dict[str, Any] = {
         "compiler": "deterministic keyword classification; not comprehension; edit this description between runs to change what runs",
         "matched_words": matched,
         "family": family,
@@ -562,7 +562,7 @@ def reviewers(checks: Sequence[Mapping[str, str]]) -> list[dict[str, str]]:
     Total: a missing check means the battery never reached it, and the
     reviewer says so instead of raising."""
 
-    def pick(name: str) -> dict[str, str] | None:
+    def pick(name: str) -> Mapping[str, str] | None:
         return next((c for c in checks if c["check"] == name), None)
 
     def either(name: str, absent: str) -> tuple[str, str]:
