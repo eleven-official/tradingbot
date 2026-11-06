@@ -13,3 +13,4 @@ ccxt>=4.0
 black>=24,<27
 flake8>=7,<8
 mypy>=1.11,<2
+types-PyYAML>=6,<7
