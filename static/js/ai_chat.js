@@ -21,7 +21,7 @@
 
   const NAME_KEY = 'loki_chat_name';   // remembered on-device to skip gate friction — never a credential
   const DRAFT_KEY = 'loki_chat_draft'; // a half-typed message survives a reload
-  const DRAFT_MAX = 2000;
+  const DRAFT_MAX = 500;
 
   function rememberedName() {
     try { return String(window.localStorage.getItem(NAME_KEY) || '').slice(0, 24); } catch { return ''; }
@@ -33,7 +33,7 @@
     try { window.localStorage.setItem(DRAFT_KEY, String(value || '').slice(0, DRAFT_MAX)); } catch { /* private mode */ }
   }
   function restoreDraft() {
-    try { return String(window.localStorage.getItem(DRAFT_KEY) || ''); } catch { return ''; }
+    try { return String(window.localStorage.getItem(DRAFT_KEY) || '').slice(0, DRAFT_MAX); } catch { return ''; }
   }
   function clearDraft() {
     try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* private mode */ }
@@ -45,7 +45,7 @@
     const prior = rememberedName();
     if (prior && !$('gateName').value) {
       $('gateName').value = prior;
-      $('gateHint').textContent = `welcome back, ${prior} — remembered on this device, not on any server.`;
+      $('gateHint').textContent = `Welcome back, ${prior} — name prefilled from this device.`;
       $('gateHint').hidden = false;
     }
   }
@@ -93,8 +93,8 @@
         copy.type = 'button';
         copy.textContent = 'copy';
         copy.addEventListener('click', async () => {
-          copy.textContent = 'copied';
-          try { await navigator.clipboard.writeText(text); } catch (error) { /* private mode */ }
+          try { await navigator.clipboard.writeText(text); copy.textContent = 'copied'; }
+          catch (error) { copy.textContent = 'copy failed'; }
           setTimeout(() => { copy.textContent = 'copy'; }, 1400);
         });
         div.appendChild(copy);
@@ -124,19 +124,25 @@
         const li = document.createElement('li');
         const strong = document.createElement('b');
         strong.textContent = fact.kind === 'admin' ? 'taught' : 'internet';
-        strong.style.color = fact.kind === 'admin' ? '#8bdad4' : '#c9b8ff';
+        strong.style.color = 'var(--green)';
         li.appendChild(strong);
         li.appendChild(document.createTextNode(` — ${fact.text}`));
         if (fact.source) {
           const small = document.createElement('small');
           small.append('source: ');
-          const a = document.createElement('a');
-          a.href = fact.source;
-          a.rel = 'noreferrer noopener';
-          a.target = '_blank';
-          a.style.color = '#7f93a8';
-          a.textContent = new URL(fact.source, 'https://example.invalid').hostname.slice(0, 40);
-          small.appendChild(a);
+          try {
+            const url = new URL(fact.source);
+            if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Unsupported source');
+            const a = document.createElement('a');
+            a.href = url.href;
+            a.rel = 'noreferrer noopener';
+            a.target = '_blank';
+            a.style.color = 'var(--green)';
+            a.textContent = url.hostname.slice(0, 40);
+            small.appendChild(a);
+          } catch {
+            small.append(String(fact.source).slice(0, 300));
+          }
           li.appendChild(small);
         }
         list.appendChild(li);
@@ -168,7 +174,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(10000),
-        body: JSON.stringify({ name: $('gateName').value.trim(), code: $('gateCode').value })
+        body: JSON.stringify({ name: $('gateName').value.trim(), code: $('operatorCode').value || $('gateCode').value })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -191,10 +197,14 @@
     const text = String(rawText == null ? $('msgInput').value : rawText).trim();
     if (!text) return;
     const btn = $('sendBtn');
+    if (btn.disabled) return;
     btn.disabled = true;
     bubble('user', text);
     $('msgInput').value = '';
-    clearDraft();
+    saveDraft(text);
+    const restoreFailedMessage = () => {
+      if (!$('msgInput').value) { $('msgInput').value = text; saveDraft(text); }
+    };
     try {
       const res = await fetch('/api/ai/chat/message', {
         method: 'POST',
@@ -204,10 +214,12 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        restoreFailedMessage();
         bubble('ai', String(data.detail || 'I glitched on that one — say it again?').slice(0, 200));
         return;
       }
       bubble('ai', String(data.text || ''));
+      if (!$('msgInput').value) clearDraft();
 
       const learned = Array.isArray(data.learned) ? data.learned.filter((item) => item.fresh) : [];
       $('learnNote').textContent = learned.length
@@ -215,6 +227,7 @@
         : 'Internet sweeps refresh at most every 5 minutes — quiet until then.';
       if (learned.length) refreshMemory();
     } catch (error) {
+      restoreFailedMessage();
       bubble('ai', 'The room went quiet on me — my internet or memory fetch stalled. Try once more.');
     } finally {
       btn.disabled = false;

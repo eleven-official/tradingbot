@@ -76,7 +76,7 @@ app.include_router(indicator_page_router)
 
 @app.middleware("http")
 async def member_privacy_boundary(request: Request, call_next):
-    private = request.url.path.startswith(("/api/auth/", "/api/account/"))
+    private = request.url.path.startswith(("/api/auth/", "/api/account/", "/api/ai/chat/"))
     protected_write = private or request.url.path == "/api/dive/score"
     if protected_write and request.method not in {"GET", "HEAD", "OPTIONS"}:
         from urllib.parse import urlsplit
@@ -97,6 +97,9 @@ async def member_privacy_boundary(request: Request, call_next):
                 headers={"Cache-Control": "no-store"},
             )
     response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     if private:
         response.headers["Cache-Control"] = "private, no-store"
         response.headers["Vary"] = "Cookie"
@@ -714,6 +717,7 @@ async def honest_http_exception(request: Request, exc: StarletteHTTPException):
         return JSONResponse(
             {"detail": exc.detail if exc.detail else "Not Found"},
             status_code=exc.status_code,
+            headers=exc.headers,
         )
     if exc.status_code == 404:
         page = templates.TemplateResponse(
@@ -723,4 +727,4 @@ async def honest_http_exception(request: Request, exc: StarletteHTTPException):
         )
         page.status_code = 404
         return page
-    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)

@@ -23,6 +23,8 @@ client = TestClient(app)
 
 @pytest.fixture()
 def memory_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai_chat, "_REQUEST_COUNTS", {})
+    monkeypatch.setenv("LOKI_CHAT_ADMIN_CODE", "test-admin-secret")
     db_dir = tmp_path / "ai_chat"
     monkeypatch.setattr(ai_chat, "_DB_DIR", db_dir)
     monkeypatch.setattr(ai_chat, "_DB_PATH", db_dir / "memory.sqlite3")
@@ -80,6 +82,8 @@ def seeded_feed(monkeypatch):
 
 
 def _join(client_, name="guest", code=None):
+    if " ".join(name.lower().split()) == ai_chat.ADMIN_NAME and code is None:
+        code = "test-admin-secret"
     return client_.post(
         "/api/ai/chat/access", json={"name": name, "code": code or ai_chat.DEFAULT_CHAT_CODE}
     )
@@ -87,9 +91,7 @@ def _join(client_, name="guest", code=None):
 
 def test_the_room_opens_with_a_name_no_password_needed(memory_path, no_internet):
     """The chat door is open by default: a name is all it asks."""
-    opened = client.post(
-        "/api/ai/chat/access", json={"name": "olivia", "code": "whatever"}
-    )
+    opened = client.post("/api/ai/chat/access", json={"name": "olivia", "code": "whatever"})
     assert opened.status_code == 200
     data = opened.json()
     assert data["name"] == "Olivia"
@@ -163,7 +165,7 @@ def test_memory_survives_a_fresh_process(memory_path, no_internet):
     # A second client acts as a fresh browser and re-unlocks; the sqlite file
     # on disk is the same store a restarted process would reopen.
     fresh = TestClient(app)
-    _join(fresh, name="returning")
+    fresh.cookies.update(client.cookies)
     got = fresh.get("/api/ai/chat/memory")
     assert got.status_code == 200
     turns = got.json()["turns"]

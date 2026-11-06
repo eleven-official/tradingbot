@@ -11,10 +11,9 @@ Pieces:
 - Internet access — public Yahoo Finance feeds only (headlines + quotes),
   self-fetched at reply time (no user browsing gets shared);
   new facts learned from the feed are stored with their source link.
-- Access — the room is its own passcode area (`slaterisgay`), independent of
-  the workspace gate; the code never travels further than the HMAC check.
-- Admin — the signed cookie can carry an admin claim; the account name
-  "joshua mathew" is the admin. Admin can teach facts (weighted), pin,
+- Access — display-name entry by default, with an optional operator-set code.
+- Admin — a signed cookie carries privileges only after checking the configured
+  operator secret as well as the operator name. Admin can teach facts (weighted)
   and wipe memory; every admin action is journaled in the memory store.
 """
 
@@ -34,14 +33,42 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from loki.api.market_feed import MarketFeedError, fetch_quote, latest_headlines_for_query
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/ai/chat", tags=["Sentient AI chat"])
+_REQUEST_LOCK = threading.Lock()
+_REQUEST_COUNTS: Dict[str, Tuple[float, int]] = {}
+
+
+def limit_chat_requests(request: Request) -> None:
+    if request.method != "POST":
+        return
+    key = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    with _REQUEST_LOCK:
+        start, count = _REQUEST_COUNTS.get(key, (now, 0))
+        if now - start >= 60:
+            start, count = now, 0
+        if count >= 60:
+            raise HTTPException(
+                429, "Too many chat requests. Try again shortly.", headers={"Retry-After": "60"}
+            )
+        if key not in _REQUEST_COUNTS and len(_REQUEST_COUNTS) >= 4096:
+            expired = [host for host, (stamp, _) in _REQUEST_COUNTS.items() if now - stamp >= 60]
+            for host in expired:
+                del _REQUEST_COUNTS[host]
+            if len(_REQUEST_COUNTS) >= 4096:
+                raise HTTPException(503, "Chat is busy. Try again shortly.")
+        _REQUEST_COUNTS[key] = (start, count + 1)
+
+
+router = APIRouter(
+    prefix="/api/ai/chat", tags=["Research AI chat"], dependencies=[Depends(limit_chat_requests)]
+)
 
 DEFAULT_CHAT_CODE = ""  # open by default: the chat door needs only a name. Set LOKI_CHAT_CODE to lock it behind a passcode again.
 ADMIN_NAME = "joshua mathew"
@@ -67,7 +94,7 @@ else:
 _DB_LOCK = threading.RLock()
 
 _COOKIE_SALT = b"loki-sentient-chat-v1"
-_PROCESS_SECRET = secrets.token_bytes(32)
+_PROCESS_SECRET = os.environ.get("LOKI_CHAT_SESSION_SECRET", "").encode() or secrets.token_bytes(32)
 
 
 def _chat_code() -> str:
@@ -118,6 +145,8 @@ def _connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     with _DB_LOCK:
         conn.executescript(_SCHEMA)
+        if "session" not in {row[1] for row in conn.execute("PRAGMA table_info(turns)")}:
+            conn.execute("ALTER TABLE turns ADD COLUMN session TEXT NOT NULL DEFAULT ''")
     return conn
 
 
@@ -134,12 +163,12 @@ _TURN_TEXT_MAX = _MESSAGE_MAX  # user bubbles stay single-message sized
 _AI_TURN_TEXT_MAX = _MESSAGE_MAX * 4  # AI replies are multi-line; keep them whole
 
 
-def record_turn(role: str, name: str, text: str) -> None:
+def record_turn(role: str, name: str, text: str, session: str = "") -> None:
     cap = _AI_TURN_TEXT_MAX if role == "ai" else _TURN_TEXT_MAX
     with _DB_LOCK, _connect() as conn:
         conn.execute(
-            "INSERT INTO turns (role, name, text, created_at) VALUES (?,?,?,?)",
-            (role, name[:_NAME_MAX], text[:cap], time.time()),
+            "INSERT INTO turns (role, name, text, created_at, session) VALUES (?,?,?,?,?)",
+            (role, name[:_NAME_MAX], text[:cap], time.time(), session),
         )
         conn.execute(
             "DELETE FROM turns WHERE id NOT IN "
@@ -213,12 +242,13 @@ def recall_facts(limit: int = 6) -> List[Dict[str, Any]]:
     return ranked + scored[:remaining]
 
 
-def recall_turns(limit: int = 12) -> List[Dict[str, Any]]:
+def recall_turns(limit: int = 12, session: Optional[str] = None) -> List[Dict[str, Any]]:
     limit = max(1, min(limit, 40))
     with _DB_LOCK, _connect() as conn:
         rows = conn.execute(
-            "SELECT role, name, text, created_at FROM turns ORDER BY created_at DESC LIMIT ?",
-            (limit,),
+            "SELECT role, name, text, created_at FROM turns "
+            "WHERE (? IS NULL OR session = ?) ORDER BY created_at DESC LIMIT ?",
+            (session, session, limit),
         ).fetchall()
     return [dict(row) for row in reversed(rows)]
 
@@ -253,9 +283,15 @@ def _sign(payload: str) -> str:
     ).hexdigest()
 
 
-def encode_chat_cookie(name: str, admin: bool) -> str:
+def encode_chat_cookie(name: str, admin: bool, session: str = "") -> str:
     payload = json.dumps(
-        {"name": name, "admin": admin, "iat": int(time.time())}, separators=(",", ":")
+        {
+            "name": name,
+            "admin": admin,
+            "sid": session or secrets.token_hex(24),
+            "iat": int(time.time()),
+        },
+        separators=(",", ":"),
     )
     return payload + "." + _sign(payload)
 
@@ -273,9 +309,14 @@ def decode_chat_cookie(value: str) -> Optional[Dict[str, Any]]:
         return None
     if not isinstance(data, dict) or not isinstance(data.get("name"), str):
         return None
-    if time.time() - float(data.get("iat") or 0) > COOKIE_MAX_AGE:
+    issued = data.get("iat")
+    if not isinstance(issued, (int, float)) or not math.isfinite(issued):
         return None
-    return {"name": data["name"][:_NAME_MAX], "admin": bool(data.get("admin"))}
+    if not 0 <= time.time() - issued <= COOKIE_MAX_AGE:
+        return None
+    if not isinstance(data.get("sid"), str) or not data["sid"]:
+        return None
+    return {"name": data["name"][:_NAME_MAX], "admin": bool(data.get("admin")), "sid": data["sid"]}
 
 
 def chat_identity(request: Request) -> Optional[Dict[str, Any]]:
@@ -592,25 +633,33 @@ def _compose_reply(
     parts.extend(_memory_block(facts, fresh_texts, bool(fresh)))
     if intent == "trade":
         change = quote.get("change_pct") if isinstance(quote, dict) else None
-        lean = "risk-on" if isinstance(change, (int, float)) and change >= 0 else "risk-off"
+        lean = (
+            ("up" if change > 0 else "down" if change < 0 else "unchanged")
+            if isinstance(change, (int, float)) and math.isfinite(change)
+            else "unavailable"
+        )
         parts.append(
-            f"Tape leans {lean}. I grade setups from real history and say what I see — "
+            f"Quoted price direction: {lean}. A price change alone does not establish a trade setup — "
             "no promised outcomes. Research, not advice; no orders."
         )
     else:
         parts.append("Everything above: research, not advice; no orders.")
     if turns_used:
-        parts.append(f"Our room holds {turns_used} turns of history, and none of it drains.")
+        parts.append(f"Context: {turns_used} recent turns from this browser session.")
     return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
 # Routes. Access first; every other route demands a signed cookie.
 # ---------------------------------------------------------------------------
-def _set_chat_cookie(response: Response, request: Request, name: str, admin: bool) -> None:
+def _set_chat_cookie(
+    response: Response, request: Request, name: str, admin: bool, fresh: bool = False
+) -> None:
     response.set_cookie(
         COOKIE_NAME,
-        encode_chat_cookie(name, admin),
+        encode_chat_cookie(
+            name, admin, "" if fresh else (chat_identity(request) or {}).get("sid", "")
+        ),
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         secure=request.url.scheme == "https" or bool(os.getenv("VERCEL")),
@@ -621,20 +670,18 @@ def _set_chat_cookie(response: Response, request: Request, name: str, admin: boo
 
 @router.post("/access")
 async def chat_access(payload: AccessBody, response: Response, request: Request) -> Dict[str, Any]:
-    """Passcode area: the code gates the room; the name becomes the identity.
-
-    The admin name ("joshua mathew") carries an admin claim on the signed
-    cookie. Wrong names are still identities — they just stay members.
-    """
+    """Open a fresh browser session; operator privileges require a secret."""
     submitted = " ".join(payload.code.split()).lower()
     code_required = chat_room_locked()
-    if code_required and not hmac.compare_digest(submitted, _chat_code()):
+    admin_secret = os.environ.get("LOKI_CHAT_ADMIN_CODE", "")
+    operator_code = bool(admin_secret) and hmac.compare_digest(payload.code, admin_secret)
+    if code_required and not operator_code and not hmac.compare_digest(submitted, _chat_code()):
         raise HTTPException(403, "Wrong passcode — the door stays shut.")
     name = _normalize_name(payload.name)
     if not name:
         raise HTTPException(422, "Pick a name for the room (or use the admin one).")
-    admin = name == ADMIN_NAME
-    _set_chat_cookie(response, request, name.title(), admin)
+    admin = name == ADMIN_NAME and operator_code
+    _set_chat_cookie(response, request, name.title(), admin, fresh=True)
     record_turn("user", name.title(), f"[joined as {name.title()}{' — admin' if admin else ''}]")
     if admin:
         admin_journal("join", "joshua mathew entered the chat room")
@@ -791,12 +838,13 @@ def _relevant_facts(message: str, pool: List[Dict[str, Any]], limit: int) -> Lis
 
 
 @router.post("/message")
-async def chat_message(payload: MessageBody, request: Request, response: Response) -> Reply:
+def chat_message(payload: MessageBody, request: Request, response: Response) -> Reply:
     identity = chat_identity(request)
     if not identity:
         raise HTTPException(401, "Unlock the room first — the passcode gates it.")
     name = str(identity.get("name") or "")
     is_admin = bool(identity.get("admin"))
+    session = str(identity["sid"])
     text = payload.text.strip()[:_MESSAGE_MAX]
     if not text:
         raise HTTPException(422, "Say something first.")
@@ -813,8 +861,8 @@ async def chat_message(payload: MessageBody, request: Request, response: Respons
 
     if text.strip().lower() in {"audit", "pulse", "status"}:
         reply_text = _audit_reply(name, is_admin)
-        record_turn("user", name, text)
-        record_turn("ai", "Loki", reply_text)
+        record_turn("user", name, text, session)
+        record_turn("ai", "Loki", reply_text, session)
         _set_chat_cookie(response, request, name, is_admin)
         return Reply(text=reply_text, admin=is_admin, name=name)
 
@@ -827,7 +875,7 @@ async def chat_message(payload: MessageBody, request: Request, response: Respons
     except MarketFeedError:
         quote = None
 
-    turns_used = recall_turns(10)
+    turns_used = recall_turns(10, session)
     fact_pool = recall_facts(16)
     relevant = _relevant_facts(text, fact_pool, 6)
     reply_text = _compose_reply(
@@ -840,8 +888,8 @@ async def chat_message(payload: MessageBody, request: Request, response: Respons
         turns_used=len(turns_used),
         symbol=symbol,
     )
-    record_turn("user", name, text)
-    record_turn("ai", "Loki", reply_text)
+    record_turn("user", name, text, session)
+    record_turn("ai", "Loki", reply_text, session)
     # Refresh the sliding 14-day window on every message.
     _set_chat_cookie(response, request, name, is_admin)
     return Reply(
@@ -861,7 +909,7 @@ async def chat_memory(request: Request) -> Dict[str, Any]:
         raise HTTPException(401, "Unlock the room first — the passcode gates it.")
     return {
         "facts": recall_facts(12),
-        "turns": recall_turns(30),
+        "turns": recall_turns(30, str(identity["sid"])),
         "admin": bool(identity.get("admin")),
         "name": identity.get("name") or "",
     }
