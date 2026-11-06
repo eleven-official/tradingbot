@@ -58,6 +58,10 @@
       target.append(bulletList(report.execution_readiness.reasons));
       target.append(element('p',report.execution_readiness.note,'caption'));
     }
+    if(report.cost_stress&&!report.comparison){
+      target.append(inlineMetrics([['Unseen test · doubled costs',pct(report.cost_stress.net_return)],['Doubled costs · closed trades',number(report.cost_stress.closed_trades,0)],['Net vs matched passive',pct(report.test.net_return-report.test.buy_and_hold_10pct_net_return)]]));
+      target.append(element('p','Same frozen model and threshold, tested with twice the fees and slippage. No settings are retuned on this test interval.','caption'));
+    }
     if(report.comparison){
       target.append(element('h3',`Frozen validation choice: ${human(report.comparison.selection)}`));
       target.append(element('p','Previously inspected history · development comparison. New forward-paper results have not yet been observed.','integration-note'));

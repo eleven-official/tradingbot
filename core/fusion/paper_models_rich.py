@@ -269,6 +269,8 @@ def train_instrument(rows, symbol, years, *, source):
         - passive_qty * initial_price * 1.001
         + passive_qty * bars[test[-1][3]].close * 0.9995 * 0.999
     ) / 10000 - 1
+    test_result = replay(bars, test, model, threshold, scorer=predict)
+    cost_stress = replay(bars, test, model, threshold, scorer=predict, cost_multiple=2)
     return {
         "id": hashlib.sha256((digest + artifact_hash).encode()).hexdigest(),        "symbol": symbol,
         "requested_years": years,
@@ -282,10 +284,18 @@ def train_instrument(rows, symbol, years, *, source):
         "validation": dict(period(validation), trials=trials),
         "test": dict(
             period(test),
-            **replay(bars, test, model, threshold, scorer=predict),
+            **test_result,
             buy_and_hold_10pct_net_return=passive_return,
             cash_baseline_return=0.0,
         ),
+        "cost_stress": cost_stress,
+        "profitability_checks": {
+            "has_test_trades": test_result["closed_trades"] > 0,
+            "positive_after_costs": test_result["net_return"] > 0,
+            "positive_at_double_costs": cost_stress["net_return"] > 0,
+            "beats_matched_passive": test_result["net_return"] > passive_return,
+            "forward_profitability_proven": False,
+        },
         "artifact": artifact,
         "artifact_sha256": artifact_hash,
         "data_sha256": digest,
@@ -300,7 +310,7 @@ def train_instrument(rows, symbol, years, *, source):
         "limitations": [
             "Weights/scaling use the first 60%; thresholds use validation only with a doubled-cost gate; the final 20% never selects settings.",
             "Fixed whole-unit long-only policy: at most 10% / 1000 USD, 2% stop, 4% take profit, five-session maximum; adverse same-bar stops take priority. Entries are skipped when the 1000 USD cap cannot afford one whole unit at the prevailing price, so very high-priced instruments can report zero trades under this policy.",
-            "Historical proxy executes at the next daily open with 10 bps fee and 5 bps slippage per side; doubled-cost gates apply to threshold selection only.",
+            "Historical proxy executes at the next daily open with 10 bps fee and 5 bps slippage per side; the frozen threshold is also tested at doubled costs on the untouched test interval, without reselection.",
             "Rich daily features cannot see intraday microstructure, short interest, intraday news or venue microstructure; vendor aggregates limit them.",
             "Direction scores are not calibrated win probabilities. An observed backtest is exploratory, not proof of future profitability or 70% wins.",
             "Provider rights apply; Yahoo/vendor revisions and adjustments can change every statistic. Wilson trade intervals are descriptive and do not correct serial dependence.",

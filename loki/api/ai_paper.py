@@ -48,7 +48,7 @@ _PIPELINE_LOCK = threading.Lock()
 
 class AiStepBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    symbol: str = Field(min_length=1, max_length=12)
+    symbol: str = Field(min_length=1, max_length=12, pattern=r"^[A-Za-z0-9.^=\-]+$")
     equity: float = Field(default=10_000.0, gt=0.0, le=100_000_000.0)
     open_positions: int = Field(default=0, ge=0, le=1_000)
     has_position: bool = False
@@ -107,8 +107,7 @@ def _risk_agent_for(cfg: Any, payload: AiStepBody) -> Any:
     from loki_v8.agents import RiskAgent
 
     risk = RiskAgent(cfg)
-    if payload.equity_start > 0:
-        risk.risk.reset_day(payload.equity_start)
+    risk.risk.reset_day(payload.equity_start if payload.equity_start > 0 else payload.equity)
     risk.risk._consecutive_losses = payload.consecutive_losses
     return risk
 
@@ -136,8 +135,10 @@ def _analyze(symbol: str) -> Dict[str, Any]:
         signal = pipeline.quant.run(symbol, frame)
         quotes = pipeline.provider.get_quotes([symbol])
         price = float(quotes.get(symbol) or 0.0)
-        if price <= 0.0:
+        if not math.isfinite(price) or price <= 0.0:
             price = float(frame["close"].iloc[-1])
+        if not math.isfinite(price) or price <= 0.0:
+            raise ValueError("No finite positive market price")
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 - surface a friendly retry

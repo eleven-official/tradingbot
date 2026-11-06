@@ -78,6 +78,34 @@ def test_rich_features_never_read_later_candles():
     assert rich.feature_vector(validate_bars(rows), 100) == baseline
 
 
+def test_cost_stress_uses_frozen_model_and_preserves_cash_policy(flat, affordable):
+    _, cash = flat
+    assert cash["cost_stress"]["closed_trades"] == 0
+    assert cash["profitability_checks"]["positive_after_costs"] is False
+    rows, report = affordable
+    bars = validate_bars([row for row in rows if row["timestamp"] >= report["coverage"]["start"]])
+    samples = [
+        (
+            bars[i + 1].timestamp.date(),
+            rich.feature_vector(bars, i),
+            int(bars[i + 1].close > bars[i + 1].open),
+            i + 1,
+        )
+        for i in range(20, len(bars) - 1)
+    ]
+    test = samples[int(len(samples) * 0.8) :]
+    expected = models.replay(
+        bars,
+        test,
+        report["artifact"]["model"],
+        report["artifact"]["threshold"],
+        scorer=rich.predict,
+        cost_multiple=2,
+    )
+    assert report["cost_stress"] == expected
+    assert report["profitability_checks"]["forward_profitability_proven"] is False
+
+
 def test_changing_only_test_prices_cannot_change_model_scaling_or_threshold(trained):
     rows, original = trained
     changed = deepcopy(rows)
@@ -119,7 +147,11 @@ def _gradient_norm(model, train):
             gradients[index + 1] += (score - label) * value
     # the rich fit penalizes weights only, with its own ridge constant
     return max(
-        abs(value / total) if index == 0 else abs(value / total + 0.01 * model["weights"][index - 1])
+        (
+            abs(value / total)
+            if index == 0
+            else abs(value / total + 0.01 * model["weights"][index - 1])
+        )
         for index, value in enumerate(gradients)
     )
 

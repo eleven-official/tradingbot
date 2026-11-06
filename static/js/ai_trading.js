@@ -8,6 +8,9 @@
 (() => {
   const STORAGE_KEY = 'loki_ai_paper_v1';
   const POLL_MS = 20000;
+  // Match the research replay's baseline assumptions, per side.
+  const FEE_RATE = 10 / 10000;
+  const SLIPPAGE_RATE = 5 / 10000;
 
   const $ = (id) => document.getElementById(id);
   const escapeHtml = (value) =>
@@ -99,24 +102,32 @@
 
   function openPosition(price, qty, trail) {
     const quant = trail.find((t) => t.agent === 'quant') || {};
+    const fill = price * (1 + SLIPPAGE_RATE);
+    const entryFee = qty * fill * FEE_RATE;
     state.position = {
       symbol: state.symbol,
       qty,
-      entry: price,
+      entry: fill,
+      entryFee,
+      costModel: '10bps-fee-5bps-slip-v1',
       stop: quant.stop || 0,
       target: quant.target || 0,
       opened: new Date().toISOString()
     };
-    state.cash -= qty * price;
+    state.cash -= qty * fill + entryFee;
   }
 
   function closePosition(price, reason) {
     const pos = state.position;
     if (!pos) return;
-    const pnl = (price - pos.entry) * pos.qty;
-    state.cash += pos.qty * price;
+    const fill = price * (1 - SLIPPAGE_RATE);
+    const exitFee = pos.qty * fill * FEE_RATE;
+    const entryFee = Number(pos.entryFee) || 0;
+    const pnl = (fill - pos.entry) * pos.qty - entryFee - exitFee;
+    state.cash += pos.qty * fill - exitFee;
     state.trades.unshift({
-      symbol: pos.symbol, qty: pos.qty, entry: pos.entry, exit: price,
+      symbol: pos.symbol, qty: pos.qty, entry: pos.entry, exit: fill,
+      fees: entryFee + exitFee, costModel: pos.costModel || 'legacy-entry-costs-unavailable',
       pnl, opened: pos.opened, closed: new Date().toISOString(), reason
     });
     if (state.trades.length > 50) state.trades.length = 50;
@@ -189,8 +200,9 @@
       } else if (action === 'BUY' && risk.approved === true && !state.position) {
         let qty = Number(risk.qty);
         if (!Number.isFinite(qty) || qty <= 0) throw new Error('Risk approval has no valid quantity');
-        qty = roundQty(data.symbol, qty);
-        if (qty > 0 && qty * data.price <= state.cash) {
+        const unitCost = data.price * (1 + SLIPPAGE_RATE) * (1 + FEE_RATE);
+        qty = roundQty(data.symbol, Math.min(qty, state.cash / unitCost));
+        if (qty > 0 && qty * unitCost <= state.cash) {
           openPosition(data.price, qty, trail);
           logLine(`BUY ${qty} ${data.symbol} @ ${data.price.toFixed(2)} — ${quant.confidence ?? '?'}% confidence · ${director.thesis || ''}`, 'good');
         } else {

@@ -11,6 +11,9 @@ Two contracts carry the honesty guarantees here:
 """
 
 import pandas as pd
+import pytest
+from types import SimpleNamespace
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from loki.api import ai_paper
@@ -18,6 +21,31 @@ from loki.api.server import app
 from loki_v8.config import LokiConfig
 
 client = TestClient(app)
+
+
+@pytest.mark.parametrize("last_close", [100.0, float("nan")])
+def test_analysis_never_returns_a_nonfinite_price(monkeypatch, last_close):
+    from loki_v8 import regime
+
+    frame = pd.DataFrame({"close": [last_close]})
+    pipeline = SimpleNamespace(
+        provider=SimpleNamespace(
+            fetch_history=lambda *args: frame, get_quotes=lambda *args: {"SPY": float("nan")}
+        ),
+        director=SimpleNamespace(run=lambda *args: {"posture": "wait"}),
+        quant=SimpleNamespace(run=lambda *args: None),
+    )
+    monkeypatch.setattr(ai_paper, "_ANALYSIS_CACHE", {})
+    monkeypatch.setattr(ai_paper, "_get_pipeline", lambda symbol: (pipeline, LokiConfig(), False))
+    monkeypatch.setattr(regime, "detect_regime", lambda frame: SimpleNamespace(state="unknown"))
+    monkeypatch.setattr(ai_paper.memory_agent, "reflect", lambda *args, **kwargs: {})
+    monkeypatch.setattr(ai_paper.memory_agent, "director_notes", lambda memory: "")
+    if pd.isna(last_close):
+        with pytest.raises(HTTPException) as exc:
+            ai_paper._analyze("SPY")
+        assert exc.value.status_code == 503
+    else:
+        assert ai_paper._analyze("SPY")["price"] == last_close
 
 
 class FakeRiskManager:
@@ -84,6 +112,10 @@ def _stub(monkeypatch):
 
 
 class TestAiStep:
+    def test_missing_day_baseline_uses_callers_equity(self):
+        agent = ai_paper._risk_agent_for(LokiConfig(), ai_paper.AiStepBody(symbol="SPY", equity=10000))
+        assert agent.risk.day_start_equity == 10000
+
     def test_step_returns_full_trail(self, monkeypatch):
         _stub(monkeypatch)
         response = client.post(
@@ -104,8 +136,12 @@ class TestAiStep:
 
     def test_risk_leg_recomputed_per_request(self, monkeypatch):
         _stub(monkeypatch)
-        rich = client.post("/api/fusion/ai/step", json={"symbol": "SPY", "equity": 20000, "equity_start": 20000})
-        poor = client.post("/api/fusion/ai/step", json={"symbol": "SPY", "equity": 500, "equity_start": 20000})
+        rich = client.post(
+            "/api/fusion/ai/step", json={"symbol": "SPY", "equity": 20000, "equity_start": 20000}
+        )
+        poor = client.post(
+            "/api/fusion/ai/step", json={"symbol": "SPY", "equity": 500, "equity_start": 20000}
+        )
         assert rich.json()["trail"][3]["approved"] is True
         assert rich.json()["trail"][3]["reason"] == "ok"
         assert poor.json()["trail"][3]["approved"] is False
@@ -237,9 +273,7 @@ class TestBars:
         assert data["latest_bar_may_be_incomplete"] is True
         assert data["count"] == 4
         # Ascending order, newest LAST: exactly the provider's contract.
-        assert [candle["t"] for candle in data["candles"]] == [
-            row[0] + "T00:00:00" for row in ROWS
-        ]
+        assert [candle["t"] for candle in data["candles"]] == [row[0] + "T00:00:00" for row in ROWS]
         assert data["candles"][-1] == {
             "t": "2026-01-08T00:00:00",
             "o": 106.5,
