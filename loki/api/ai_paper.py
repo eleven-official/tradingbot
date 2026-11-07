@@ -402,3 +402,86 @@ def ai_bars(
         ),
         "candles": candles,
     }
+
+
+# --- Portfolio AI ---------------------------------------------------------------
+_PORTFOLIO_TTL_SECONDS = 20 * 60.0
+_PORTFOLIO_LOCK = threading.Lock()
+_PORTFOLIO_CACHE: Dict[str, Any] = {}
+
+
+def _portfolio_plan() -> Dict[str, Any]:
+    """Replay every market's verified profile to the latest completed bar."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from loki_v8 import portfolio_ai
+    from loki_v8.data import get_provider, is_crypto
+    from loki_v8.train import load_report
+
+    universal = (load_report() or {}).get("universal") or {}
+    block = universal.get("portfolio") or {}
+    if not block.get("verified") or not block.get("symbols"):
+        raise HTTPException(503, "The Portfolio AI has no verified profile on this server yet.")
+    provider = get_provider()
+
+    def sleeve(symbol: str) -> Optional[Dict[str, Any]]:
+        kind = "crypto" if is_crypto(symbol) else "equity"
+        params = (universal.get(kind) or {}).get("params")
+        if not params:
+            return None
+        try:
+            raw = provider.fetch_history(symbol, "5y", "1d")
+            if raw is None or raw.empty:
+                return None
+            frame, _ = live_engine.drop_forming_bar(raw, crypto=is_crypto(symbol))
+            return portfolio_ai.run_sleeve(frame, params, symbol)
+        except Exception as exc:  # noqa: BLE001 - one bad feed must not sink the book
+            logger.warning("portfolio sleeve %s failed: %s", symbol, exc.__class__.__name__)
+            return None
+
+    symbols = list(block["symbols"])
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = dict(zip(symbols, pool.map(sleeve, symbols)))
+    sleeves = {s: v for s, v in results.items() if v and len(v["returns"]) > 320}
+    missing = [s for s in symbols if s not in sleeves]
+    if len(sleeves) < max(5, len(symbols) // 2):
+        raise HTTPException(503, "Not enough market data reached the Portfolio AI right now; try again shortly.")
+    book = portfolio_ai.combine(sleeves, float(block["target_vol_pct"]))
+    try:
+        quotes = provider.get_quotes(list(sleeves))
+    except Exception:  # noqa: BLE001 - last closes are an honest fallback
+        quotes = {}
+    prices = {s: float(p) for s, p in (quotes or {}).items() if p and math.isfinite(float(p)) and float(p) > 0}
+    alloc = portfolio_ai.allocation(sleeves, book, prices)
+    recent = portfolio_ai.window_stats(book["returns"], str(book["returns"].index[-260].date()), "2100-01-01")
+    return {
+        "target_vol_pct": block["target_vol_pct"],
+        "as_of": max((v["state"] or {}).get("as_of", "") for v in sleeves.values()),
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        **alloc,
+        "missing_markets": missing,
+        "replay_last_year": recent,
+        "holdout": block.get("holdout"),
+        "holdout_buy_hold": block.get("holdout_buy_hold"),
+        "note": (
+            "Weights are what the tested portfolio holds at the latest completed daily bar: every market runs "
+            "its verified rules, capital is shared equally, and the book is scaled toward "
+            f"{block['target_vol_pct']:g}% annual volatility with total holdings capped at 100% (no leverage). "
+            "Paper money only — never advice."
+        ),
+    }
+
+
+@router.get("/portfolio")
+def ai_portfolio(response: Response, refresh: bool = False) -> Dict[str, Any]:
+    _private_response(response)
+    now = time.time()
+    with _PORTFOLIO_LOCK:
+        cached = _PORTFOLIO_CACHE.get("plan")
+        if cached and not refresh and now - cached[0] < _PORTFOLIO_TTL_SECONDS:
+            hit: Dict[str, Any] = cached[1]
+            return hit
+    plan = _portfolio_plan()
+    with _PORTFOLIO_LOCK:
+        _PORTFOLIO_CACHE["plan"] = (time.time(), plan)
+    return plan

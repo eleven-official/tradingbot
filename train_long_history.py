@@ -41,7 +41,7 @@ import pandas as pd
 
 from loki_v8.backtest import run_backtest
 from loki_v8.config import LokiConfig
-from loki_v8 import mistake_model
+from loki_v8 import mistake_model, portfolio_ai
 from loki_v8.strategy import EnsembleStrategy
 
 EQUITY_UNIVERSE = ["SPY", "QQQ", "IWM", "DIA", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "JPM", "XOM", "GLD", "TLT"]
@@ -346,6 +346,38 @@ def learn_from_mistakes(kind: str, data: Dict[str, pd.DataFrame], params: Dict[s
     return report
 
 
+# --- Portfolio AI -------------------------------------------------------------
+PORTFOLIO_WINDOWS = {"development": ("2005-01-01", "2018-12-31"), "validation": ("2019-01-01", "2022-12-31"),
+                     "holdout": ("2023-01-01", "2100-01-01")}
+
+
+def portfolio_stage(report: Dict[str, Any], data_dir: Optional[Path]) -> Dict[str, Any]:
+    """Run every market's verified profile at once; pick the risk level on 2005-2022."""
+    sleeves, frames = {}, {}
+    for kind, universe in (("equity", EQUITY_UNIVERSE), ("crypto", CRYPTO_UNIVERSE)):
+        params = report[kind]["best_params"]
+        for sym in universe:
+            df = load_history(sym, data_dir)
+            frames[sym] = df
+            sleeves[sym] = portfolio_ai.run_sleeve(df, params, sym)
+    target, trials = portfolio_ai.select_target_vol(sleeves, PORTFOLIO_WINDOWS)
+    book = portfolio_ai.combine(sleeves, target)
+    bh = portfolio_ai.buy_hold_returns(frames, book["returns"].index, book["active"])
+    out = {"target_vol_pct": target, "symbols": list(sleeves), "trials": trials, "windows": PORTFOLIO_WINDOWS,
+           "cost_bps_per_side": portfolio_ai.COST_BPS, "average_gross_exposure": round(float(book["gross"].mean()), 3)}
+    for name, (a, b) in PORTFOLIO_WINDOWS.items():
+        out[name] = portfolio_ai.window_stats(book["returns"], a, b)
+        out[name + "_buy_hold"] = portfolio_ai.window_stats(bh, a, b)
+    hold = out["holdout"]
+    out["verified"] = bool(hold and hold["cagr_pct"] > 0 and hold["sharpe"] > 0.5)
+    eq = (1 + book["returns"][book["returns"].index >= PORTFOLIO_WINDOWS["holdout"][0]]).cumprod()
+    out["holdout_curve"] = [[str(d.date()), round(float(v), 4)] for d, v in eq.resample("W-FRI").last().items()]
+    bheq = (1 + bh[bh.index >= PORTFOLIO_WINDOWS["holdout"][0]]).cumprod()
+    out["holdout_curve_buy_hold"] = [[str(d.date()), round(float(v), 4)] for d, v in bheq.resample("W-FRI").last().items()]
+    print(f"== portfolio: target vol {target}% | holdout {hold} | buy&hold {out['holdout_buy_hold']}")
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data-dir", type=Path, default=Path("state/history"))
@@ -369,6 +401,7 @@ def main() -> None:
                 r["holdout"], r["holdout_pooled"] = mistakes["holdout"], mistakes["holdout_pooled"]
             r["best_params"] = params
             print(f"== {kind}: learning from mistakes -> {r['learning_from_mistakes']}")
+        report["portfolio"] = portfolio_stage(report, args.data_dir)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(report, indent=1, default=str))
         if args.write_snapshot:
@@ -382,6 +415,7 @@ def main() -> None:
         "equity": run("equity", EQUITY_UNIVERSE, args.data_dir, args.workers),
         "crypto": run("crypto", CRYPTO_UNIVERSE, args.data_dir, args.workers),
     }
+    report["portfolio"] = portfolio_stage(report, args.data_dir)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=1, default=str))
     for kind in ("equity", "crypto"):
@@ -423,6 +457,8 @@ def write_snapshot(report: Dict[str, Any]) -> None:
             "verified": bool(pooled["symbols"] and pooled["mean_cagr_pct"] and pooled["mean_cagr_pct"] > 0
                              and pooled["profit_factor_above_1"] >= math.ceil(0.6 * pooled["symbols"])),
         }
+    if report.get("portfolio"):
+        block["portfolio"] = report["portfolio"]
     snap["universal"] = block
     path.write_text(json.dumps(snap, indent=1, default=str), encoding="utf-8")
     print(f"snapshot updated: {path}")

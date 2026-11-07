@@ -664,7 +664,7 @@ def copilot(payload: CopilotRequest, request: Request, response: Response):
     # council) stay with the context-aware copilot; general questions —
     # tickers, the market, terms, the AI itself — go to Loki's brain, which
     # runs the live AI engine and real quotes.
-    if not _PERSONAL.search(payload.message):
+    if not _PERSONAL.search(payload.message) or re.search(r"\bportfolio ai\b", payload.message, re.I):
         from loki.api import loki_brain
 
         brain = loki_brain.answer(payload.message)

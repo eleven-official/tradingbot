@@ -18,3 +18,4 @@ def offline_brain(monkeypatch, request):
 
     monkeypatch.setattr(loki_brain, "_ai_read", lambda symbol: None)
     monkeypatch.setattr(loki_brain, "_quotes", lambda symbols: [])
+    monkeypatch.setattr(loki_brain, "_portfolio", lambda: None)

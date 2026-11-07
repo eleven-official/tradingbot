@@ -149,6 +149,18 @@ def _quotes(symbols: List[Tuple[str, str]]) -> List[Dict[str, Any]]:
         return list(pool.map(lambda s: quote_or_failure(s[0], s[1], 15.0), symbols))
 
 
+def _portfolio() -> Optional[Dict[str, Any]]:
+    from fastapi import Response
+
+    from loki.api import ai_paper
+
+    try:
+        return ai_paper.ai_portfolio(Response())
+    except Exception as exc:  # noqa: BLE001 - chat must never 500 on a data blip
+        logger.warning("brain portfolio read failed: %s", exc.__class__.__name__)
+        return None
+
+
 def _universal() -> Dict[str, Any]:
     from loki_v8.train import load_report
 
@@ -281,10 +293,35 @@ def how_ai_works() -> str:
             "Ask 'how did the AI do?' for its track record, or name any ticker for a live read.\n" + FOOTER)
 
 
+def portfolio_answer() -> str:
+    uni = _universal().get("portfolio") or {}
+    h, b = uni.get("holdout") or {}, uni.get("holdout_buy_hold") or {}
+    lines = ["The Portfolio AI runs the verified strategy on 21 markets at once — 13 stocks/ETFs (including gold and bonds) "
+             "and 8 coins — shares capital equally, scales the whole book to a steady risk level, and never holds more than 100% of the account."]
+    if h:
+        lines.append(f"On unseen 2023→now data it made {_pct(h.get('cagr_pct'))} a year with a Sharpe of {h.get('sharpe')} and a worst drop of "
+                     f"{_pct(h.get('max_dd_pct'))}; holding all 21 equally made {_pct(b.get('cagr_pct'))} a year but fell {_pct(b.get('max_dd_pct'))} at worst.")
+    plan = _portfolio()
+    if plan and plan.get("positions"):
+        held = [p for p in plan["positions"] if p.get("weight", 0) > 0]
+        if held:
+            lines.append(f"Right now (as of {plan.get('as_of')}) it holds " +
+                         ", ".join(f"{p['symbol']} {p['weight'] * 100:.1f}%" for p in held[:8]) +
+                         f", with {plan.get('cash', 0) * 100:.0f}% in cash.")
+        else:
+            lines.append("Right now every market is out of its uptrend, so it's fully in cash.")
+    lines.append("Start it with paper money on the AI trading page.\n" + FOOTER)
+    return "\n".join(lines)
+
+
+_PORTFOLIO_Q = re.compile(r"\b(portfolio ai|portfolio|diversif\w*|all (the )?markets|what (is|are) (the ai|you|it) (holding|buying|in)|holdings|allocation)\b", re.I)
+
+
 HELP_TEXT = ("Here's what I can do:\n"
              "• Name any ticker or coin — 'what about NVDA?', 'should I buy bitcoin?' — and I'll run the live AI on it and explain its decision.\n"
              "• 'How's the market?' for a quick live check across stocks, crypto, gold and the fear gauge.\n"
              "• 'How did the AI do?' for its honest 20-year track record, or 'how does the AI work?'.\n"
+             "• 'What is the Portfolio AI holding?' — the 21-market book and its unseen-data record.\n"
              "• Ask what any trading term means — stop loss, ATR, drawdown, Sharpe, position sizing, trend following…\n"
              "I don't place orders or give personal financial advice — I explain what the data and the AI are saying.")
 
@@ -324,6 +361,8 @@ def _answer(msg: str, name: str, allow_data: bool) -> Optional[Dict[str, Any]]:
                                                "I explain what the live market data and Loki's trading AI are saying, in plain English. " + HELP_TEXT.split('\n', 1)[1])}
     if _HELP.search(msg) and not symbols:
         return {"intent": "help", "text": HELP_TEXT}
+    if allow_data and _PORTFOLIO_Q.search(msg) and not symbols and not re.search(r"\bmy\b", low):
+        return {"intent": "portfolio", "text": portfolio_answer()}
     if _HOW_AI.search(msg):
         return {"intent": "how_ai", "text": how_ai_works()}
     if _TRACK.search(msg) and not symbols and re.search(r"\b(ai|loki|you|model|bot|strategy|it)\b", low):

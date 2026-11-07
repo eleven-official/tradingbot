@@ -81,3 +81,33 @@
   .lm-price { font-size: 15px; }
   .lm-spark { width: 56px; }
 }
+
+/* ---------------- Portfolio AI ---------------- */
+.portfolio-ai { border-color: #a8f0c63d; background: linear-gradient(160deg, rgba(168,240,198,.05), transparent 40%), var(--panel, #0f1a22); }
+.pf-record { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.pf-stat { border: 1px solid var(--line, #263947); border-radius: 10px; padding: 12px 14px; background: var(--surface-inset, #0a131c); display: grid; gap: 4px; }
+.pf-stat span { font: 10px var(--mono, monospace); letter-spacing: .08em; color: var(--muted, #a2b5c4); text-transform: uppercase; }
+.pf-stat strong { font: 650 22px var(--mono, monospace); }
+.pf-stat small { color: var(--muted, #a2b5c4); font-size: 11.5px; }
+.pf-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; }
+.pf-controls label { display: grid; gap: 6px; font-size: 12px; color: var(--muted, #a2b5c4); }
+.pf-controls input { width: 160px; }
+.pf-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; margin-top: 10px; }
+.pf-alloc { display: grid; gap: 6px; margin-top: 8px; }
+.pf-row { display: grid; grid-template-columns: 78px minmax(0, 1fr) 54px minmax(0, 150px); align-items: center; gap: 10px; font-size: 12.5px; }
+.pf-row.idle { opacity: .55; }
+.pf-row.total { border-top: 1px dashed var(--line, #263947); padding-top: 8px; margin-top: 4px; }
+.pf-sym { font: 600 12px var(--mono, monospace); color: #e7f0f5; }
+.pf-bar { height: 8px; border-radius: 6px; background: rgba(162,181,196,.1); overflow: hidden; }
+.pf-bar i { display: block; height: 100%; background: linear-gradient(90deg, #6fd3bf, #c9ffe2); border-radius: 6px; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.pf-w { font: 12px var(--mono, monospace); text-align: right; }
+.pf-meta { color: var(--muted, #a2b5c4); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0 10px; }
+.pf-metric { border: 1px solid var(--line, #263947); border-radius: 9px; padding: 10px 12px; display: grid; gap: 3px; }
+.pf-metric span { font-size: 11px; color: var(--muted, #a2b5c4); }
+.pf-metric strong { font: 600 15px var(--mono, monospace); }
+#pf-curve { width: 100%; height: 120px; border: 1px solid var(--line, #263947); border-radius: 10px; background: var(--surface-inset, #0a131c); }
+.pf-log { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; font-size: 12px; max-height: 220px; overflow: auto; }
+.pf-log li.good { color: #b8f0d8; } .pf-log time { color: var(--muted, #a2b5c4); margin-right: 6px; font-size: 11px; }
+@media (max-width: 900px) { .pf-record { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pf-grid { grid-template-columns: 1fr; } .pf-row { grid-template-columns: 64px minmax(0, 1fr) 50px; } .pf-meta { display: none; } }
+#ai-trading > #portfolio-ai { grid-column: 1 / -1; }

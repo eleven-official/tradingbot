@@ -190,7 +190,35 @@
         `<div class="table-scroll"><table style="font-size:12.5px;width:100%"><thead><tr><th>Symbol</th><th>AI / yr</th><th>AI max DD</th><th>Trades</th><th>PF</th><th>B&amp;H / yr</th><th>B&amp;H max DD</th></tr></thead><tbody>${rows}</tbody></table></div></details>` +
         `</article>`;
     };
-    host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:12px;margin:12px 0">${card('STOCKS & ETFS', block.equity)}${card('CRYPTO', block.crypto)}</div>` +
+    const pf = block.portfolio;
+    let pfHtml = '';
+    if (pf && pf.holdout) {
+      const curve = (rows) => {
+        const pts = (rows || []).map((r) => Number(r[1])).filter(Number.isFinite);
+        if (pts.length < 2) return '';
+        return pts;
+      };
+      const a = curve(pf.holdout_curve), b = curve(pf.holdout_curve_buy_hold);
+      let svg = '';
+      if (a && b) {
+        const lo = Math.min(...a, ...b), hi = Math.max(...a, ...b), span = hi - lo || 1;
+        const path = (pts) => pts.map((v, i) => `${i ? 'L' : 'M'}${(i / (pts.length - 1) * 600).toFixed(1)},${(150 - (v - lo) / span * 140).toFixed(1)}`).join(' ');
+        svg = `<svg viewBox="0 0 600 160" preserveAspectRatio="none" style="width:100%;height:150px;margin-top:8px" aria-label="Portfolio AI versus buy and hold since 2023">` +
+          `<path d="${path(b)}" fill="none" stroke="#7f93a8" stroke-width="1.5" stroke-dasharray="4 4"/>` +
+          `<path d="${path(a)}" fill="none" stroke="#a8f0c6" stroke-width="2.5"/></svg>` +
+          `<p class="caption"><span style="color:#a8f0c6">━ Portfolio AI</span> &nbsp; <span style="color:#7f93a8">┅ equal-weight buy &amp; hold</span> · growth of $1 since Jan 2023 (weekly)</p>`;
+      }
+      const h = pf.holdout, bh = pf.holdout_buy_hold || {};
+      pfHtml = `<article style="${cardStyle}width:100%;margin-top:12px;border-color:rgba(168,240,198,.4)">` +
+        `<p style="letter-spacing:.14em;font-size:10.5px;color:#a8f0c6">PORTFOLIO AI · 21 MARKETS AT ONCE · HOLDOUT 2023→NOW</p>` +
+        `<div style="display:flex;flex-wrap:wrap;gap:22px;align-items:baseline">` +
+        `<span><strong style="font-size:26px;color:${tone(h.cagr_pct)}">${pct(h.cagr_pct)}</strong> <span class="caption">avg / year</span></span>` +
+        `<span><strong style="font-size:20px">${escapeHtml(Number(h.sharpe).toFixed(2))}</strong> <span class="caption">Sharpe (buy &amp; hold ${escapeHtml(Number(bh.sharpe).toFixed(2))})</span></span>` +
+        `<span><strong style="font-size:20px">${num(h.max_dd_pct)}</strong> <span class="caption">worst drop (buy &amp; hold ${num(bh.max_dd_pct)})</span></span>` +
+        `<span><strong style="font-size:20px">${escapeHtml(Number(h.profitable_months_pct).toFixed(0))}%</strong> <span class="caption">months profitable</span></span></div>` +
+        svg + `<p class="caption">Every market runs its verified rules; capital is shared equally and the book is scaled to ${escapeHtml(pf.target_vol_pct)}% yearly volatility (chosen on 2005–2022 only), never above 100% invested. <a class="text-link" href="#ai-trading">Run it with paper money →</a></p></article>`;
+    }
+    host.innerHTML = pfHtml + `<div style="display:flex;flex-wrap:wrap;gap:12px;margin:12px 0">${card('STOCKS & ETFS', block.equity)}${card('CRYPTO', block.crypto)}</div>` +
       `<p class="caption">Trained ${escapeHtml(String(block.generated_at || '').slice(0, 10))} on data through ${escapeHtml((block.equity || block.crypto || {}).data_through || '—')}. Past results on historical data, never a promise about the next trade.</p>`;
   };
 

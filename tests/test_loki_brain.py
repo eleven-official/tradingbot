@@ -100,3 +100,23 @@ class TestLiveReads:
         room.post("/api/ai/chat/access", json={"name": "Sam", "code": ""})
         reply = room.post("/api/ai/chat/message", json={"text": "what is a stop loss?"}).json()
         assert "exit price" in reply["text"]
+
+
+def test_portfolio_question_uses_the_shipped_record():
+    reply = loki_brain.answer("what is the portfolio AI?")
+    assert reply["intent"] == "portfolio" and "21 markets" in reply["text"] and "a year" in reply["text"]
+
+
+@pytest.mark.brain_data
+def test_portfolio_answer_lists_current_holdings(monkeypatch):
+    monkeypatch.setattr(loki_brain, "_portfolio", lambda: {"as_of": "2026-11-06", "cash": 0.6, "positions": [
+        {"symbol": "SPY", "weight": 0.07}, {"symbol": "BTC-USD", "weight": 0.0}]})
+    text = loki_brain.answer("what is the AI holding right now?")["text"]
+    assert "SPY 7.0%" in text and "60% in cash" in text
+
+
+def test_workspace_routes_portfolio_ai_questions_to_the_brain():
+    reply = client.post("/api/copilot", json={"message": "What is the Portfolio AI holding?"}).json()
+    assert reply["intent"] == "brain:portfolio"
+    mine = client.post("/api/copilot", json={"message": "how is my portfolio doing?"}).json()
+    assert not mine["intent"].startswith("brain:")
