@@ -10,7 +10,7 @@ Activation rules:
 - The gate engages only for remote deployments (``VERCEL`` set) or when the
   launcher explicitly turns it on (``LOKI_SITE_GATE=1``). The local desktop
   launcher experience stays open, as designed by the fusion workspace.
-- The access code defaults to ``slayterisgay`` and stays configurable via
+- The access code defaults to ``flathead`` and stays configurable via
   ``LOKI_SITE_CODE`` so it can be changed without a deploy.
 """
 
@@ -40,7 +40,7 @@ SESSION_COOKIE = "loki_session"
 TERMS_COOKIE = "loki_terms"
 GATE_MAX_AGE = 30 * 24 * 3600
 SESSION_MAX_AGE = 14 * 24 * 3600
-_DEFAULT_CODE = "slayterisgay"
+_DEFAULT_CODE = "flathead"
 
 # The Terms of Use a visitor ticks before the door opens. Version stamps every
 # acceptance cookie: bump TERMS_VERSION whenever the document changes, and every

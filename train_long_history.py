@@ -41,6 +41,7 @@ import pandas as pd
 
 from loki_v8.backtest import run_backtest
 from loki_v8.config import LokiConfig
+from loki_v8 import mistake_model
 from loki_v8.strategy import EnsembleStrategy
 
 EQUITY_UNIVERSE = ["SPY", "QQQ", "IWM", "DIA", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "JPM", "XOM", "GLD", "TLT"]
@@ -227,13 +228,21 @@ def run(kind: str, symbols: List[str], data_dir: Optional[Path], workers: int) -
         h, hb = r.get("holdout") or {}, r.get("holdout_bh") or {}
         holdout.append({"symbol": r["symbol"], "strategy": h, "buy_hold": hb, "development": r.get("development"), "validation": r.get("validation")})
     pooled = _pooled(holdout)
+    best_full = {**FIXED, **{k: v for k, v in best["params"].items() if k != "preset"},
+                 "factor_preset": best["params"]["preset"], "factor_weights": PRESETS[best["params"]["preset"]]}
+    mistakes = learn_from_mistakes(kind, data, best_full)
+    if mistakes.get("kept"):
+        best_full["meta_filter"] = mistakes["meta"]
+        holdout = mistakes["holdout"]
+        pooled = mistakes["holdout_pooled"]
     return {
         "kind": kind,
         "symbols": symbols,
         "windows": WINDOWS[kind],
         "candidates": len(combos),
         "seconds": round(time.time() - started, 1),
-        "best_params": {**FIXED, **{k: v for k, v in best["params"].items() if k != "preset"}, "factor_preset": best["params"]["preset"], "factor_weights": PRESETS[best["params"]["preset"]]},
+        "best_params": best_full,
+        "learning_from_mistakes": {k: v for k, v in mistakes.items() if k not in ("meta", "holdout")},
         "development_score": best["development_score"],
         "validation_score": best["validation_score"],
         "leaderboard": [{k: v for k, v in b.items() if k != "rows"} for b in board[:8]],
@@ -262,13 +271,109 @@ def _pooled(holdout: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+# --- Learning from mistakes -------------------------------------------------
+META_THRESHOLDS = (0.30, 0.35, 0.40, 0.45, 0.50)
+
+
+def _run_all(data: Dict[str, pd.DataFrame], kind: str, params: Dict[str, Any], meta: Optional[Dict[str, Any]] = None):
+    """Backtest every symbol with the winning params (optionally filtered)."""
+    bpy = 365 if kind == "crypto" else 252
+    base = {k: v for k, v in params.items() if k in LokiConfig.__dataclass_fields__ and k != "factor_weights"}
+    out = {}
+    for sym, df in data.items():
+        cfg = replace(LokiConfig(initial_cash=100_000.0), **base, factor_weights=dict(params["factor_weights"]), meta_filter=meta)
+        frame = EnsembleStrategy(cfg).score_frame(df)
+        res = run_backtest(df, cfg, symbol=sym, bars_per_year=bpy, frame=frame)
+        equity = _fee_adjusted_equity(res.equity_curve, res.trades)
+        _apply_fees(res.trades)
+        rows = {"symbol": sym}
+        for name, (start, end) in WINDOWS[kind].items():
+            rows[name] = _period_stats(equity, res.trades, start, end, bpy)
+            rows[name + "_bh"] = _buy_hold(df, start, end, bpy)
+        out[sym] = {"frame": frame, "trades": res.trades, "rows": rows}
+    return out
+
+
+def learn_from_mistakes(kind: str, data: Dict[str, pd.DataFrame], params: Dict[str, Any]) -> Dict[str, Any]:
+    """Fit the trade filter walk-forward and decide honestly whether to keep it.
+
+    1. Replay the winning profile; every closed trade becomes a lesson.
+    2. Fit on trades CLOSED before validation; pick the threshold that best
+       improves the validation score (or none).
+    3. Refit on trades closed before the holdout; judge it once on 2023+.
+    Kept only if validation improved and holdout Sharpe did not get worse.
+    """
+    bpy = 365 if kind == "crypto" else 252
+    val_start = WINDOWS[kind]["validation"][0]
+    hold_start = WINDOWS[kind]["holdout"][0]
+    base = _run_all(data, kind, params)
+    frames = [b["frame"] for b in base.values()]
+    trades = [b["trades"] for b in base.values()]
+    base_rows = [b["rows"] for b in base.values()]
+    base_val, base_hold = score(base_rows, "validation"), score(base_rows, "holdout")
+
+    X_dev, y_dev = mistake_model.training_rows(frames, trades, bpy, closed_before=val_start)
+    report: Dict[str, Any] = {"lessons_development": int(len(y_dev)), "baseline_validation": round(base_val, 3),
+                              "baseline_holdout": round(base_hold, 3), "trials": []}
+    if len(y_dev) < 60 or y_dev.min() == y_dev.max():
+        report.update(kept=False, reason="too few lessons before validation")
+        return report
+    dev_model = mistake_model.fit(X_dev, y_dev)
+    best_t, best_val = None, base_val
+    for t in META_THRESHOLDS:
+        rows = [b["rows"] for b in _run_all(data, kind, params, {"model": dev_model, "threshold": t}).values()]
+        v = score(rows, "validation")
+        report["trials"].append({"threshold": t, "validation_score": round(v, 3)})
+        if v > best_val + 0.01:
+            best_t, best_val = t, v
+    if best_t is None:
+        report.update(kept=False, reason="no threshold improved the validation window")
+        return report
+    X_all, y_all = mistake_model.training_rows(frames, trades, bpy, closed_before=hold_start)
+    final_model = mistake_model.fit(X_all, y_all)
+    meta = {"model": final_model, "threshold": best_t, "trained_on_trades_closed_before": hold_start}
+    filtered = _run_all(data, kind, params, meta)
+    rows = [b["rows"] for b in filtered.values()]
+    hold = score(rows, "holdout")
+    holdout = [{"symbol": r["symbol"], "strategy": r.get("holdout"), "buy_hold": r.get("holdout_bh")} for r in rows]
+    kept = hold >= base_hold - 1e-9
+    report.update(
+        threshold=best_t, validation_score=round(best_val, 3), holdout_score=round(hold, 3),
+        lessons_final=int(len(y_all)), kept=kept, meta=meta if kept else None,
+        holdout=holdout, holdout_pooled=_pooled(holdout),
+        reason="improved validation and did not hurt the holdout" if kept else "validation gain did not hold up on the holdout",
+    )
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data-dir", type=Path, default=Path("state/history"))
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--out", type=Path, default=Path("state/long_history_report.json"))
     parser.add_argument("--write-snapshot", action="store_true", help="store winners in loki_v8/training_report_snapshot.json")
+    parser.add_argument("--from-report", type=Path, default=None,
+                        help="reuse best params from an earlier report and only run the learning-from-mistakes stage")
     args = parser.parse_args()
+    if args.from_report:
+        report = json.loads(args.from_report.read_text())
+        report["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        for kind, universe in (("equity", EQUITY_UNIVERSE), ("crypto", CRYPTO_UNIVERSE)):
+            r = report[kind]
+            params = {k: v for k, v in r["best_params"].items() if k != "meta_filter"}
+            data = {sym: load_history(sym, args.data_dir) for sym in universe}
+            mistakes = learn_from_mistakes(kind, data, params)
+            r["learning_from_mistakes"] = {k: v for k, v in mistakes.items() if k not in ("meta", "holdout")}
+            if mistakes.get("kept"):
+                params["meta_filter"] = mistakes["meta"]
+                r["holdout"], r["holdout_pooled"] = mistakes["holdout"], mistakes["holdout_pooled"]
+            r["best_params"] = params
+            print(f"== {kind}: learning from mistakes -> {r['learning_from_mistakes']}")
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(report, indent=1, default=str))
+        if args.write_snapshot:
+            write_snapshot(report)
+        return
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "protocol": "universal profile; select on min(development, validation); holdout read once for reporting",
@@ -311,6 +416,7 @@ def write_snapshot(report: Dict[str, Any]) -> None:
             "development_score": r["development_score"],
             "validation_score": r["validation_score"],
             "holdout_pooled": pooled,
+            "learning_from_mistakes": r.get("learning_from_mistakes"),
             "holdout": [{"symbol": h["symbol"], "strategy": h["strategy"], "buy_hold": h["buy_hold"]} for h in r["holdout"]],
             "data_through": r["data_through"],
             # The live AI only uses a universal profile that made money out of sample.

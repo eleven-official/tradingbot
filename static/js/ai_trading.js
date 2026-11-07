@@ -179,6 +179,7 @@
     trend_filter: 'price is below its 200-day average (trend filter)',
     volatility_cap: 'volatility is above the profile cap',
     regime_filter: 'bear regime blocks new longs',
+    learned_filter: 'this setup looks like past losing trades (learned filter)',
     signal: 'signal not strong enough',
     warming_up: 'not enough history yet'
   };

@@ -238,3 +238,71 @@ def test_trend_exit_vote():
     assert live_engine.exit_signal(cfg, {"ready": True, "above_sma200": True}, "SELL") == "HOLD"
     assert live_engine.exit_signal(cfg, {"ready": True, "above_sma200": False}, "BUY") == "SELL"
     assert live_engine.exit_signal(LokiConfig(), {"ready": True, "above_sma200": True}, "sell") == "SELL"
+
+
+class TestLearnedFilter:
+    """The mistake filter: trained on the strategy's own trades, same rule live and in backtests."""
+
+    def _model(self, df, cfg):
+        from loki_v8 import mistake_model
+
+        frame = EnsembleStrategy(cfg).score_frame(df)
+        trades = run_backtest(df, cfg, frame=frame).trades
+        X, y = mistake_model.training_rows([frame], [trades], 252)
+        return mistake_model.fit(X, y), len(y)
+
+    def test_filter_removes_entries_and_parity_holds(self):
+        df = _tape()
+        base = LokiConfig(signal_threshold=8.0, take_profit_atr=4.0)
+        model, n = self._model(df, base)
+        assert n > 10 and model["samples"] == n
+        meta = {"model": model, "threshold": 0.55}
+        cfg = LokiConfig(signal_threshold=8.0, take_profit_atr=4.0, meta_filter=meta)
+        unfiltered = run_backtest(df, base).trades
+        filtered = run_backtest(df, cfg).trades
+        assert len(filtered) < len(unfiltered)
+        # Every filtered entry is one the live planner would also allow.
+        frame = EnsembleStrategy(cfg).score_frame(df)
+        index = list(df.index)
+        for t in filtered:
+            if t.exit_reason == "scale_out":
+                continue
+            plan = live_engine.plan_entry(frame.iloc[: index.index(t.entry_time)], cfg)
+            gate = next(g for g in plan["gates"] if g["name"] == "learned_filter")
+            assert gate["passed"] and plan["allowed"]
+
+    def test_missing_features_never_block_and_no_model_is_open(self):
+        from loki_v8 import mistake_model
+
+        assert mistake_model.allows(None, 0.01)
+        assert mistake_model.allows({"model": {"x": 1}, "threshold": 0.5}, None)
+        assert not mistake_model.allows({"model": {"x": 1}, "threshold": 0.5}, 0.2)
+
+    def test_training_rows_exclude_trades_not_yet_closed(self):
+        from loki_v8 import mistake_model
+
+        df = _tape()
+        cfg = LokiConfig(signal_threshold=8.0)
+        frame = EnsembleStrategy(cfg).score_frame(df)
+        trades = run_backtest(df, cfg, frame=frame).trades
+        cut = str(df.index[600].date())
+        X, y = mistake_model.training_rows([frame], [trades], 252, closed_before=cut)
+        closed = [t for t in trades if t.exit_reason != "scale_out" and str(t.exit_time.date()) < cut]
+        assert 0 < len(y) <= len(closed)
+
+
+def test_shipped_snapshot_profiles_are_consistent():
+    from loki_v8.train import apply_universal, load_report
+
+    report = load_report()
+    for symbol in ("SPY", "BTC-USD"):
+        cfg = LokiConfig()
+        applied = apply_universal(report, symbol, cfg)
+        assert applied, symbol
+        assert cfg.sizing_mode == "vol_target"
+        assert cfg.max_daily_loss_pct == LokiConfig().max_daily_loss_pct  # guards untouched
+    meta = load_report()["universal"]["equity"]["params"].get("meta_filter")
+    if meta:
+        from loki_v8 import mistake_model
+
+        assert meta["model"]["features"] == list(mistake_model.FEATURES)

@@ -20,6 +20,7 @@ import pandas as pd
 from .config import LokiConfig
 from .regime import is_bearish, regime_series
 from .risk import RiskManager, entry_quantity, realized_vol
+from . import mistake_model
 from .strategy import EnsembleStrategy
 
 
@@ -128,6 +129,11 @@ def run_backtest(
     )
 
     vols = realized_vol(df["close"], cfg.vol_lookback, bars_per_year)
+    meta_p = None
+    if cfg.meta_filter and cfg.meta_filter.get("model"):
+        meta_p = mistake_model.predict_frame(
+            cfg.meta_filter["model"], mistake_model.feature_frame(frame, bars_per_year)
+        )
     warmup = max(cfg.lookback_bars, 60)
     cash = cfg.initial_cash
     risk = RiskManager(cfg)
@@ -325,7 +331,11 @@ def run_backtest(
             if action == "BUY":
                 allow_trend = (not cfg.require_trend_filter) or above_ma
                 allow_regime = (not cfg.regime_filter) or (not bear)
-                if allow_vol and allow_trend and allow_regime:
+                allow_meta = True
+                if meta_p is not None:
+                    p_prev = float(meta_p.iloc[i - 1])
+                    allow_meta = mistake_model.allows(cfg.meta_filter, p_prev if np.isfinite(p_prev) else None)
+                if allow_vol and allow_trend and allow_regime and allow_meta:
                     entry = _fill(o, "buy", cfg)
                     atr_val = atr_prev if np.isfinite(atr_prev) else entry * 0.02
                     stop = entry - cfg.stop_loss_atr * atr_val

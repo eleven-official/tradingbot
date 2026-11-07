@@ -262,7 +262,7 @@
     loadChart();
   }
 
-  const GATE_NAMES = { signal: 'Signal strength', volatility_cap: 'Volatility cap', trend_filter: '200-day trend filter', regime_filter: 'Regime filter' };
+  const GATE_NAMES = { signal: 'Signal strength', volatility_cap: 'Volatility cap', trend_filter: '200-day trend filter', regime_filter: 'Regime filter', learned_filter: 'Learned from past mistakes' };
 
   async function askAi() {
     if (!prefs.selected) return;

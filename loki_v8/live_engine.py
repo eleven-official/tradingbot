@@ -34,6 +34,7 @@ import pandas as pd
 from .config import LokiConfig
 from .regime import is_bearish, regime_series
 from .risk import entry_quantity, realized_vol
+from . import mistake_model
 from .strategy import EnsembleStrategy
 
 # Equity daily bars are complete once the regular session has closed. A
@@ -183,6 +184,25 @@ def plan_entry(frame: pd.DataFrame, cfg: LokiConfig, bars_per_year: int = 252) -
             "detail": f"regime {regime}" + (" blocks new longs" if bear and cfg.regime_filter else ""),
         },
     ]
+    meta = cfg.meta_filter if cfg.meta_filter and cfg.meta_filter.get("model") else None
+    win_probability: Optional[float] = None
+    if meta:
+        feats = mistake_model.feature_frame(frame, bars_per_year)
+        win_probability = mistake_model.predict_row(meta["model"], feats.iloc[-1])
+        threshold_p = float(meta.get("threshold", 0.0))
+        gates.append(
+            {
+                "name": "learned_filter",
+                "passed": mistake_model.allows(meta, win_probability),
+                "detail": (
+                    f"setups like this won {win_probability * 100:.0f}% of the time "
+                    f"(needs {threshold_p * 100:.0f}%) · learned from "
+                    f"{meta['model'].get('samples', '?')} past trades"
+                    if win_probability is not None
+                    else "not enough history for the learned filter yet"
+                ),
+            }
+        )
     allowed = all(g["passed"] for g in gates)
     failed = next((g["name"] for g in gates if not g["passed"]), None)
     stamp = frame.index[-1]
@@ -200,6 +220,7 @@ def plan_entry(frame: pd.DataFrame, cfg: LokiConfig, bars_per_year: int = 252) -
         "above_sma200": above_ma,
         "size_multiplier": round(size_multiplier(cfg, score, regime, atr_pct, atr_med), 4),
         "ann_vol": round(ann_vol, 6),
+        "win_probability": None if win_probability is None else round(win_probability, 4),
         "sizing_mode": cfg.sizing_mode,
         "stop_atr": float(cfg.stop_loss_atr),
         "target_atr": float(cfg.take_profit_atr),

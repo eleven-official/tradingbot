@@ -123,7 +123,7 @@ class TestRelayAccess:
 
 class TestPositions:
     def gate(self):
-        opened = client.post("/api/gate", json={"code": "slayterisgay", "accepted_terms": True})
+        opened = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True})
         assert opened.status_code == 200
 
     def test_positions_whitelist_only_known_fields(self):
@@ -186,7 +186,7 @@ class TestPositions:
 
 class TestRelay:
     def gate(self):
-        opened = client.post("/api/gate", json={"code": "slayterisgay", "accepted_terms": True})
+        opened = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True})
         assert opened.status_code == 200
 
     def test_bad_key_shapes_never_reach_the_network(self, monkeypatch):
@@ -297,7 +297,7 @@ class TestRelay:
 
 class TestOrderRail:
     def gate(self):
-        opened = client.post("/api/gate", json={"code": "slayterisgay", "accepted_terms": True})
+        opened = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True})
         assert opened.status_code == 200
 
     def test_semantics_a_limit_order_needs_a_price(self, monkeypatch):
@@ -482,7 +482,7 @@ BARS_PAYLOAD = {
 
 class TestAutopilotBars:
     def gate(self):
-        opened = client.post("/api/gate", json={"code": "slayterisgay", "accepted_terms": True})
+        opened = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True})
         assert opened.status_code == 200
 
     def test_bars_read_reaches_alpacas_data_host_not_the_paper_host(self, monkeypatch):

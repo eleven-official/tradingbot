@@ -140,7 +140,6 @@ module = [
     "loki.api.server",
     "loki_v8.agents",
     "loki_v8.backtest",
-    "loki_v8.persistence",
     "loki_v8.train",
 ]
 ignore_errors = true

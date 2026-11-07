@@ -54404,7 +54404,7 @@
  },
  "training_seconds": 787.6,
  "universal": {
-  "generated_at": "2026-11-07T13:08:34+00:00",
+  "generated_at": "2026-11-07T13:48:28+00:00",
   "protocol": "universal profile; select on min(development, validation); holdout read once for reporting",
   "fees_bps_per_side": 10.0,
   "slippage_bps_per_side": 5.0,
@@ -54438,6 +54438,83 @@
      "volume_flow": 0.05,
      "squeeze": 0.05,
      "volatility": 0.05
+    },
+    "meta_filter": {
+     "model": {
+      "features": [
+       "score",
+       "atr_pct",
+       "dist_sma200",
+       "roc_20",
+       "roc_60",
+       "adx",
+       "rsi",
+       "realized_vol",
+       "drawdown_60",
+       "vol_rank",
+       "f_trend",
+       "f_momentum",
+       "f_volume_flow",
+       "f_squeeze",
+       "f_volatility"
+      ],
+      "mean": [
+       0.71312211,
+       2.13750958,
+       0.02332101,
+       0.05346718,
+       0.04503674,
+       0.38817437,
+       0.60796359,
+       0.26451084,
+       -0.03145091,
+       0.49421498,
+       0.78571429,
+       0.56122115,
+       0.60137617,
+       0.43928571,
+       0.08913055
+      ],
+      "scale": [
+       0.16909629,
+       1.30209477,
+       0.042435,
+       0.06034961,
+       0.10130768,
+       0.12704067,
+       0.05614634,
+       0.19872231,
+       0.03540508,
+       0.28739225,
+       0.19948914,
+       0.31883389,
+       0.31739168,
+       0.27036917,
+       0.2494486
+      ],
+      "weights": [
+       -0.07983363,
+       -0.29128034,
+       0.50454071,
+       -0.07176992,
+       0.17538763,
+       0.01454344,
+       0.06889534,
+       0.15676631,
+       -0.14323754,
+       0.03503131,
+       -0.0582078,
+       -0.01781674,
+       -0.25104412,
+       0.08226145,
+       -0.08451969
+      ],
+      "bias": -0.7713363,
+      "samples": 560,
+      "base_win_rate": 0.3214
+     },
+     "threshold": 0.3,
+     "trained_on_trades_closed_before": "2023-01-01"
     }
    },
    "symbols": [
@@ -54476,24 +54553,68 @@
     "profitable_symbols": 12,
     "profit_factor_above_1": 12,
     "mean_cagr_pct": 12.31,
-    "mean_sharpe": 0.645,
-    "mean_max_dd_pct": -20.94,
+    "mean_sharpe": 0.657,
+    "mean_max_dd_pct": -20.53,
     "buy_hold_mean_cagr_pct": 27.81,
     "buy_hold_mean_sharpe": 1.027,
     "buy_hold_mean_max_dd_pct": -26.65,
-    "total_trades": 127
+    "total_trades": 108
+   },
+   "learning_from_mistakes": {
+    "lessons_development": 433,
+    "baseline_validation": 0.441,
+    "baseline_holdout": 0.621,
+    "trials": [
+     {
+      "threshold": 0.3,
+      "validation_score": 0.51
+     },
+     {
+      "threshold": 0.35,
+      "validation_score": 0.491
+     },
+     {
+      "threshold": 0.4,
+      "validation_score": 0.517
+     },
+     {
+      "threshold": 0.45,
+      "validation_score": 0.503
+     },
+     {
+      "threshold": 0.5,
+      "validation_score": 0.506
+     }
+    ],
+    "threshold": 0.3,
+    "validation_score": 0.51,
+    "holdout_score": 0.645,
+    "lessons_final": 560,
+    "kept": true,
+    "holdout_pooled": {
+     "symbols": 13,
+     "profitable_symbols": 12,
+     "profit_factor_above_1": 12,
+     "mean_cagr_pct": 12.31,
+     "mean_sharpe": 0.657,
+     "mean_max_dd_pct": -20.53,
+     "buy_hold_mean_cagr_pct": 27.81,
+     "buy_hold_mean_sharpe": 1.027,
+     "buy_hold_mean_max_dd_pct": -26.65,
+     "total_trades": 108
+    },
+    "reason": "improved validation and did not hurt the holdout"
    },
    "holdout": [
     {
      "symbol": "SPY",
      "strategy": {
-      "cagr_pct": 12.14,
-      "sharpe": 1.002,
-      "max_dd_pct": -10.62,
+      "cagr_pct": 11.99,
+      "sharpe": 1.001,
+      "max_dd_pct": -10.47,
       "trades": 6,
       "win_rate_pct": 66.7,
-      "profit_factor": 12.359,
-      "exposure": null
+      "profit_factor": 12.359
      },
      "buy_hold": {
       "cagr_pct": 20.2,
@@ -54501,20 +54622,18 @@
       "max_dd_pct": -18.76,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "QQQ",
      "strategy": {
-      "cagr_pct": 17.27,
-      "sharpe": 1.097,
-      "max_dd_pct": -12.85,
-      "trades": 5,
-      "win_rate_pct": 80.0,
-      "profit_factor": 57.958,
-      "exposure": null
+      "cagr_pct": 16.08,
+      "sharpe": 1.054,
+      "max_dd_pct": -12.77,
+      "trades": 4,
+      "win_rate_pct": 75.0,
+      "profit_factor": 19.592
      },
      "buy_hold": {
       "cagr_pct": 27.45,
@@ -54522,20 +54641,18 @@
       "max_dd_pct": -22.77,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "IWM",
      "strategy": {
-      "cagr_pct": 7.28,
-      "sharpe": 0.517,
-      "max_dd_pct": -13.47,
-      "trades": 8,
-      "win_rate_pct": 75.0,
-      "profit_factor": 3.823,
-      "exposure": null
+      "cagr_pct": 5.74,
+      "sharpe": 0.409,
+      "max_dd_pct": -14.17,
+      "trades": 7,
+      "win_rate_pct": 71.4,
+      "profit_factor": 3.283
      },
      "buy_hold": {
       "cagr_pct": 13.95,
@@ -54543,20 +54660,18 @@
       "max_dd_pct": -27.5,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "DIA",
      "strategy": {
-      "cagr_pct": 9.0,
-      "sharpe": 0.79,
-      "max_dd_pct": -10.07,
-      "trades": 9,
-      "win_rate_pct": 55.6,
-      "profit_factor": 9.818,
-      "exposure": null
+      "cagr_pct": 7.7,
+      "sharpe": 0.7,
+      "max_dd_pct": -11.75,
+      "trades": 8,
+      "win_rate_pct": 50.0,
+      "profit_factor": 8.318
      },
      "buy_hold": {
       "cagr_pct": 13.91,
@@ -54564,20 +54679,18 @@
       "max_dd_pct": -15.95,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "AAPL",
      "strategy": {
-      "cagr_pct": 13.99,
-      "sharpe": 0.873,
-      "max_dd_pct": -12.47,
-      "trades": 7,
-      "win_rate_pct": 71.4,
-      "profit_factor": 64.999,
-      "exposure": null
+      "cagr_pct": 14.4,
+      "sharpe": 0.905,
+      "max_dd_pct": -13.14,
+      "trades": 5,
+      "win_rate_pct": 100.0,
+      "profit_factor": 99.0
      },
      "buy_hold": {
       "cagr_pct": 30.65,
@@ -54585,20 +54698,18 @@
       "max_dd_pct": -33.36,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "MSFT",
      "strategy": {
-      "cagr_pct": 6.16,
-      "sharpe": 0.498,
-      "max_dd_pct": -28.99,
-      "trades": 10,
-      "win_rate_pct": 30.0,
-      "profit_factor": 1.815,
-      "exposure": null
+      "cagr_pct": 6.54,
+      "sharpe": 0.538,
+      "max_dd_pct": -28.31,
+      "trades": 9,
+      "win_rate_pct": 33.3,
+      "profit_factor": 1.964
      },
      "buy_hold": {
       "cagr_pct": 24.02,
@@ -54606,20 +54717,18 @@
       "max_dd_pct": -34.5,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "NVDA",
      "strategy": {
-      "cagr_pct": 41.28,
-      "sharpe": 1.38,
-      "max_dd_pct": -22.06,
+      "cagr_pct": 41.0,
+      "sharpe": 1.376,
+      "max_dd_pct": -22.05,
       "trades": 4,
       "win_rate_pct": 75.0,
-      "profit_factor": 23.656,
-      "exposure": null
+      "profit_factor": 23.605
      },
      "buy_hold": {
       "cagr_pct": 95.57,
@@ -54627,20 +54736,18 @@
       "max_dd_pct": -36.88,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "AMZN",
      "strategy": {
-      "cagr_pct": 1.38,
-      "sharpe": 0.166,
-      "max_dd_pct": -27.03,
-      "trades": 10,
-      "win_rate_pct": 30.0,
-      "profit_factor": 1.206,
-      "exposure": null
+      "cagr_pct": 2.38,
+      "sharpe": 0.228,
+      "max_dd_pct": -26.75,
+      "trades": 8,
+      "win_rate_pct": 37.5,
+      "profit_factor": 1.433
      },
      "buy_hold": {
       "cagr_pct": 33.44,
@@ -54648,20 +54755,18 @@
       "max_dd_pct": -30.88,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "GOOGL",
      "strategy": {
-      "cagr_pct": 13.83,
-      "sharpe": 0.739,
-      "max_dd_pct": -28.2,
-      "trades": 14,
-      "win_rate_pct": 42.9,
-      "profit_factor": 2.822,
-      "exposure": null
+      "cagr_pct": 14.15,
+      "sharpe": 0.76,
+      "max_dd_pct": -28.07,
+      "trades": 9,
+      "win_rate_pct": 44.4,
+      "profit_factor": 3.118
      },
      "buy_hold": {
       "cagr_pct": 35.73,
@@ -54669,20 +54774,18 @@
       "max_dd_pct": -30.62,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "JPM",
      "strategy": {
-      "cagr_pct": 18.26,
-      "sharpe": 1.069,
-      "max_dd_pct": -20.11,
+      "cagr_pct": 17.96,
+      "sharpe": 1.059,
+      "max_dd_pct": -19.86,
       "trades": 6,
       "win_rate_pct": 66.7,
-      "profit_factor": 16.646,
-      "exposure": null
+      "profit_factor": 16.586
      },
      "buy_hold": {
       "cagr_pct": 29.79,
@@ -54690,20 +54793,18 @@
       "max_dd_pct": -24.42,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "XOM",
      "strategy": {
-      "cagr_pct": 8.22,
-      "sharpe": 0.485,
-      "max_dd_pct": -25.9,
-      "trades": 13,
-      "win_rate_pct": 30.8,
-      "profit_factor": 4.033,
-      "exposure": null
+      "cagr_pct": 8.45,
+      "sharpe": 0.506,
+      "max_dd_pct": -24.18,
+      "trades": 10,
+      "win_rate_pct": 40.0,
+      "profit_factor": 4.33
      },
      "buy_hold": {
       "cagr_pct": 15.91,
@@ -54711,20 +54812,18 @@
       "max_dd_pct": -20.11,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "GLD",
      "strategy": {
-      "cagr_pct": 23.49,
-      "sharpe": 1.194,
-      "max_dd_pct": -21.07,
-      "trades": 6,
-      "win_rate_pct": 33.3,
-      "profit_factor": 26.309,
-      "exposure": null
+      "cagr_pct": 23.66,
+      "sharpe": 1.215,
+      "max_dd_pct": -20.6,
+      "trades": 5,
+      "win_rate_pct": 60.0,
+      "profit_factor": 44.088
      },
      "buy_hold": {
       "cagr_pct": 22.51,
@@ -54732,20 +54831,18 @@
       "max_dd_pct": -28.26,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     },
     {
      "symbol": "TLT",
      "strategy": {
-      "cagr_pct": -12.26,
-      "sharpe": -1.427,
-      "max_dd_pct": -39.43,
-      "trades": 29,
-      "win_rate_pct": 13.8,
-      "profit_factor": 0.065,
-      "exposure": null
+      "cagr_pct": -10.08,
+      "sharpe": -1.205,
+      "max_dd_pct": -34.8,
+      "trades": 27,
+      "win_rate_pct": 22.2,
+      "profit_factor": 0.11
      },
      "buy_hold": {
       "cagr_pct": -1.6,
@@ -54753,8 +54850,7 @@
       "max_dd_pct": -22.44,
       "trades": 0,
       "win_rate_pct": 0.0,
-      "profit_factor": 0.0,
-      "exposure": null
+      "profit_factor": 0.0
      }
     }
    ],
@@ -54830,6 +54926,35 @@
     "buy_hold_mean_sharpe": 0.596,
     "buy_hold_mean_max_dd_pct": -71.29,
     "total_trades": 212
+   },
+   "learning_from_mistakes": {
+    "lessons_development": 138,
+    "baseline_validation": 0.852,
+    "baseline_holdout": 0.385,
+    "trials": [
+     {
+      "threshold": 0.3,
+      "validation_score": 0.823
+     },
+     {
+      "threshold": 0.35,
+      "validation_score": 0.813
+     },
+     {
+      "threshold": 0.4,
+      "validation_score": 0.797
+     },
+     {
+      "threshold": 0.45,
+      "validation_score": 0.818
+     },
+     {
+      "threshold": 0.5,
+      "validation_score": 0.8
+     }
+    ],
+    "kept": false,
+    "reason": "no threshold improved the validation window"
    },
    "holdout": [
     {

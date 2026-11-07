@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -89,6 +89,10 @@ class LokiConfig:
     # "trend": hold through score wobbles; exit when the last completed close
     # breaks below its 200-bar average (stops still apply).
     exit_mode: str = "signal"
+    # Learned-from-mistakes entry filter (loki_v8.mistake_model): a logistic
+    # model fitted on the strategy's own past trades plus a probability
+    # threshold. None = off.
+    meta_filter: Optional[Dict[str, Any]] = None
 
     # --- Multi-factor ensemble weights -----------------------------------
     # Relative weight of each factor stack in the composite score. Weights

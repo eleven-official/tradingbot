@@ -17,19 +17,18 @@ client_nofollow = TestClient(app, follow_redirects=False)
 class TestAccessCode:
     def test_default_code(self, monkeypatch):
         monkeypatch.delenv("LOKI_SITE_CODE", raising=False)
-        assert site_access.code_matches("slayter is gay")
-        assert site_access.code_matches("slayterisgay")
-        assert site_access.code_matches("slayterisgay")
-        assert site_access.code_matches("  SLAYTER IS GAY  ")
-        assert site_access.code_matches("slayter, is gay!")
-        assert site_access.code_matches("slayter-is gay")
-        assert not site_access.code_matches("slayter is ga")
+        assert site_access.code_matches("flathead")
+        assert site_access.code_matches("Flathead")
+        assert site_access.code_matches("  FLATHEAD  ")
+        assert site_access.code_matches("flathead!")
+        assert site_access.code_matches("flat-head")
+        assert not site_access.code_matches("flathea")
         assert not site_access.code_matches("")
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("LOKI_SITE_CODE", "pineapple")
         assert site_access.code_matches("Pineapple")
-        assert not site_access.code_matches("slayter is gay")
+        assert not site_access.code_matches("flathead")
 
     def test_nicknames(self, monkeypatch):
         for name in site_access.SUPABASE_KEY_ENV_NAMES:
@@ -63,7 +62,7 @@ class TestGateFlow:
         rejected = client.post("/api/gate", json={"code": "chocolate"})
         assert rejected.status_code == 403
 
-        accepted = client.post("/api/gate", json={"code": "slayter is gay", "accepted_terms": True})
+        accepted = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True})
         assert accepted.status_code == 200
         cookie = accepted.cookies.get(site_access.GATE_COOKIE)
         assert cookie and site_access.verify_gate_cookie_value(cookie)
@@ -95,12 +94,12 @@ class TestGateThrottle:
                 "/api/gate", json={"code": "nope", "accepted_terms": True}
             ).status_code == 403
         throttled = client.post(
-            "/api/gate", json={"code": "slayter is gay", "accepted_terms": True}
+            "/api/gate", json={"code": "flathead", "accepted_terms": True}
         )
         assert throttled.status_code == 429
         # the throttle precedes the consent check: a throttled body without a
         # tick still earns the same five-minute break
-        untickd = client.post("/api/gate", json={"code": "slayter is gay"})
+        untickd = client.post("/api/gate", json={"code": "flathead"})
         assert untickd.status_code == 429
 
         monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
@@ -108,7 +107,7 @@ class TestGateThrottle:
             "/api/gate", json={"code": "nope", "accepted_terms": True}
         ).status_code == 403
         accepted = client.post(
-            "/api/gate", json={"code": "slayter is gay", "accepted_terms": True}
+            "/api/gate", json={"code": "flathead", "accepted_terms": True}
         )
         assert accepted.status_code == 200
         # A correct code clears the failure record for that client.

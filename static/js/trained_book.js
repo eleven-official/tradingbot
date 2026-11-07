@@ -183,6 +183,9 @@
         `<span><strong style="font-size:18px">${num(p.mean_max_dd_pct)}</strong> <span class="caption">avg worst drawdown</span></span></div>` +
         `<p class="caption">Buy &amp; hold, same symbols and dates: ${pct(p.buy_hold_mean_cagr_pct)} / year, ${num(p.buy_hold_mean_max_dd_pct)} worst drawdown · ${escapeHtml(p.total_trades ?? 0)} trades after ${escapeHtml(block.fees_bps_per_side ?? 10)} bps fees + ${escapeHtml(block.slippage_bps_per_side ?? 5)} bps slippage per side.</p>` +
         status +
+        (b.learning_from_mistakes ? `<p class="caption">Learning from mistakes: ${b.learning_from_mistakes.kept
+          ? `on — trained on ${escapeHtml(b.learning_from_mistakes.lessons_final)} past trades, skips setups that won less than ${escapeHtml(Math.round(b.learning_from_mistakes.threshold * 100))}% of the time.`
+          : `off — ${escapeHtml(b.learning_from_mistakes.reason || 'did not beat the plain rules')}.`}</p>` : '') +
         `<details><summary class="caption">Per-symbol results · rules: ${escapeHtml(params.factor_preset || '')}, entry ≥ ${escapeHtml(params.signal_threshold)}, stop ${escapeHtml(params.stop_loss_atr)} ATR${Number(params.trailing_stop_atr) > 0 ? `, trailing ${escapeHtml(params.trailing_stop_atr)} ATR` : ''}, ${escapeHtml(params.target_vol_pct)}% vol target, ${params.exit_mode === 'trend' ? 'exit when price breaks its 200-day average' : 'exit on a SELL signal'}</summary>` +
         `<div class="table-scroll"><table style="font-size:12.5px;width:100%"><thead><tr><th>Symbol</th><th>AI / yr</th><th>AI max DD</th><th>Trades</th><th>PF</th><th>B&amp;H / yr</th><th>B&amp;H max DD</th></tr></thead><tbody>${rows}</tbody></table></div></details>` +
         `</article>`;

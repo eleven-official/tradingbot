@@ -12,7 +12,6 @@ import pandas as pd
 from loki_v8 import train as T
 from loki_v8.backtest import Trade
 from loki_v8.config import LokiConfig
-from loki_v8.montecarlo import monte_carlo_simulation
 from loki_v8.regime import Regime, detect_regime, is_bearish, is_bullish, regime_distribution
 from loki_v8.strategy import FACTOR_KEYS, EnsembleStrategy, normalize_weights
 
@@ -114,41 +113,6 @@ class TestFactorWeights:
 
 # ---------------------------------------------------------------------------
 # Monte Carlo risk engine
-# ---------------------------------------------------------------------------
-class TestMonteCarlo:
-    def _trades(self):
-        idx = pd.date_range("2024-01-01", periods=40, freq="D")
-        wins = [
-            Trade("X", "long", idx[i], idx[i], 100, 101, 1, 10.0, 1.0, "target") for i in range(36)
-        ]  # +1%
-        losses = [
-            Trade("X", "long", idx[i], idx[i], 100, 96, 1, -40.0, -4.0, "stop") for i in range(4)
-        ]
-        return wins + losses
-
-    def test_deterministic_with_seed(self):
-        a = monte_carlo_simulation(self._trades(), n_sims=300, seed=42)
-        b = monte_carlo_simulation(self._trades(), n_sims=300, seed=42)
-        assert a["final_return"] == b["final_return"]
-
-    def test_high_win_rate_stats(self):
-        mc = monte_carlo_simulation(self._trades(), n_sims=500, seed=1)
-        assert mc["prob_profit_pct"] >= 95.0
-        assert mc["fan"]["p50"][0] == 100000.0
-        assert len(mc["fan"]["p50"]) == 41  # n trades + start step
-        assert mc["verdict"] in ("ROBUST", "ACCEPTABLE", "FRAGILE", "DANGEROUS")
-
-    def test_empty_trades_safe(self):
-        mc = monte_carlo_simulation([], n_sims=100)
-        assert mc["verdict"] == "NO_TRADES" and mc["n_sims"] == 0
-
-    def test_var_cvar_ordered(self):
-        mc = monte_carlo_simulation(self._trades(), n_sims=500, seed=3)
-        assert mc["cvar_95_pct"] <= mc["var_95_pct"]
-
-
-# ---------------------------------------------------------------------------
-# Trainer: aggressive objective, hurdles, refinement, consensus
 # ---------------------------------------------------------------------------
 class TestTrainerUpgrades:
     def test_monthly_profitability_metric(self):
@@ -311,92 +275,3 @@ class TestTrainerUpgrades:
 # ---------------------------------------------------------------------------
 # Supabase persistence layer
 # ---------------------------------------------------------------------------
-class TestPersistence:
-    def _post_capture(self, monkeypatch, status=201, raise_exc=None):
-        calls = []
-
-        def fake_post(method, url, json, headers, timeout, params, allow_redirects):
-            calls.append({"method": method, "url": url, "row": json[0] if json else None, "apikey": headers.get("apikey")})
-            if raise_exc:
-                raise raise_exc
-
-            class R:
-                status_code = status
-                text = "ok"
-                content = b"[]"
-                def json(self):
-                    return []
-
-            return R()
-
-        monkeypatch.setattr("requests.request", fake_post)
-        return calls
-
-    def test_not_configured_is_noop(self, monkeypatch):
-        from loki_v8.persistence import SupabaseLogger
-
-        monkeypatch.delenv("SUPABASE_URL", raising=False)
-        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
-        monkeypatch.delenv("SUPABASE_KEY", raising=False)
-        monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
-        lg = SupabaseLogger()
-        assert not lg.configured()
-        r = lg.test_connection()
-        assert r["reason"] == "not_configured"
-
-    def test_trade_log_posts_row(self, monkeypatch):
-        from loki_v8.persistence import SupabaseLogger
-
-        monkeypatch.setenv("SUPABASE_URL", "https://xyz.supabase.co")
-        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "sb_secret_test_key")
-        calls = self._post_capture(monkeypatch)
-        lg = SupabaseLogger()
-        lg.log_trade(
-            symbol="AAPL",
-            side="long",
-            qty=1,
-            entry_price=100.0,
-            exit_price=110.0,
-            pnl=10.0,
-            pnl_pct=10.0,
-            exit_reason="target",
-        )
-        lg.flush()
-        row = calls[0]["row"]
-        assert calls[0]["url"].endswith("/rest/v1/loki_trades")
-        assert row["symbol"] == "AAPL" and row["pnl_pct"] == 10.0
-        assert calls[0]["apikey"] == "sb_secret_test_key"
-
-    def test_network_failure_never_raises(self, monkeypatch):
-        from loki_v8.persistence import SupabaseLogger
-
-        monkeypatch.setenv("SUPABASE_URL", "https://xyz.supabase.co")
-        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "sb_secret_test_key")
-        self._post_capture(monkeypatch, raise_exc=ConnectionError("boom"))
-        lg = SupabaseLogger()
-        r = lg.test_connection()
-        assert r["ok"] is False
-        st = lg.status()
-        assert st["failures"] >= 1 and "Vault connection failed" in (st["last_error"] or "")
-
-    def test_http_error_counted(self, monkeypatch):
-        from loki_v8.persistence import SupabaseLogger
-
-        monkeypatch.setenv("SUPABASE_URL", "https://xyz.supabase.co")
-        monkeypatch.setenv("SUPABASE_KEY", "sb_secret_test_key")
-        self._post_capture(monkeypatch, status=401)
-        lg = SupabaseLogger()
-        r = lg.test_connection()
-        assert r["ok"] is False
-        assert lg.status()["failures"] >= 1
-
-    def test_status_reports_schema_env(self, monkeypatch):
-        from loki_v8.persistence import SupabaseLogger
-
-        monkeypatch.delenv("SUPABASE_URL", raising=False)
-        monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
-        monkeypatch.delenv("SUPABASE_KEY", raising=False)
-        monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
-        st = SupabaseLogger().status()
-        assert st["schema_file"] == "supabase_schema.sql"
-        assert "SUPABASE_URL" in st["env_vars"][0]
