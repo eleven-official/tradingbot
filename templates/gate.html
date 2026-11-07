@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/loki_scene.css?v={{ version }}">
+  <script src="/static/js/loki_scene.js?v={{ version }}" defer></script>
   <style>
     * { box-sizing: border-box; margin: 0; }
     body { min-height: 100vh; display: grid; place-items: center; background: #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 24px; }
@@ -16,7 +18,7 @@
     @keyframes shake { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(2px); } 30%, 50%, 70% { transform: translateX(-4px); } 40%, 60% { transform: translateX(4px); } }
     .brand-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 26px; }
     .mark { display: inline-grid; place-items: center; width: 44px; height: 44px; border: 1px solid rgba(139, 218, 212, .45); border-radius: 12px; font-weight: 800; color: #8bdad4; }
-    .brand-row b { font-size: 22px; letter-spacing: .04em; } .brand-row span { color: #7f93a8; font-size: 12px; }
+    .brand-row b { font-size: 22px; letter-spacing: .04em; } .brand-row span:not(.mark) { color: #7f93a8; font-size: 12px; }
     .eyebrow { color: #8bdad4; letter-spacing: .16em; font-size: 11px; font-weight: 600; margin-bottom: 10px; }
     h1 { font-size: 30px; line-height: 1.15; margin-bottom: 10px; } h1 em { color: #b8f0d8; font-style: normal; }
     p.muted { color: #9fb0c2; font-size: 14px; line-height: 1.5; margin-bottom: 26px; }
@@ -71,28 +73,35 @@
     .terms-box:has(input:checked) { background: #12352b; border-color: #568977; }
     button.go { min-height: 50px; box-shadow: 0 8px 24px #0003; }
     :is(button, a, input):focus-visible { outline: 2px solid #baf0d8; outline-offset: 4px; }
+    .entry-layout { position: relative; z-index: 1; }
+    #loki-ticker { position: fixed; top: 0; left: 0; right: 0; }
+    body { padding-top: 58px; }
+    .card { backdrop-filter: blur(10px); background: linear-gradient(150deg, rgba(21,35,49,.88), rgba(11,18,30,.9)); }
+    .intro .peek-card { transition: transform .25s ease, border-color .25s; }
+    .intro .peek-card:hover { transform: translateY(-3px); border-color: rgba(168,240,198,.4); }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     @media (max-width: 800px) { .entry-layout { grid-template-columns: 1fr; max-width: 540px; padding: 12px 0; } .intro h2 { font-size: 44px; } .intro .peek { display: none; } }
     @media (max-width: 480px) { body { padding: 18px; } .card { padding: 26px 22px; } .peek { grid-template-columns: 1fr; } }
   </style>
 </head>
-<body>
+<body data-loki-intro data-loki-scene="full">
+  <div id="loki-ticker" class="loki-ticker" hidden aria-label="Live market prices"></div>
   <main class="entry-layout">
   <section class="intro" aria-label="Welcome to Loki">
     <div class="brand-row"><span class="mark" aria-hidden="true">L</span><b>LOKI</b></div>
-    <span class="mode-badge">RESEARCH · PAPER · CONNECTED TRADING</span>
-    <h2>Build conviction.<br><span>Before you trade.</span></h2>
-    <p>A quieter place to research markets, challenge ideas and practise your strategy. Evidence first. No guaranteed returns.</p>
-    <p class="free-line">Loki is <b>free to use</b> — no subscription, no paywall, no card. The house's only ask is a <b>30% fee of recorded profits</b>, and nothing is charged automatically.</p>
+    <span class="mode-badge loki-float">AI TRADING · LIVE MARKETS · 20 YEARS OF DATA</span>
+    <h2 data-reveal-words>Build conviction.<br><span class="loki-shimmer">Before you trade.</span></h2>
+    <p class="loki-rise" style="--rise:1">A quieter place to research markets, challenge ideas and practise your strategy. Evidence first. No guaranteed returns.</p>
+    <p class="free-line loki-rise" style="--rise:2">Loki is <b>free to use</b> — no subscription, no paywall, no card. The house's only ask is a <b>30% fee of recorded profits</b>, and nothing is charged automatically.</p>
     <div class="peek">
-      <div class="peek-card"><b>01 / Research</b><span>Explore price history and put ideas through the factor labs.</span></div>
-      <div class="peek-card"><b>02 / Challenge</b><span>Compare the quant, risk and execution perspectives.</span></div>
-      <div class="peek-card"><b>03 / Practise</b><span>Explore simulated trades without moving real money.</span></div>
-      <div class="peek-card"><b>04 / Take a dive</b><span>A rare-answer game for the moments between scans.</span></div>
+      <div class="peek-card loki-glow loki-rise" style="--rise:3"><b>01 / Research</b><span>Explore price history and put ideas through the factor labs.</span></div>
+      <div class="peek-card loki-glow loki-rise" style="--rise:4"><b>02 / Challenge</b><span>Compare the quant, risk and execution perspectives.</span></div>
+      <div class="peek-card loki-glow loki-rise" style="--rise:5"><b>03 / Practise</b><span>Explore simulated trades without moving real money.</span></div>
+      <div class="peek-card loki-glow loki-rise" style="--rise:6"><b>04 / Take a dive</b><span>A rare-answer game for the moments between scans.</span></div>
     </div>
     <div class="entry-foot">Research workspace · <a href="/terms">Terms of Use</a> · v{{ version }}</div>
   </section>
-  <div class="card" id="card">
+  <div class="card loki-glow loki-rise" id="card" style="--rise:2">
     <div class="brand-row"><span class="mark">L</span><b>LOKI</b></div>
     <p class="eyebrow">PRIVATE WORKSPACE</p>
     <h1>Enter the access code.</h1>
@@ -108,7 +117,7 @@
         <input id="terms-ok" name="accepted_terms" type="checkbox" required />
         <span>I have read the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a> and accept them, especially this: <b>nothing here is financial advice and no profits are promised — I use Loki at my own risk.</b></span>
       </label>
-      <button class="go" id="go" type="submit">Open Loki ↗</button>
+      <button class="go loki-sheen" id="go" type="submit">Open Loki ↗</button>
     </form>
     <div id="msg" role="status" aria-live="polite"></div>
     <button type="button" class="help-link" id="need-help" aria-expanded="false" aria-controls="help-block">Need help getting in?</button>

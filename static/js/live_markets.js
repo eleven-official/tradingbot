@@ -114,7 +114,7 @@
       const flash = flashes.get(item.symbol);
       const flashCls = flash && now - flash.at < 1600 ? ` flash-${flash.dir}` : '';
       const sel = prefs.selected && prefs.selected.symbol === item.symbol ? ' selected' : '';
-      return `<button type="button" class="lm-tile${flashCls}${sel}" data-symbol="${esc(item.symbol)}" data-label="${esc(label)}">` +
+      return `<button type="button" class="lm-tile loki-glow${flashCls}${sel}" data-symbol="${esc(item.symbol)}" data-label="${esc(label)}">` +
         `<div class="lm-tile-top"><span class="lm-name">${esc(label)}</span>${star}</div>` +
         `<span class="lm-sym">${esc(item.symbol)}</span>` +
         `<div class="lm-tile-mid"><span class="lm-price">${esc(fmtPrice(item.price, item.symbol))}</span>${spark(item.spark, up)}</div>` +

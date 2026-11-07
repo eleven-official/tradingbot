@@ -1,0 +1,84 @@
+/* LOKI SCENE — intro, animated canvas, live tape, motion. Presentation only. */
+
+/* ---------------- intro ---------------- */
+.loki-intro { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, #0f2a2c 0%, #070b12 62%); cursor: pointer; transition: opacity .8s ease, transform .9s cubic-bezier(.2,.8,.2,1), filter .8s ease; }
+.loki-intro.li-out { opacity: 0; transform: scale(1.08); filter: blur(6px); pointer-events: none; }
+body.scene-intro { overflow: hidden; }
+.li-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(139,218,212,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(139,218,212,.06) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse at center, #000 20%, transparent 70%); animation: li-grid 2.6s ease-out both; }
+@keyframes li-grid { from { opacity: 0; transform: perspective(600px) rotateX(55deg) translateY(120px); } to { opacity: 1; transform: perspective(600px) rotateX(55deg) translateY(0); } }
+.li-core { position: relative; display: grid; justify-items: center; gap: 14px; }
+.li-mark { width: 104px; height: 104px; filter: drop-shadow(0 0 22px rgba(168,240,198,.35)); }
+.li-box, .li-l { fill: none; stroke: #b8f0d8; stroke-linecap: round; stroke-linejoin: round; }
+.li-box { stroke-width: 3; stroke-dasharray: 420; stroke-dashoffset: 420; animation: li-draw .9s .05s cubic-bezier(.6,0,.2,1) forwards; }
+.li-l { stroke-width: 9; stroke-dasharray: 100; stroke-dashoffset: 100; animation: li-draw .55s .55s cubic-bezier(.6,0,.2,1) forwards; }
+@keyframes li-draw { to { stroke-dashoffset: 0; } }
+.li-word { display: flex; gap: .16em; font: 800 46px/1 Inter, system-ui, sans-serif; letter-spacing: .14em; color: #eafff4; }
+.li-word span { opacity: 0; transform: translateY(18px); animation: li-rise .5s calc(.75s + var(--i) * .08s) cubic-bezier(.2,.8,.2,1) forwards; text-shadow: 0 0 24px rgba(168,240,198,.35); }
+@keyframes li-rise { to { opacity: 1; transform: none; } }
+.li-sub { font: 500 11px "JetBrains Mono", ui-monospace, monospace; letter-spacing: .5em; color: #8bdad4; opacity: 0; animation: li-rise .6s 1.1s ease forwards; }
+.li-chart { width: min(420px, 78vw); height: 120px; margin-top: 6px; overflow: visible; }
+.li-chart .ic { opacity: 0; transform-box: fill-box; transform-origin: bottom; animation: li-candle .35s var(--d) cubic-bezier(.2,.8,.2,1) forwards; }
+.li-chart line { stroke: #4f6f7c; stroke-width: 1.2; }
+.li-chart rect.up { fill: #a8f0c6; } .li-chart rect.down { fill: #ffb3a7; }
+@keyframes li-candle { from { opacity: 0; transform: scaleY(.1); } to { opacity: 1; transform: none; } }
+.li-trend { fill: none; stroke: #c9ffe2; stroke-width: 2; stroke-dasharray: 400; stroke-dashoffset: 400; filter: drop-shadow(0 0 6px rgba(201,255,226,.6)); animation: li-draw 1.1s 1.15s ease-out forwards; }
+.li-bar { width: 180px; height: 2px; background: rgba(139,218,212,.15); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+.li-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #8bdad4, #c9ffe2); transform-origin: left; animation: li-load 2.3s ease-in-out forwards; }
+@keyframes li-load { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.li-skip { font: 500 10.5px "JetBrains Mono", ui-monospace, monospace; color: #5f7684; letter-spacing: .12em; opacity: 0; animation: li-rise .6s 1.4s forwards; }
+
+/* ---------------- canvas ---------------- */
+.loki-scene-canvas { position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: 0; transition: opacity 1.4s ease .2s; }
+.loki-scene-canvas.full { position: fixed; }
+body.scene-ready .loki-scene-canvas { opacity: 1; }
+[data-loki-scene="hero"] { position: relative; isolation: isolate; overflow: hidden; }
+[data-loki-scene="hero"] > :not(canvas) { position: relative; z-index: 1; }
+
+/* ---------------- live tape ---------------- */
+.loki-ticker { position: relative; overflow: hidden; height: 34px; display: flex; align-items: center; border-bottom: 1px solid rgba(139,218,212,.14); background: linear-gradient(90deg, rgba(8,14,22,.92), rgba(12,24,30,.85), rgba(8,14,22,.92)); backdrop-filter: blur(6px); mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); font: 500 12px "JetBrains Mono", ui-monospace, monospace; z-index: 5; }
+.loki-ticker[hidden] { display: none; }
+.lt-track { display: flex; width: max-content; animation: lt-scroll var(--lt-duration, 80s) linear infinite; }
+.loki-ticker:hover .lt-track { animation-play-state: paused; }
+.lt-row { display: flex; gap: 34px; padding-right: 34px; white-space: nowrap; }
+.lt-item { color: #c9d8e2; } .lt-item b { color: #eaf6ff; font-weight: 600; margin-right: 4px; }
+.lt-item em { font-style: normal; margin-left: 4px; } .lt-item em.up { color: #a8f0c6; } .lt-item em.down { color: #ffb3a7; }
+@keyframes lt-scroll { to { transform: translateX(-50%); } }
+
+/* ---------------- word reveal ---------------- */
+[data-reveal-words] .rw { display: inline-block; opacity: 0; transform: translateY(.55em) rotate(2deg); filter: blur(6px); }
+body.scene-ready [data-reveal-words] .rw { animation: rw-in .7s calc(.15s + var(--i) * .07s) cubic-bezier(.2,.8,.2,1) forwards; }
+@keyframes rw-in { to { opacity: 1; transform: none; filter: none; } }
+
+/* shimmering accent text */
+.loki-shimmer { background: linear-gradient(100deg, #9fe9d0 0%, #e9fff4 40%, #9fe9d0 60%, #7fd6c4 100%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent !important; animation: shimmer 5s ease-in-out infinite; }
+@keyframes shimmer { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
+
+/* rise-in for blocks after the intro */
+.loki-rise { opacity: 0; transform: translateY(22px); }
+body.scene-ready .loki-rise { animation: li-rise .8s calc(.35s + var(--rise, 0) * .1s) cubic-bezier(.2,.8,.2,1) forwards; }
+
+/* cursor-following glow */
+.loki-glow { position: relative; overflow: hidden; }
+.loki-glow::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(260px circle at var(--gx, 50%) var(--gy, 50%), rgba(168,240,198,.12), transparent 60%); }
+.loki-glow:hover::after { opacity: 1; }
+
+/* button sheen */
+.loki-sheen { position: relative; overflow: hidden; }
+.loki-sheen::before { content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent); transform: skewX(-20deg); animation: sheen 4.5s 2.8s ease-in-out infinite; pointer-events: none; }
+@keyframes sheen { 0% { left: -60%; } 22%, 100% { left: 130%; } }
+
+/* floating badge pulse */
+.loki-float { animation: floaty 6s ease-in-out infinite; }
+@keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .loki-intro { display: none; }
+  [data-reveal-words] .rw, .loki-rise { opacity: 1 !important; transform: none !important; filter: none !important; animation: none !important; }
+  .lt-track, .loki-shimmer, .loki-sheen::before, .loki-float { animation: none !important; }
+  .loki-scene-canvas { opacity: .8; transition: none; }
+}
+@media (max-width: 640px) { .li-word { font-size: 36px; } .loki-ticker { height: 30px; font-size: 11px; } }
+
+/* shimmer survives the per-word reveal: each word paints the gradient itself */
+.loki-shimmer .rw { background-image: inherit; background-size: inherit; background-position: inherit; -webkit-background-clip: text; background-clip: text; color: transparent !important; }
+body.scene-ready [data-loki-scene="hero"] .loki-scene-canvas { opacity: .7; }
