@@ -1,14 +1,14 @@
 """Version information for Loki Trading Platform."""
 
-__version__ = "2.38.0"
+__version__ = "2.45.0"
 __version_info__ = tuple(int(i) for i in __version__.split("."))
 
 # Version metadata
 VERSION_MAJOR = 2
-VERSION_MINOR = 8
+VERSION_MINOR = 45
 VERSION_PATCH = 0
 VERSION_BUILD = "enterprise"
 
 # Build information
-BUILD_DATE = "2026-10-27"
+BUILD_DATE = "2026-11-07"
 BUILD_TYPE = "production"

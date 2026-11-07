@@ -62,3 +62,25 @@ class BinanceSpotMarketDataTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+def test_region_block_fails_over_to_the_market_data_mirror(monkeypatch):
+    """api.binance.com answers 451 to many US hosts; the mirror must serve."""
+    import io
+    from urllib.error import HTTPError
+
+    from loki.api import binance_market_data as bmd
+
+    calls = []
+
+    def fake_urlopen(request, timeout=5):
+        calls.append(request.full_url)
+        if request.full_url.startswith(bmd.BINANCE_SPOT_HOSTS[0]):
+            raise HTTPError(request.full_url, 451, "unavailable for legal reasons", {}, None)
+        return io.BytesIO(b'{"ok": true}')
+
+    monkeypatch.setattr(bmd, "urlopen", fake_urlopen)
+    monkeypatch.setattr(bmd, "_preferred_host", 0)
+    assert bmd._fetch_json("/api/v3/ping", {}) == {"ok": True}
+    assert calls[-1].startswith(bmd.BINANCE_SPOT_HOSTS[1])
+    assert bmd._preferred_host == 1  # remembered for the next call

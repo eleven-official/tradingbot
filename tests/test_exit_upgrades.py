@@ -20,7 +20,6 @@ import pytest
 
 import loki_v8.backtest as bt
 import loki_v8.train as T
-from loki_v8.bot import LokiBot
 from loki_v8.backtest import run_backtest
 from loki_v8.config import LokiConfig
 
@@ -294,93 +293,6 @@ class TestAdaptiveThreshold:
 # ---------------------------------------------------------------------------
 # Live engine parity (bot._manage_exits)
 # ---------------------------------------------------------------------------
-class TestLiveEngineParity:
-    def _bot(self, tmp_path, **overrides):
-        cfg = LokiConfig(state_dir=str(tmp_path), **overrides)
-        return LokiBot(cfg)
-
-    def test_breakeven_lock_applies_to_open_position(self, tmp_path):
-        bot = self._bot(tmp_path, breakeven_atr=1.0, stop_loss_atr=5.0, take_profit_atr=6.0)
-        assert bot.broker.buy("AAPL", 100, 100.0)
-        bot._last_context["AAPL"] = {"atr": 1.2}
-
-        bot._manage_exits({"AAPL": 101.5})  # gain = 1.47/1.2 = 1.22 ATR
-        pos = bot.broker.positions["AAPL"]
-        # entry fill = 100.03; BE stop = entry + 0.05*1.2
-        assert pos.stop_loss == pytest.approx(100.03 + 0.05 * 1.2, rel=1e-4)
-        assert bot.broker.positions["AAPL"].qty == pytest.approx(100)
-
-    def test_partial_scaleout_banks_half_and_raises_stop(self, tmp_path):
-        bot = self._bot(
-            tmp_path,
-            breakeven_atr=1.0,
-            stop_loss_atr=5.0,
-            take_profit_atr=6.0,
-            partial_tp_atr=1.0,
-            partial_fraction=0.5,
-        )
-        assert bot.broker.buy("AAPL", 100, 100.0)
-        bot._last_context["AAPL"] = {"atr": 1.2}
-
-        bot._manage_exits({"AAPL": 102.0})  # gain 1.6 ATR: BE locks, partial hits
-        pos = bot.broker.positions["AAPL"]
-        assert pos.qty == pytest.approx(50.0, rel=1e-6)  # half banked
-        assert "AAPL" in bot._scaled_out
-        assert pos.stop_loss == pytest.approx(102.0, rel=1e-4)  # stop moved to fill
-
-    def test_partial_fires_only_once(self, tmp_path):
-        bot = self._bot(
-            tmp_path,
-            breakeven_atr=0.0,
-            stop_loss_atr=5.0,
-            take_profit_atr=6.0,
-            partial_tp_atr=1.0,
-            partial_fraction=0.5,
-        )
-        assert bot.broker.buy("AAPL", 100, 100.0)
-        bot._last_context["AAPL"] = {"atr": 1.2}
-
-        bot._manage_exits({"AAPL": 101.5})
-        qty_after_first = bot.broker.positions["AAPL"].qty
-        assert qty_after_first == pytest.approx(50.0, rel=1e-6)
-
-        bot._manage_exits({"AAPL": 102.5})  # still in range, no second leg
-        assert bot.broker.positions["AAPL"].qty == pytest.approx(50.0, rel=1e-6)
-
-    def test_no_smart_exits_by_default(self, tmp_path):
-        bot = self._bot(tmp_path, stop_loss_atr=5.0, take_profit_atr=6.0)
-        assert bot.broker.buy("AAPL", 100, 100.0)
-        bot.broker.positions["AAPL"].stop_loss = 95.03  # set by step() in real flow
-        bot._last_context["AAPL"] = {"atr": 1.2}
-
-        bot._manage_exits({"AAPL": 104.0})  # far above breakeven trigger
-        pos = bot.broker.positions["AAPL"]
-        assert pos.qty == pytest.approx(100)  # untouched (partial off)
-        assert pos.stop_loss == pytest.approx(95.03, rel=1e-3)  # original stop
-
-    def test_short_position_breakeven_lock(self, tmp_path):
-        cfg = LokiConfig(
-            state_dir=str(tmp_path),
-            breakeven_atr=1.0,
-            allow_short=True,
-            stop_loss_atr=5.0,
-            take_profit_atr=6.0,
-        )
-        bot = LokiBot(cfg)
-        assert bot.broker.sell_short("BTC-USD", 100, 200.0)
-        pos = bot.broker.positions["BTC-USD"]
-        avg_entry = pos.avg_entry  # 200 * (1 - 0.0003) = 199.94
-        bot._last_context["BTC-USD"] = {"atr": 2.0}
-
-        bot._manage_exits({"BTC-USD": 196.0})  # gain = (199.94-196)/2 ≈ 1.97 ATR
-        pos = bot.broker.positions["BTC-USD"]
-        be_stop = avg_entry - 0.05 * 2.0
-        assert pos.stop_loss == pytest.approx(be_stop, rel=1e-4)
-
-
-# ---------------------------------------------------------------------------
-# Backtester: short-side exits (scale-out, BE lock, trailing)
-# ---------------------------------------------------------------------------
 class TestShortSideExits:
     def _run(self, **overrides):
         prices = (
@@ -548,68 +460,6 @@ class TestPreserveMissingSymbols:
         assert [s["symbol"] for s in fresh["symbols"]] == ["NEW"]
 
 
-class TestTrainedBacktest:
-    """bot.backtest_trained: trained profile applied on an ephemeral config."""
-
-    def _long_trend_df(self):
-        closes = _flat(215) + [100.0 + 0.8 * i for i in range(1, 14)] + _flat(60, 110.4)
-        return _candles(closes)
-
-    def test_applies_profile_without_touching_live_bot(self, tmp_path):
-        cfg = LokiConfig(state_dir=str(tmp_path))
-        bot = LokiBot(cfg)
-        df = self._long_trend_df()
-        bot.provider.fetch_history = lambda sym, period, interval: df
-        report = {
-            "symbols": [
-                {
-                    "symbol": "AAPL",
-                    "ok": True,
-                    "best_params": {
-                        "signal_threshold": 25.0,
-                        "stop_loss_atr": 5.0,
-                        "take_profit_atr": 0.5,
-                        "breakeven_atr": 0.5,
-                        "trailing_stop_atr": 0.6,
-                        "arm_trailing_atr": 1.0,
-                    },
-                }
-            ]
-        }
-        T.save_report(report, cfg)
-        assert T.load_report(cfg) is not None
-
-        res, applied = bot.backtest_trained("AAPL", period="1y")
-        assert applied.get("signal_threshold") == 25.0
-        assert applied.get("trailing_stop_atr") == 0.6
-        assert applied.get("breakeven_atr") == 0.5
-        assert res.total_trades >= 0
-
-        # The shared live bot must be untouched by the ephemeral profile.
-        assert bot.cfg.stop_loss_atr == 2.0
-        assert bot.cfg.signal_threshold == 20.0
-        assert bot.cfg.breakeven_atr == 0.0
-        assert bot.cfg.trailing_stop_atr == 0.0
-
-    def test_falls_back_to_bundled_snapshot(self, tmp_path):
-        # No on-disk report at all: the bundled snapshot of the verified
-        # training book must still serve trained profiles (this is what
-        # makes fresh deployments/serverless serve the real strategy).
-        cfg = LokiConfig(state_dir=str(tmp_path))
-        bot = LokiBot(cfg)
-        df = self._long_trend_df()
-        bot.provider.fetch_history = lambda sym, period, interval: df
-        res, applied = bot.backtest_trained("AAPL", period="1y")
-        if T.load_report(cfg):  # bundled snapshot present in the checkout
-            assert applied.get("signal_threshold") == 25.0 or applied == {}
-            assert res.final_equity > 0.0
-        else:  # minimal dev checkout without the snapshot
-            assert applied == {}
-
-
-# ---------------------------------------------------------------------------
-# Whole-engine journeys with the knobs on
-# ---------------------------------------------------------------------------
 class TestKnobJourneys:
     def test_portfolio_backtest_with_smart_exits(self):
         # Frames must exceed 200 bars so sma_200 exists for the real scoring

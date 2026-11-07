@@ -17,19 +17,18 @@ client_nofollow = TestClient(app, follow_redirects=False)
 class TestAccessCode:
     def test_default_code(self, monkeypatch):
         monkeypatch.delenv("LOKI_SITE_CODE", raising=False)
-        assert site_access.code_matches("slayter is gay")
-        assert site_access.code_matches("slayterisgay")
-        assert site_access.code_matches("slayterisgay")
-        assert site_access.code_matches("  SLAYTER IS GAY  ")
-        assert site_access.code_matches("slayter, is gay!")
-        assert site_access.code_matches("slayter-is gay")
-        assert not site_access.code_matches("slayter is ga")
+        assert site_access.code_matches("flathead")
+        assert site_access.code_matches("Flathead")
+        assert site_access.code_matches("  FLATHEAD  ")
+        assert site_access.code_matches("flathead!")
+        assert site_access.code_matches("flat-head")
+        assert not site_access.code_matches("flathea")
         assert not site_access.code_matches("")
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("LOKI_SITE_CODE", "pineapple")
         assert site_access.code_matches("Pineapple")
-        assert not site_access.code_matches("slayter is gay")
+        assert not site_access.code_matches("flathead")
 
     def test_nicknames(self, monkeypatch):
         for name in site_access.SUPABASE_KEY_ENV_NAMES:
@@ -63,7 +62,7 @@ class TestGateFlow:
         rejected = client.post("/api/gate", json={"code": "chocolate"})
         assert rejected.status_code == 403
 
-        accepted = client.post("/api/gate", json={"code": "slayter is gay", "accepted_terms": True})
+        accepted = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True, "confirmed_age": True})
         assert accepted.status_code == 200
         cookie = accepted.cookies.get(site_access.GATE_COOKIE)
         assert cookie and site_access.verify_gate_cookie_value(cookie)
@@ -92,23 +91,23 @@ class TestGateThrottle:
         monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
         for _ in range(10):
             assert client.post(
-                "/api/gate", json={"code": "nope", "accepted_terms": True}
+                "/api/gate", json={"code": "nope", "accepted_terms": True, "confirmed_age": True}
             ).status_code == 403
         throttled = client.post(
-            "/api/gate", json={"code": "slayter is gay", "accepted_terms": True}
+            "/api/gate", json={"code": "flathead", "accepted_terms": True, "confirmed_age": True}
         )
         assert throttled.status_code == 429
         # the throttle precedes the consent check: a throttled body without a
         # tick still earns the same five-minute break
-        untickd = client.post("/api/gate", json={"code": "slayter is gay"})
+        untickd = client.post("/api/gate", json={"code": "flathead"})
         assert untickd.status_code == 429
 
         monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
         assert client.post(
-            "/api/gate", json={"code": "nope", "accepted_terms": True}
+            "/api/gate", json={"code": "nope", "accepted_terms": True, "confirmed_age": True}
         ).status_code == 403
         accepted = client.post(
-            "/api/gate", json={"code": "slayter is gay", "accepted_terms": True}
+            "/api/gate", json={"code": "flathead", "accepted_terms": True, "confirmed_age": True}
         )
         assert accepted.status_code == 200
         # A correct code clears the failure record for that client.
@@ -148,7 +147,7 @@ class TestAccounts:
         monkeypatch.setattr(site_access, "create_account", fake_create)
         response = client.post(
             "/api/auth/sign-up",
-            json={"email": "moon@test.io", "password": "longenough12", "nickname": "Moon Runner"},
+            json={"email": "moon@test.io", "password": "longenough12", "nickname": "Moon Runner", "age_confirmed": True},
         )
         assert response.status_code == 200
         assert response.json() == {"email": "moon@test.io", "nickname": "Moon Runner"}
@@ -181,13 +180,13 @@ class TestAccounts:
         self._stub_admin(monkeypatch)
         short = client.post(
             "/api/auth/sign-up",
-            json={"email": "moon@test.io", "password": "short", "nickname": "Moon Runner"},
+            json={"email": "moon@test.io", "password": "short", "nickname": "Moon Runner", "age_confirmed": True},
         )
         assert short.status_code == 422
 
         bad = client.post(
             "/api/auth/sign-up",
-            json={"email": "moon@test.io", "password": "longenough12", "nickname": "bad!name"},
+            json={"email": "moon@test.io", "password": "longenough12", "nickname": "bad!name", "age_confirmed": True},
         )
         assert bad.status_code == 400
 
@@ -263,7 +262,7 @@ class TestAccounts:
         monkeypatch.setattr(site_access, "update_nickname", fake_update)
         created = client.post(
             "/api/auth/sign-up",
-            json={"email": "nick@test.io", "password": "longenough12", "nickname": "Nick Hero"},
+            json={"email": "nick@test.io", "password": "longenough12", "nickname": "Nick Hero", "age_confirmed": True},
         )
         assert created.status_code == 200
         updated = client.put("/api/auth/nickname", json={"nickname": "Renamed Hero"})

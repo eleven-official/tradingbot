@@ -17,7 +17,12 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import re
 
-BINANCE_SPOT_URL = "https://api.binance.com"
+# data-api.binance.vision is Binance's public market-data-only mirror (same
+# /api/v3 paths). api.binance.com answers HTTP 451 to many US-hosted servers
+# (Vercel included), so the mirror goes first and the main host is fallback.
+BINANCE_SPOT_HOSTS = ("https://data-api.binance.vision", "https://api.binance.com")
+BINANCE_SPOT_URL = BINANCE_SPOT_HOSTS[0]
+_preferred_host = 0
 ALLOWED_INTERVALS = frozenset(
     {"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"}
 )
@@ -87,15 +92,31 @@ def _validate_interval(interval: str) -> str:
 
 
 def _fetch_json(path: str, params: dict[str, Any]) -> Any:
-    url = f"{BINANCE_SPOT_URL}{path}?{urlencode(params)}"
-    request = Request(
-        url, headers={"Accept": "application/json", "User-Agent": "LokiPaperScout/1.0"}
-    )
-    try:
-        with urlopen(request, timeout=5) as response:
-            payload = response.read().decode("utf-8")
-    except (HTTPError, URLError, TimeoutError, OSError) as error:
-        raise MarketDataError("Binance Spot market data is temporarily unavailable") from error
+    global _preferred_host
+    query = urlencode(params)
+    order = [_preferred_host] + [i for i in range(len(BINANCE_SPOT_HOSTS)) if i != _preferred_host]
+    payload = None
+    last_error: Exception | None = None
+    for index in order:
+        request = Request(
+            f"{BINANCE_SPOT_HOSTS[index]}{path}?{query}",
+            headers={"Accept": "application/json", "User-Agent": "LokiPaperScout/1.0"},
+        )
+        try:
+            with urlopen(request, timeout=5) as response:
+                payload = response.read().decode("utf-8")
+        except HTTPError as error:
+            last_error = error
+            if error.code == 400:  # bad symbol/params: another host answers the same
+                break
+            continue
+        except (URLError, TimeoutError, OSError) as error:
+            last_error = error
+            continue
+        _preferred_host = index
+        break
+    if payload is None:
+        raise MarketDataError("Binance Spot market data is temporarily unavailable") from last_error
     try:
         return json.loads(payload)
     except json.JSONDecodeError as error:

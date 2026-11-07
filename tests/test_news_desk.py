@@ -73,7 +73,7 @@ class TestNewsDeskShape:
         response = client.get("/api/news")
         assert response.status_code == 200
         body = response.json()
-        assert stub.calls == [term for term, _ in module.NEWS_BASKET], "every basket term fetched exactly once per request"
+        assert sorted(stub.calls) == sorted(term for term, _ in module.NEWS_BASKET), "every basket term fetched exactly once per request"
         assert body["mode"] == "news-desk"
         links = [item["link"] for item in body["items"]]
         assert len(links) == len(set(links)), "duplicate links collapse into one story"

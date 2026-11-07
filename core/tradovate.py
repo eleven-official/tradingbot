@@ -76,3 +76,47 @@ def snapshot(environment, token):
     except TradovateError as exc:
         result["messages"].append(str(exc))
     return result
+
+
+def request_token(environment, name, password, cid, sec, app_id="Loki", app_version="1.0"):
+    """Exchange Tradovate API credentials for an access token (password never stored).
+
+    Uses Tradovate's documented /auth/accesstokenrequest. Returns
+    ``(access_token, expires_epoch_seconds or None)``.
+    """
+    if environment not in HOSTS:
+        raise TradovateError("Choose the Tradovate server assigned to your account.")
+    body = {"name": name, "password": password, "appId": app_id, "appVersion": app_version,
+            "cid": cid, "sec": sec}
+    try:
+        response = requests.post(HOSTS[environment] + "/auth/accesstokenrequest", json=body,
+                                 headers={"Accept": "application/json"}, timeout=(4, 10),
+                                 allow_redirects=False)
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise TradovateError("Could not reach Tradovate. Check your connection and retry.") from exc
+    if response.status_code == 429:
+        raise TradovateError("Tradovate is rate limiting sign-ins. Wait a minute and retry.")
+    if not isinstance(data, dict):
+        raise TradovateError("Tradovate returned an unexpected sign-in response.")
+    if data.get("p-ticket"):
+        wait = data.get("p-time")
+        raise TradovateError(
+            f"Tradovate paused sign-in after repeated attempts; wait {int(wait)} seconds and retry."
+            if isinstance(wait, (int, float)) else "Tradovate paused sign-in after repeated attempts; wait and retry."
+        )
+    if data.get("errorText"):
+        raise TradovateError(str(data["errorText"])[:200])
+    token = data.get("accessToken")
+    if not isinstance(token, str) or len(token) < 16:
+        raise TradovateError("Tradovate did not issue an access token for these credentials.")
+    expires = None
+    stamp = data.get("expirationTime")
+    if isinstance(stamp, str):
+        try:
+            from datetime import datetime
+
+            expires = int(datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            expires = None
+    return token, expires

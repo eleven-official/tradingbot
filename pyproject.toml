@@ -140,7 +140,6 @@ module = [
     "loki.api.server",
     "loki_v8.agents",
     "loki_v8.backtest",
-    "loki_v8.persistence",
     "loki_v8.train",
 ]
 ignore_errors = true
@@ -158,6 +157,7 @@ python_functions = ["test_*"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "brain_data: lets a test feed Loki's brain its own (stubbed) market data",
     "unit: marks tests as unit tests",
     "e2e: marks tests as end-to-end tests",
 ]

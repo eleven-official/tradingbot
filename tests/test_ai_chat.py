@@ -178,7 +178,7 @@ def test_the_room_opens_with_a_name_no_password_needed(memory_path, no_internet)
 def test_an_operator_can_still_lock_the_room_behind_a_code(monkeypatch, memory_path, no_internet):
     """LOKI_CHAT_CODE puts the passcode door back — opt-in, never the default."""
     monkeypatch.setattr(ai_chat, "DEFAULT_CHAT_CODE", "slaterisgay")
-    denied = client.post("/api/ai/chat/access", json={"name": "someone", "code": "slayterisgay"})
+    denied = client.post("/api/ai/chat/access", json={"name": "someone", "code": "flathead"})
     assert denied.status_code == 403
     opened = client.post("/api/ai/chat/access", json={"name": "olivia", "code": "SLATERISGAY"})
     assert opened.status_code == 200 and opened.json()["name"] == "Olivia"

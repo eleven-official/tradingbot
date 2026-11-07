@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#060a12">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loki · Privacy Policy</title>
+  <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}">
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { min-height: 100vh; background: #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 40px 20px 60px; }
+    .wrap { width: min(760px, 100%); margin: 0 auto; }
+    .mark-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 30px; }
+    .mark { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 1px solid rgba(139, 218, 212, .45); border-radius: 11px; font-weight: 800; color: #8bdad4; font-size: 18px; }
+    .mark-row b { font-size: 20px; letter-spacing: .04em; } .mark-row span:not(.mark) { color: #7f93a8; font-size: 12px; }
+    .eyebrow { color: #8bdad4; letter-spacing: .16em; font-size: 11px; font-weight: 600; margin-bottom: 8px; }
+    h1 { font-size: 32px; line-height: 1.15; margin-bottom: 10px; } h1 em { color: #b8f0d8; font-style: normal; }
+    .version { color: #7f93a8; font-size: 12.5px; margin-bottom: 26px; }
+    p.muted { color: #9fb0c2; font-size: 14.5px; line-height: 1.7; margin-bottom: 14px; }
+    h2 { font-size: 17px; color: #d9f4ea; margin: 26px 0 10px; }
+    p, li { color: #9fb0c2; font-size: 13.5px; line-height: 1.75; }
+    ul { padding-left: 20px; margin-bottom: 12px; }
+    li { margin-bottom: 7px; }
+    strong { color: #c9e9dd; font-weight: 600; }
+    .card { background: rgba(14, 22, 36, .82); border: 1px solid rgba(139, 218, 212, .18); border-radius: 16px; padding: 26px 28px; margin: 0 0 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); }
+    .key { border: 1px solid rgba(138, 218, 212, .35); border-left-width: 4px; }
+    .key h2 { color: #baf0d8; }
+    .foot { margin-top: 26px; color: #7f93a8; font-size: 12px; }
+    .foot a { color: #8bdad4; }
+    body { background: radial-gradient(ellipse at 0 0, #153337, transparent 55%), #060a12; }
+    .wrap { width: min(860px, 100%); }
+    h1 { font-size: clamp(36px, 7vw, 60px); letter-spacing: -.045em; }
+    .card { border-radius: 20px; padding: 24px 30px; }
+    .card h2 { margin-top: 0; }
+    .card p, .card li { font-size: 15px; line-height: 1.85; }
+    .key { background: linear-gradient(120deg, #17382f, #101e29); }
+    .terms-nav { display: flex; gap: 10px; flex-wrap: wrap; margin: 24px 0; }
+    .terms-nav a { color: #baf0d8; padding: 10px 16px; background: #142732; border: 1px solid #31564c; border-radius: 100px; font-size: 13px; text-decoration: none; }
+    a:focus-visible { outline: 2px solid #baf0d8; outline-offset: 4px; }
+    @media (max-width: 480px) { body { padding: 24px 16px; } .card { padding: 22px; } }
+      .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+    .controls button { border: 1px solid #31564c; background: #142732; color: #baf0d8; border-radius: 10px; padding: 10px 14px; font: 600 13px Inter, system-ui, sans-serif; cursor: pointer; }
+    .controls button:hover { background: #1b3542; }
+    .controls button.danger { border-color: #7a3d3d; color: #ffb3a7; }
+    #controls-msg { min-height: 20px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="mark-row"><span class="mark" aria-hidden="true">L</span><b>LOKI</b><span>PRIVACY POLICY</span></div>
+    <p class="eyebrow">WHAT WE COLLECT, WHY, AND YOUR CHOICES</p>
+    <h1>Privacy <em>Policy</em></h1>
+    <p class="version">Updated {{ terms_updated }} · Applies to this Loki website</p>
+    <p class="muted">We collect as little as we can. You can use the workspace without an account, nothing is sold or shared for advertising, and the site has no analytics or advertising trackers.</p>
+    <nav class="terms-nav" aria-label="Legal pages"><a href="/terms">Terms of Use</a><a href="/privacy">Privacy Policy</a><a href="/cookies">Cookie Policy</a><a href="/">Back to Loki</a></nav>
+
+    <div class="card key">
+      <h2>In short</h2>
+      <ul>
+        <li><strong>No account needed.</strong> Without one, your paper trading, watchlists, chat history and settings stay in <em>your browser</em>, not on our servers.</li>
+        <li><strong>No tracking.</strong> No analytics, advertising or social-media trackers, no third-party cookies, and no third-party fonts or scripts loaded in your browser.</li>
+        <li><strong>No birth date.</strong> We ask you to confirm you are {{ minimum_age }} or older; we never ask for or store your date of birth.</li>
+        <li><strong>You are in control.</strong> Download or delete your account data, or wipe this browser, from the controls at the bottom of this page.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>1. Who is responsible</h2>
+      <p>The controller of your personal data is {% if operator_name %}{{ operator_name }}{% else %}the operator of this Loki deployment (see <a href="/transparency" style="color:#8bdad4">/transparency</a>){% endif %}. Privacy questions and requests: {% if operator_email %}<a href="mailto:{{ operator_email }}" style="color:#8bdad4">{{ operator_email }}</a>{% else %}the contact listed on <a href="/transparency" style="color:#8bdad4">/transparency</a>{% endif %}.</p>
+    </div>
+
+    <div class="card">
+      <h2>2. What we collect and why</h2>
+      <ul>
+        <li><strong>Access and agreement.</strong> When you enter, we set cookies recording that you entered the access code, accepted the Terms and confirmed you are {{ minimum_age }}+. Purpose: let you in and remember your agreement. Basis: our contract with you.</li>
+        <li><strong>Account (optional).</strong> Email address, a password (sent to our account provider, which stores only a secure hash — we never store it), and a nickname. Purpose: sign you in and keep saves private to you. Basis: contract.</li>
+        <li><strong>Workspace saves (optional).</strong> Only if you choose to save to your account: your paper journals, watchlists and game progress. Broker keys, passwords and session cookies are never included. Basis: contract / your request.</li>
+        <li><strong>Published game scores (optional).</strong> If you publish a Loki Dive score: your nickname, best score, number of publications and time — these are shown publicly on the leaderboard.</li>
+        <li><strong>Chat room.</strong> The name you type and your messages and Loki's replies are stored on the server for up to <strong>30 days</strong> (and at most the latest 400 turns across the room) so Loki can use recent context. Your own copy stays in your browser until you clear it. Do not type personal or sensitive information into chats.</li>
+        <li><strong>Broker connections (optional).</strong> Alpaca paper keys are kept in your browser and sent to our relay only for the request you make; we do not store them. Tradovate credentials are used once to obtain an access token and are not stored; the token is kept only in an encrypted cookie for up to one hour.</li>
+        <li><strong>Security records.</strong> To stop password guessing and abuse we briefly keep counters keyed by your IP address in server memory (cleared within about an hour or on restart). Our hosting provider keeps standard request logs (IP address, time, page) under its own retention. Basis: legitimate interest in keeping the service secure.</li>
+      </ul>
+      <p>We do <strong>not</strong> collect payment details, government IDs, precise location, contacts, biometrics, or your date of birth, and we do not make automated decisions with legal effects about you.</p>
+    </div>
+
+    <div class="card">
+      <h2>3. Who we share it with</h2>
+      <ul>
+        <li><strong>Hosting</strong> (Vercel) runs the website and keeps request logs.</li>
+        <li><strong>Account and database provider</strong> (Supabase) stores accounts, optional saves and published scores.</li>
+        <li><strong>Brokers you connect</strong> (Alpaca, Tradovate) receive your requests under their own privacy policies, only when you use those features.</li>
+      </ul>
+      <p>Market data (prices, headlines) is fetched by our server from public providers without any of your personal data. We do not sell personal data or share it for advertising. We disclose data if the law requires it.</p>
+    </div>
+
+    <div class="card">
+      <h2>4. How long we keep it</h2>
+      <ul>
+        <li>Access/agreement cookies: 30 days. Sign-in cookie: 14 days. Chat cookie: 14 days. Tradovate cookie: 1 hour.</li>
+        <li>Chat turns on the server: 30 days at most.</li>
+        <li>Account, saves and published scores: until you delete them or your account.</li>
+        <li>Security counters: about an hour. Hosting logs: per the hosting provider's retention.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>5. Your rights</h2>
+      <p>Depending on where you live (for example under the GDPR, UK GDPR or US state privacy laws) you can ask to access, correct, export or delete your data, object to or restrict processing, and complain to your data-protection authority. Use the controls below, or contact {% if operator_email %}<a href="mailto:{{ operator_email }}" style="color:#8bdad4">{{ operator_email }}</a>{% else %}the contact listed on <a href="/transparency" style="color:#8bdad4">/transparency</a>{% endif %}. We will not treat you differently for exercising these rights.</p>
+    </div>
+
+    <div class="card">
+      <h2>6. Age</h2>
+      <p>Loki is only for people aged {{ minimum_age }} or older. We do not knowingly collect data from anyone younger. If you believe a minor has used Loki, contact us and we will delete the related data.</p>
+    </div>
+
+    <div class="card">
+      <h2>7. Security and transfers</h2>
+      <p>Connections are encrypted (HTTPS), cookies are signed and HttpOnly, access to account data is limited to the signed-in owner, and the site uses a strict content security policy. No system is perfectly secure. Our providers may process data in countries other than yours under their own safeguards.</p>
+    </div>
+
+    <div class="card">
+      <h2>8. Changes</h2>
+      <p>We will update the date above when this policy changes and, for material changes, ask you to accept the updated Terms at the entrance again.</p>
+    </div>
+
+    <div class="card key" id="controls">
+      <h2>Your data controls</h2>
+      <p>Account actions need you to be signed in. Browser actions affect only this browser.</p>
+      <div class="controls">
+        <button type="button" id="export-data">Download my account data</button>
+        <button type="button" id="delete-account" class="danger">Delete my account…</button>
+        <button type="button" id="clear-browser">Clear Loki data from this browser</button>
+      </div>
+      <p id="controls-msg" role="status" aria-live="polite"></p>
+    </div>
+    <p class="foot">Loki {{ version }} · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/cookies">Cookies</a> · <a href="/transparency">Who runs Loki</a></p>
+  </div>
+  <script src="/api/account/storage-context.js"></script>
+  <script src="/static/js/page_privacy.js?v={{ version }}" defer></script>
+</body>
+</html>

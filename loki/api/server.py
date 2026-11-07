@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -21,57 +22,71 @@ from loki.version import __version__
 from core.copilot import LokiCopilot
 from core.risk_preview import preview_position
 from core.strategy_lab import evaluate_strategy
-from loki.api import site_access
-from loki.api.member_data import router as member_router
-from loki.api.ai_paper import router as ai_paper_router
-from loki.api.news_desk import router as news_desk_router
+from loki.api import rate_limit, site_access
 from loki.api.ai_chat import router as ai_chat_router
-from loki.api.fusion import router as fusion_router
+from loki.api.ai_paper import router as ai_paper_router
+from loki.api.analogue import router as analogue_router
+from loki.api.broker_alpaca import router as broker_alpaca_router
+from loki.api.broker_workspace import router as broker_workspace_router
+from loki.api.cloud_research import router as cloud_research_router
 from loki.api.dive_board import router as dive_board_router
 from loki.api.dive_sessions import router as dive_sessions_router
+from loki.api.funded import router as funded_router
+from loki.api.fusion import router as fusion_router
+from loki.api.indicator_page import router as indicator_page_router
+from loki.api.live_markets import router as live_markets_router
+from loki.api.member_data import router as member_router
+from loki.api.news_desk import router as news_desk_router
+from loki.api.paper_tools import router as paper_tools_router
 from loki.api.revenue import router as revenue_router
-from loki.api.broker_workspace import router as broker_workspace_router
+from loki.api.trading_desk import router as trading_desk_router
+from loki.api.watchtower import router as watchtower_router
 
 app = FastAPI(
     title="Loki Trading Platform",
     version=__version__,
     description="Loki research workspace and read-only trading copilot",
 )
-app.include_router(fusion_router)
-app.include_router(broker_workspace_router)
-app.include_router(ai_paper_router)
-app.include_router(ai_chat_router)
-from loki.api.paper_tools import router as paper_tools_router
+for _router in (
+    fusion_router,
+    broker_workspace_router,
+    ai_paper_router,
+    ai_chat_router,
+    paper_tools_router,
+    watchtower_router,
+    live_markets_router,
+    broker_alpaca_router,
+    trading_desk_router,
+    news_desk_router,
+    dive_board_router,
+    dive_sessions_router,
+    revenue_router,
+    member_router,
+    cloud_research_router,
+    funded_router,
+    analogue_router,
+    indicator_page_router,
+):
+    app.include_router(_router)
 
-app.include_router(paper_tools_router)
-from loki.api.watchtower import router as watchtower_router
 
-app.include_router(watchtower_router)
-from loki.api.broker_alpaca import router as broker_alpaca_router
-
-app.include_router(broker_alpaca_router)
-from loki.api.trading_desk import router as trading_desk_router
-
-app.include_router(trading_desk_router)
-from loki.api.news_desk import router as news_desk_router
-
-app.include_router(news_desk_router)
-app.include_router(dive_board_router)
-app.include_router(dive_sessions_router)
-app.include_router(revenue_router)
-app.include_router(member_router)
-from loki.api.cloud_research import router as cloud_research_router
-
-app.include_router(cloud_research_router)
-from loki.api.funded import router as funded_router
-
-app.include_router(funded_router)
-from loki.api.analogue import router as analogue_router
-
-app.include_router(analogue_router)
-from loki.api.indicator_page import router as indicator_page_router
-
-app.include_router(indicator_page_router)
+# Scripts only from this site (no inline scripts anywhere), so injected
+# markup cannot run code; styles allow inline for the component styling and
+# nothing may frame the site except itself.
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self' data:",
+        "img-src 'self' data: blob:",
+        "connect-src 'self'",
+        "frame-ancestors 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+    )
+)
 
 
 @app.middleware("http")
@@ -96,10 +111,22 @@ async def member_privacy_boundary(request: Request, call_next):
                 status_code=403,
                 headers={"Cache-Control": "no-store"},
             )
+    wait = rate_limit.check(request)
+    if wait is not None:
+        return JSONResponse(
+            {"detail": "Too many requests from this connection — wait a moment and try again."},
+            status_code=429,
+            headers={"Retry-After": str(wait), "Cache-Control": "no-store"},
+        )
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    if site_access.cookie_secure(request):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if private:
         response.headers["Cache-Control"] = "private, no-store"
         response.headers["Vary"] = "Cookie"
@@ -219,13 +246,38 @@ async def terms_page(request: Request):
     )
 
 
+def _policy_context() -> Dict[str, Any]:
+    return {
+        "version": __version__,
+        "terms_version": site_access.TERMS_VERSION,
+        "terms_updated": site_access.TERMS_UPDATED,
+        "minimum_age": site_access.MINIMUM_AGE,
+        "operator_name": site_access.operator_name(),
+        "operator_email": site_access.operator_email(),
+    }
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page(request: Request):
+    """Privacy Policy — public, readable before entering."""
+    return templates.TemplateResponse(request=request, name="privacy.html", context=_policy_context())
+
+
+@app.get("/cookies", response_class=HTMLResponse)
+async def cookies_page(request: Request):
+    """Cookie Policy — public, readable before entering."""
+    return templates.TemplateResponse(request=request, name="cookies.html", context=_policy_context())
+
+
 @app.get("/transparency", response_class=HTMLResponse)
 async def transparency_page(request: Request):
     """Who runs Loki, how to reach them, and the plain-language privacy/data summary."""
     import os
 
-    name = (os.environ.get("LOKI_OPERATOR_NAME") or "").strip()
-    email = (os.environ.get("LOKI_OPERATOR_EMAIL") or "").strip()
+    import html
+
+    name = site_access.operator_name()
+    email = html.escape(site_access.operator_email(), quote=True)
     since = (os.environ.get("LOKI_OPERATOR_SINCE") or "").strip()
     from loki.api.loki_wording import PRIVACY_SUMMARY, RETENTION_SUMMARY, revenue_status
 
@@ -286,6 +338,12 @@ async def access_gate_submit(request: Request):
             status_code=403,
             detail="Tick the terms box — that is the agreement, not a formality.",
         )
+    # Age is confirmed, never collected: only the yes travels, no birth date.
+    if body.get("confirmed_age") is not True:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Loki is for adults: confirm you are {site_access.MINIMUM_AGE} or older to enter.",
+        )
     if not site_access.code_matches(str(body.get("code") or "")):
         site_access.record_gate_failure(client_ip)
         raise HTTPException(status_code=403, detail="That is not the code.")
@@ -297,7 +355,7 @@ async def access_gate_submit(request: Request):
         max_age=site_access.GATE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=bool(os.environ.get("VERCEL")),
+        secure=site_access.cookie_secure(request),
     )
     response.set_cookie(
         site_access.TERMS_COOKIE,
@@ -305,7 +363,7 @@ async def access_gate_submit(request: Request):
         max_age=site_access.GATE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=bool(os.environ.get("VERCEL")),
+        secure=site_access.cookie_secure(request),
     )
     return response
 
@@ -323,6 +381,7 @@ class AuthBody(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=8, max_length=128)
     nickname: Optional[str] = Field(default=None, max_length=24)
+    age_confirmed: Optional[bool] = None
 
 
 class NicknameBody(BaseModel):
@@ -339,7 +398,7 @@ def _session_cookie(response: Response, uid: str, email: str, nickname: str) -> 
         max_age=site_access.SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=bool(os.environ.get("VERCEL")),
+        secure=site_access.cookie_secure(),
     )
 
 
@@ -352,6 +411,11 @@ async def auth_sign_up(body: AuthBody, response: Response):
     if not nickname:
         raise HTTPException(
             status_code=400, detail="Pick a nickname (2-24 letters, numbers or dashes)."
+        )
+    if body.age_confirmed is not True:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Accounts are for adults: confirm you are {site_access.MINIMUM_AGE} or older.",
         )
     user = await site_access.create_account(email, body.password, nickname)
     uid = str(user.get("id") or "")
@@ -420,7 +484,7 @@ async def auth_session(request: Request, response: Response):
         max_age=max(0, int(site_access.SESSION_MAX_AGE - (time.time() - int(session["iat"])))),
         httponly=True,
         samesite="lax",
-        secure=bool(os.environ.get("VERCEL")),
+        secure=site_access.cookie_secure(request),
     )
     return {"enabled": True, "email": session.get("email"), "nickname": session.get("nickname")}
 
@@ -441,11 +505,17 @@ _FX_HEADERS = {
 
 
 def _fetch_usd_aud_sync() -> float:
-    url = "https://api.frankfurter.app/latest?from=USD&to=AUD"
-    request = urllib.request.Request(url, headers=_FX_HEADERS)  # noqa: S310 - fixed https URL
-    with urllib.request.urlopen(request, timeout=10) as res:
-        data = json.loads(res.read().decode())
-    rate = float(data["rates"]["AUD"])
+    try:
+        url = "https://api.frankfurter.dev/v1/latest?from=USD&to=AUD"
+        request = urllib.request.Request(url, headers=_FX_HEADERS)  # noqa: S310 - fixed https URL
+        with urllib.request.urlopen(request, timeout=10) as res:
+            data = json.loads(res.read().decode())
+        rate = float(data["rates"]["AUD"])
+    except Exception:  # noqa: BLE001 - second source below
+        # Backup source: Yahoo's public USD/AUD quote (same feed as the board).
+        from loki.api.market_feed import fetch_quote
+
+        rate = float(fetch_quote("AUD=X")["price"])
     if not rate > 0:
         raise ValueError("Rate feed returned a non-positive USD/AUD rate.")
     return rate
@@ -658,7 +728,32 @@ def copilot(payload: CopilotRequest, request: Request, response: Response):
             "suggestions": ["show memory"],
             "conversation": {"topics": ["memory"], "symbol": None},
         }
+    # Questions about the visitor's own workspace (portfolio, research,
+    # council) stay with the context-aware copilot; general questions —
+    # tickers, the market, terms, the AI itself — go to Loki's brain, which
+    # runs the live AI engine and real quotes.
+    about_the_ai = re.search(r"\b(portfolio ai|the ai|loki)\b", payload.message, re.I) and not re.search(
+        r"\b(my|mine|our|we)\b", payload.message, re.I
+    )
+    if not _PERSONAL.search(payload.message) or about_the_ai:
+        from loki.api import loki_brain
+
+        brain = loki_brain.answer(payload.message)
+        if brain:
+            symbols = brain.get("symbols") or []
+            return {
+                "text": brain["text"],
+                "intent": f"brain:{brain['intent']}",
+                "evidence": [],
+                "suggestions": ["How's the market?", "How did the AI do?", "What is a stop loss?"],
+                "conversation": {"topics": [brain["intent"]], "symbol": symbols[0] if symbols else None},
+            }
     return LokiCopilot().respond(payload.message, payload.context).as_dict()
+
+
+_PERSONAL = re.compile(
+    r"\b(my|mine|we|our|us|portfolio|account|council|dataset|journal|imported|lose|lost|doing|next)\b", re.I
+)
 
 
 class SizingRequest(BaseModel):

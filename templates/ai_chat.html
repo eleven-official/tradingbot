@@ -13,7 +13,7 @@
     .mark-row { display: flex; align-items: center; gap: 12px; }
     .mark { display: inline-grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(201,184,255,.45); border-radius: 12px; font-weight: 800; color: #c9b8ff; font-size: 19px; }
     .mark-row b { font-size: 20px; letter-spacing: .04em; }
-    .mark-row span { color: #7f93a8; font-size: 12px; display: block; letter-spacing: .14em; }
+    .mark-row span:not(.mark) { color: #7f93a8; font-size: 12px; display: block; letter-spacing: .14em; }
     .eyebrow { color: #c9b8ff; letter-spacing: .18em; font-size: 11px; font-weight: 600; margin-bottom: 8px; }
     h1 { font-size: 30px; line-height: 1.15; margin-bottom: 10px; } h1 em { color: #c9b8ff; font-style: normal; }
     p.muted { color: #9fb0c2; font-size: 14px; line-height: 1.65; }
@@ -74,7 +74,7 @@
     <section class="card" id="gate" hidden>
       <p class="eyebrow">OPEN ROOM · NO PASSWORD</p>
       <h1>Loki's private room <em>is one name away.</em></h1>
-      <p class="muted">Pick a name and talk to the AI that reads the market internet and remembers you. No passcode needed.</p>
+      <p class="muted">Pick a name and ask about live market data and the trading AI's current reads. Your conversation is saved in this browser. No passcode needed.</p>
       <form id="gateForm" novalidate>
         <input id="gateCode" autocomplete="off" maxlength="80" hidden value="" aria-hidden="true" />
         <details><summary>Operator access</summary><label class="field" for="operatorCode">Operator code (optional)</label><input id="operatorCode" type="password" autocomplete="off" maxlength="80" /></details>
@@ -84,29 +84,32 @@
         <p class="muted" id="gateHint" hidden></p>
         <button class="primary" type="submit" id="gateBtn">Enter the room →</button>
       </form>
-      <p class="muted" style="margin-top:14px;font-size:12px">The AI in here is research-only: quotes, headlines, memory. It never places orders.</p>
+      <p class="muted" style="margin-top:14px;font-size:12px">Research only. It never places orders. Messages are kept on the server for up to 30 days; don't share personal information. <a href="/privacy" style="color:var(--green)">Privacy</a> · <a href="/terms" style="color:var(--green)">Terms</a></p>
     </section>
 
     <section id="room" hidden>
       <div class="pill-row">
         <div><span class="badge" id="whoBadge">MEMBER</span> <span class="muted" id="whoName" style="margin-left:8px"></span></div>
-        <button class="quiet" id="logoutBtn">Leave the room</button>
+        <div><button class="quiet" id="clearHistoryBtn" type="button" title="Removes the saved conversation from this browser">Clear my chat</button> <button class="quiet" id="logoutBtn">Leave the room</button></div>
       </div>
       <div class="room">
         <div class="card">
           <p class="eyebrow">CONVERSATION</p>
           <div id="stream" aria-live="polite"></div>
           <form class="composer" id="msgForm" novalidate>
-            <input id="msgInput" maxlength="500" autocomplete="off" placeholder="Ask about the tape, or name a ticker (SPY, BTC/USD)…" />
+            <input id="msgInput" maxlength="500" autocomplete="off" placeholder="Name a ticker or coin, ask about the market, or any trading term…" />
             <button class="primary" type="submit" id="sendBtn">Send</button>
           </form>
           <div class="chips" id="chips" aria-label="Quick asks">
+            <button type="button" class="quiet" data-ask="how's the market today?">market check</button>
+            <button type="button" class="quiet" data-ask="what does the AI think of SPY?">AI on SPY</button>
+            <button type="button" class="quiet" data-ask="what about bitcoin?">AI on bitcoin</button>
+            <button type="button" class="quiet" data-ask="how did the AI do historically?">track record</button>
+            <button type="button" class="quiet" data-ask="what can you do?">help</button>
             <button type="button" class="quiet" data-ask="audit">audit</button>
-            <button type="button" class="quiet" data-ask="what happened to SPY?">SPY check</button>
-            <button type="button" class="quiet" data-ask="what is moving BTC/USD?">BTC pulse</button>
-            <button type="button" class="quiet" data-ask="what do you remember?">what you remember</button>
           </div>
-          <p class="muted" style="font-size:11.5px;margin-top:8px" id="learnNote">Internet sweeps refresh at most every 5 minutes — quiet until then.</p>
+          <p class="muted" style="font-size:11.5px;margin-top:8px">Your conversation is saved in this browser, so it is still here when you come back.</p>
+          <p class="muted" style="font-size:11.5px;margin-top:4px" id="learnNote">Internet sweeps refresh at most every 5 minutes — quiet until then.</p>
         </div>
         <aside class="card panel">
           <h2>LOKI'S MEMORY</h2>

@@ -28,12 +28,15 @@ import os
 import re
 import secrets
 import sqlite3
+import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+
+from loki.api import site_access
 from pydantic import BaseModel, ConfigDict, Field
 
 from loki.api.market_feed import MarketFeedError, fetch_quote, latest_headlines_for_query
@@ -78,6 +81,7 @@ _MESSAGE_MAX = 500
 _NAME_MAX = 24
 _MEMORY_LIMIT = 180
 _STORE_ROWS = 400
+TURN_RETENTION_SECONDS = 30 * 24 * 3600
 _FACT_LEN = 220
 _LEARN_INTERVAL = 300.0  # one internet sweep at most every five minutes
 _MEMO_TTL = 900.0  # how long a fresh "internet lesson" is quoted verbatim
@@ -97,7 +101,37 @@ _DB_LOCK = threading.RLock()
 _DERIVATIVE_DIR = Path(__file__).resolve().parents[2] / "state" / "public_derivatives"
 
 _COOKIE_SALT = b"loki-sentient-chat-v1"
-_PROCESS_SECRET = os.environ.get("LOKI_CHAT_SESSION_SECRET", "").encode() or secrets.token_bytes(32)
+_PROCESS_SECRET = secrets.token_bytes(32)
+# Serverless hosts (Vercel) ship the code read-only; only the temp dir is
+# writable. Memory there is per-instance, so the browser keeps its own copy
+# of the conversation too (static/js/ai_chat.js).
+_FALLBACK_DB_DIR = Path(tempfile.gettempdir()) / "loki_ai_chat"
+if not _env_db and os.environ.get("VERCEL"):
+    _DB_DIR = _FALLBACK_DB_DIR
+    _DB_PATH = _DB_DIR / "memory.sqlite3"
+
+
+def _session_secret() -> bytes:
+    """Cookie signing key that survives cold starts and multiple instances.
+
+    A random per-process key logged every visitor out whenever a serverless
+    instance recycled. Prefer an explicit chat secret, then the site gate's
+    stable secret material (never sent anywhere), and only then the
+    per-process fallback.
+    """
+    explicit = os.environ.get("LOKI_CHAT_SESSION_SECRET", "").strip()
+    if explicit:
+        return explicit.encode()
+    try:
+        from loki.api import site_access
+
+        # Only borrow the gate's key when an operator configured it; a local
+        # dev constant must never sign chat cookies (admin claims ride them).
+        if site_access.secret_is_configured():
+            return hmac.new(site_access._secret(), b"loki-chat-session", hashlib.sha256).digest()
+    except Exception:  # noqa: BLE001 - never block chat on gate config
+        pass
+    return _PROCESS_SECRET
 
 
 def _chat_code() -> str:
@@ -140,10 +174,29 @@ CREATE INDEX IF NOT EXISTS turns_created ON turns (created_at DESC);
 """
 
 
-def _connect() -> sqlite3.Connection:
+def _open_db() -> sqlite3.Connection:
     _DB_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_DB_PATH, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        conn.close()
+        raise
+    return conn
+
+
+def _connect() -> sqlite3.Connection:
+    global _DB_DIR, _DB_PATH
+    try:
+        conn = _open_db()
+    except (OSError, sqlite3.OperationalError) as exc:
+        # Read-only deploy directory: fall back to the writable temp dir
+        # instead of failing every chat request with a 500.
+        if _DB_DIR == _FALLBACK_DB_DIR:
+            raise
+        logger.warning("chat memory dir not writable (%s); using temp dir", exc.__class__.__name__)
+        _DB_DIR, _DB_PATH = _FALLBACK_DB_DIR, _FALLBACK_DB_DIR / "memory.sqlite3"
+        conn = _open_db()
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     with _DB_LOCK:
@@ -163,7 +216,8 @@ def _ensure_schema() -> None:
 
 
 _TURN_TEXT_MAX = _MESSAGE_MAX  # user bubbles stay single-message sized
-_AI_TURN_TEXT_MAX = _MESSAGE_MAX * 4  # AI replies are multi-line; keep them whole
+_REPLY_MAX = _MESSAGE_MAX * 8  # two live AI reads plus headlines fit whole
+_AI_TURN_TEXT_MAX = _REPLY_MAX  # AI replies are multi-line; keep them whole
 
 
 def record_turn(role: str, name: str, text: str, session: str = "") -> None:
@@ -178,6 +232,8 @@ def record_turn(role: str, name: str, text: str, session: str = "") -> None:
             "(SELECT id FROM turns ORDER BY created_at DESC LIMIT ?)",
             (_STORE_ROWS,),
         )
+        # Data minimisation: conversation turns expire after 30 days.
+        conn.execute("DELETE FROM turns WHERE created_at < ?", (time.time() - TURN_RETENTION_SECONDS,))
 
 
 def add_fact(kind: str, text: str, source: str = "", weight: float = 1.0) -> int:
@@ -282,7 +338,7 @@ def admin_journal(action: str, detail: str) -> None:
 # ---------------------------------------------------------------------------
 def _sign(payload: str) -> str:
     return hmac.new(
-        _COOKIE_SALT + _PROCESS_SECRET, payload.encode("utf-8"), hashlib.sha256
+        _COOKIE_SALT + _session_secret(), payload.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
 
@@ -564,7 +620,7 @@ class TeachBody(BaseModel):
 
 
 class Reply(BaseModel):
-    text: str = Field(min_length=1, max_length=_MESSAGE_MAX * 4)
+    text: str = Field(min_length=1, max_length=_REPLY_MAX)
     learned: List[Dict[str, Any]] = Field(default_factory=list)
     quote: Optional[Dict[str, Any]] = None
     facts_used: int = 0
@@ -779,7 +835,7 @@ def _set_chat_cookie(
         ),
         max_age=COOKIE_MAX_AGE,
         httponly=True,
-        secure=request.url.scheme == "https" or bool(os.getenv("VERCEL")),
+        secure=site_access.cookie_secure(request),
         samesite="lax",
         path="/",
     )
@@ -983,6 +1039,19 @@ def chat_message(payload: MessageBody, request: Request, response: Response) -> 
         _set_chat_cookie(response, request, name, is_admin)
         return Reply(text=reply_text, admin=is_admin, name=name)
 
+    from loki.api import loki_brain
+
+    # The room keeps its own greeting (memory shelf stats) and headline
+    # memory; Loki's brain adds the live AI read, market checks, the track
+    # record and plain-English explanations.
+    brain = loki_brain.answer(text, name, skip=("greeting",))
+    if brain and brain["intent"] != "symbol":
+        reply_text = brain["text"]
+        record_turn("user", name, text, session)
+        record_turn("ai", "Loki", reply_text, session)
+        _set_chat_cookie(response, request, name, is_admin)
+        return Reply(text=reply_text, admin=is_admin, name=name)
+
     symbol = detect_symbol(text)
     sweep = _maybe_sweep(symbol)
     quote = sweep.get("quote")
@@ -1005,6 +1074,31 @@ def chat_message(payload: MessageBody, request: Request, response: Response) -> 
         turns_used=len(turns_used),
         symbol=symbol,
     )
+    if brain and brain["intent"] == "symbol":
+        # Lead with what the AI engine actually sees; underneath, only the
+        # headlines the room just learned or remembers for this name.
+        from urllib.parse import urlsplit
+
+        wanted = set()
+        for sym in brain.get("symbols") or []:
+            base = sym.split("-")[0].lower()
+            wanted.add(base)
+            wanted.update(k for k, v in loki_brain.NAMES.items() if v == sym and len(k) > 3)
+
+        def _line(item: Dict[str, Any]) -> str:
+            text_ = str(item.get("text") or item.get("title") or "")
+            if not any(re.search(rf"(?<![a-z]){re.escape(w)}(?![a-z])", text_.lower()) for w in wanted):
+                return ""  # only headlines about the asked-about asset
+            host = urlsplit(str(item.get("source") or item.get("link") or "")).hostname or ""
+            return f"{text_} — {host.removeprefix('www.')}" if host else text_
+
+        heard = [_line(item) for item in (sweep.get("learned") or []) if item.get("fresh")]
+        heard += [_line(f) for f in relevant]
+        heard = [h for i, h in enumerate(heard) if h and h not in heard[:i]][:3]
+        reply_text = brain["text"]
+        if heard:
+            reply_text += "\n\nRecent headlines in my memory:\n" + "\n".join(f"• {h}" for h in heard)
+    reply_text = reply_text[: _REPLY_MAX - 1].rstrip() if len(reply_text) >= _REPLY_MAX else reply_text
     record_turn("user", name, text, session)
     record_turn("ai", "Loki", reply_text, session)
     # Refresh the sliding 14-day window on every message.

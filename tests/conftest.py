@@ -4,9 +4,24 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolate_supabase_configuration(monkeypatch):
-    from loki_v8 import persistence
-
-    monkeypatch.setattr(persistence._load_dotenv_once, "_done", True, raising=False)
     for name in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY", "SUPABASE_KEY",
                  "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY"):
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def offline_brain(monkeypatch, request):
+    """Loki's brain reads live data; the suite stays offline unless a test opts in."""
+    if request.node.get_closest_marker("brain_data"):
+        return
+    from loki.api import loki_brain
+
+    monkeypatch.setattr(loki_brain, "_ai_read", lambda symbol: None)
+    monkeypatch.setattr(loki_brain, "_quotes", lambda symbols: [])
+    monkeypatch.setattr(loki_brain, "_portfolio", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def no_rate_limits(monkeypatch):
+    """The suite hammers endpoints on purpose; rate-limit tests opt back in."""
+    monkeypatch.setenv("LOKI_RATE_LIMITS", "0")

@@ -17,6 +17,7 @@ def test_workspace_and_assets_resolve_outside_repo_cwd(tmp_path, monkeypatch):
     assert 'id="overview" class="workspace-view"' in response.text
     assert "Separate practice accounts" in response.text
     assert 'id="real-order-fields" disabled' in response.text
+    assert 'id="integrations"' not in response.text  # view removed on purpose
     for view in (
         "overview",
         "strategy-lab",
@@ -25,7 +26,7 @@ def test_workspace_and_assets_resolve_outside_repo_cwd(tmp_path, monkeypatch):
         "simulated-market",
         "real-market",
         "scenarios",
-        "integrations",
+        "live-markets",
         "copilot",
     ):
         assert f'id="{view}"' in response.text

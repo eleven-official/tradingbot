@@ -6,9 +6,6 @@
   <title>Loki · Sign in</title>
   <script src="/api/account/storage-context.js"></script><script src="/static/js/scoped_storage.js?v={{ version }}"></script>
   <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; }
     body { min-height: 100vh; display: grid; place-items: center; background: #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 24px; }
@@ -49,98 +46,13 @@
       </div>
       <div class="field"><label for="email">Email</label><input id="email" type="email" required placeholder="you@example.com" autocomplete="email" autofocus></div>
       <div class="field"><label for="password">Password</label><input id="password" type="password" required minlength="8" placeholder="8+ characters" autocomplete="current-password"></div>
+      <label class="field age-field" id="age-field" hidden><input id="age-ok" type="checkbox" style="width:auto;margin-right:8px;vertical-align:middle"> I am 18 or older (we only ask for this confirmation, never your birth date).</label>
       <button id="primary" type="submit">Sign in ↗</button>
       <div class="row"><button type="button" class="ghost" id="toggle">New here? Create an account →</button></div>
     </form>
     <div id="msg" role="status" aria-live="polite"></div>
-    <p class="foot">Accounts keep Loki personal — nothing here is shared. Loki is free to use; the only ask is the house's 30% fee of recorded profits. <a href="#" id="guest-link" style="color:#8bdad4">Continue as guest →</a></p>
+    <p class="foot">We keep only your email, nickname and what you choose to save — see the <a href="/privacy" style="color:#8bdad4">Privacy Policy</a> and <a href="/cookies" style="color:#8bdad4">Cookie Policy</a>. Loki is free to use; the only ask is the house's 30% fee of recorded profits. <a href="#" id="guest-link" style="color:#8bdad4">Continue as guest →</a></p>
   </div>
-  <script>
-    document.getElementById('guest-link').addEventListener('click', (event) => {
-      event.preventDefault();
-      try { localStorage.setItem('loki_guest', '1'); } catch { /* ignore */ }
-      window.location.href = '/#overview';
-    });
-    let mode = 'login';
-    const $ = (id) => document.getElementById(id);
-    const msg = $('msg');
-    const toggle = $('toggle');
-    toggle.addEventListener('click', () => {
-      mode = mode === 'login' ? 'signup' : 'login';
-      $('nick-field').hidden = mode !== 'signup';
-      $('nick-callout').hidden = mode !== 'signup';
-      $('primary').textContent = mode === 'login' ? 'Sign in ↗' : 'Create my account ↗';
-      toggle.textContent = mode === 'login' ? 'New here? Create an account →' : '← I already have an account';
-      msg.textContent = '';
-    });
-    $('auth-form').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const btn = $('primary');
-      btn.disabled = true;
-      msg.className = ''; msg.textContent = mode === 'login' ? 'Signing in…' : 'Creating your account…';
-      try {
-        const res = await fetch(mode === 'login' ? '/api/auth/login' : '/api/auth/sign-up', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: $('email').value.trim(),
-            password: $('password').value,
-            nickname: $('nickname').value.trim() || null
-          })
-        });
-        if (!res.ok) {
-          const raw = await res.text().catch(() => "");
-          let data = null;
-          try { data = JSON.parse(raw) || null; } catch { data = null; }
-          const detail = (data && data.detail) || null;
-          const looksLikeVercelWall = !detail && (/^(<!|<)/.test(raw.trim()) || /vercel/i.test(raw.slice(0, 400)));
-          if (detail) {
-            msg.textContent = detail;
-          } else if (res.status === 401 || res.status === 403 || looksLikeVercelWall) {
-            msg.textContent = "Vercel's visitor wall answered instead of Loki — open the site again and log in to Vercel once (or use your shareable link), then sign in here.";
-          } else if (res.status === 503 || res.status === 404 || res.status >= 500) {
-            msg.textContent = "The account service is waking up — give it a minute and try again.";
-          } else {
-            msg.textContent = "Something went wrong. Try again.";
-          }
-          btn.disabled = false;
-          return;
-        }
-        const rawOk = await res.text().catch(() => "");
-        let okData = null;
-        try { okData = JSON.parse(rawOk) || null; } catch { okData = null; }
-        if (!okData || !okData.email) {
-          msg.textContent = "That reply wasn't Loki — Vercel's visitor wall probably stepped in. Open the site again, log in to Vercel once, then sign in here.";
-          btn.disabled = false;
-          return;
-        }
-        try { localStorage.removeItem('loki_guest'); } catch { /* ignore */ }
-        msg.className = 'ok'; msg.textContent = 'Welcome in…';
-        window.LokiAccountChanged?.();
-        window.location.href = '/#overview';
-      } catch (err) {
-        msg.textContent = 'Connection hiccup — check the internet and try again.';
-        btn.disabled = false;
-      }
-    });
-    (async () => {
-      try {
-        const res = await fetch('/api/auth/session', { cache: 'no-store' });
-        if (res.ok) {
-          const me = await res.json();
-          if (me.enabled && (me.email || me.nickname)) {
-            msg.className = 'ok';
-            msg.textContent = `Already signed in as ${me.nickname || me.email} — opening the workspace…`;
-            setTimeout(() => { window.location.href = '/#overview'; }, 900);
-          } else if (me.enabled === false) {
-            // Guest-mode deployment (no Supabase credentials): say so up front
-            // instead of letting the first sign-in attempt read as "broken".
-            msg.className = 'ok';
-            msg.textContent = 'Accounts are not configured on this deployment — the workspace works as a guest meanwhile, and the guest button below still opens everything.';
-          }
-        }
-      } catch { /* not signed in; show the form */ }
-    })();
-  </script>
+  <script src="/static/js/page_login.js?v={{ version }}" defer></script>
 </body>
 </html>

@@ -31,22 +31,22 @@ def _page_lockdown(monkeypatch):
 
 def test_the_gate_refuses_a_body_without_a_tick_and_never_charges_the_timer(monkeypatch):
     _page_lockdown(monkeypatch)
-    unticked = client.post("/api/gate", json={"code": "slayterisgay"})
+    unticked = client.post("/api/gate", json={"code": "flathead"})
     assert unticked.status_code == 403
     assert "Tick the terms" in unticked.json()["detail"]
 
     # skipping the tick is not punished: nine silent skips still leave the
     # anti-brute-force budget for a real wrong-code probe
     for _ in range(9):
-        client.post("/api/gate", json={"code": "slayterisgay"})
-    wrong_code = client.post("/api/gate", json={"code": "chocolate", "accepted_terms": True})
+        client.post("/api/gate", json={"code": "flathead"})
+    wrong_code = client.post("/api/gate", json={"code": "chocolate", "accepted_terms": True, "confirmed_age": True})
     assert wrong_code.status_code == 403
     assert "not the code" in wrong_code.json()["detail"]
 
 
 def test_non_object_gate_payloads_are_bad_requests(monkeypatch):
     _page_lockdown(monkeypatch)
-    for body in ([], ["code"], "slayterisgay", 42, True):
+    for body in ([], ["code"], "flathead", 42, True):
         response = client.post("/api/gate", json=body)
         assert response.status_code == 400
         assert "object" in response.json()["detail"]
@@ -55,7 +55,7 @@ def test_non_object_gate_payloads_are_bad_requests(monkeypatch):
 
 def test_a_ticked_correct_code_opens_with_both_cookies(monkeypatch):
     _page_lockdown(monkeypatch)
-    opened = client.post("/api/gate", json={"code": "slayterisgay", "accepted_terms": True})
+    opened = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True, "confirmed_age": True})
     assert opened.status_code == 200
     gate = opened.cookies.get(site_access.GATE_COOKIE)
     terms = opened.cookies.get(site_access.TERMS_COOKIE)
@@ -137,7 +137,7 @@ def test_a_badge_baked_under_old_words_stops_opening_the_door(monkeypatch):
 
 
 def test_the_gate_script_posts_the_real_checkbox_state():
-    gate_html = (REPO / "templates" / "gate.html").read_text(encoding="utf-8")
+    gate_html = (REPO / "templates" / "gate.html").read_text(encoding="utf-8") + (REPO / "static" / "js" / "page_gate.js").read_text(encoding="utf-8")
     assert "accepted_terms: termsEl.checked" in gate_html
     assert "Tick the terms box first" in gate_html  # client blocks quietly; server still verifies
     assert 'novalidate' in gate_html  # native required bubbles swallow the submit event — our words replace them

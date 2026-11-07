@@ -26,7 +26,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8124
 ```
 
-Optional environment variables: `LOKI_SITE_GATE=1` enables the gate, `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` enable the login flow, Alpaca keys are browser-held and verify through the relay (`/api/broker/alpaca/*`) whenever the user enters them.
+Optional environment variables: `LOKI_SITE_GATE=1` enables the gate (default code `flathead`; set `LOKI_SITE_CODE` to change it), `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` enable the login flow, Alpaca keys are browser-held and verify through the relay (`/api/broker/alpaca/*`) whenever the user enters them.
 
 ## Guarantees
 
@@ -35,62 +35,79 @@ Optional environment variables: `LOKI_SITE_GATE=1` enables the gate, `SUPABASE_U
 - The "Bored?" game is entirely local: scores and dive history never leave the browser, and its rarity tiers are hand-written bank data, not measurements from other players.
 - `pytest` (all Python tests), plus `node --test` for the two JavaScript test modules. The CI workflows in `.github/` run both on every push.
 
-## Strategy book and paper sessions
+## Live markets
 
-The ensemble's execution parameters are trained walk-forward per symbol and verified out of sample (`loki_v8/train.py`). The verified profiles ship in `loki_v8/training_report_snapshot.json`, and that snapshot is what the server applies to a symbol before it emits a decision.
+`/#live-markets` is a self-refreshing board (every ~15 s while the view is open and the tab is visible) covering crypto majors, US mega-caps, indices, commodities and FX, with session status, top movers, flash-on-change tiles and a personal watchlist saved in the browser. Clicking a tile opens its chart and the AI engine's review-only read for that symbol. Served by `loki/api/live_markets.py` (`/api/markets/live`, `/api/markets/quotes`); crypto comes from Binance Spot (live), everything else from Yahoo Finance (near-live). Failed feeds stay visible per tile.
 
-Crypto has its own pass, because a 24/7 tape is not an equity tape: 365 bars a year instead of 252, higher realised volatility, and hurdle targets scaled to crypto noise.
+## Live AI follows the verified rules
 
-```powershell
-python -m loki_v8.train_crypto --rounds 2 --workers 6 --period 10y
-```
+The AI paper trader (`/api/fusion/ai/step`) decides through `loki_v8/live_engine.py`, which mirrors `run_backtest` bar for bar: it scores only the last *completed* daily bar (today's forming candle is excluded), applies the same trend / regime / volatility gates and conviction / vol-target sizing, and manages open positions with the profile's time stop, breakeven lock, trailing stop and partial target. `tests/test_live_engine.py` replays backtests and checks the live planner agrees on every entry decision.
 
-That pass writes a crypto-only `crypto_consensus` next to the mixed one, and merges forward any symbol it did not evaluate, so nothing already verified is dropped. A re-run that fails (crashed worker, dead feed) never demotes a stored verified profile - the failure is recorded on the entry as `stale_reason` and the previously verified parameters stay in the book.
+## 20-year universal profiles (current live AI)
 
-### How the winner is chosen
+`train_long_history.py` fits ONE rulebook for stocks/ETFs and one for crypto on daily data from 2004 (crypto from 2014), using the same `run_backtest` the live engine mirrors, with 10 bps fees + 5 bps slippage per side:
 
-The sweep is not a hit-rate hunt. Two rules decide the book:
+- **select** on the worse of development (2005-2018; crypto 2015-2020) and validation (2019-2022; crypto 2021-2022) scores;
+- **report once** on the untouched holdout (2023 onward); the live AI only uses a block marked `verified` (made money on the holdout).
 
-- **Rank on expectancy, not win rate.** Candidates are ordered by mean return per trade (`return_pct / trades`) with a profit-factor floor of 1.25 ahead of it and a 20-trade sample-size layer in front of that. A 92%-win profile with a 0.62-ATR target behind a 4.25-ATR stop earns its return in many tiny wins and gives several back on one loss; the same total return made in fewer, larger pieces ranks higher. The exit grid was widened to match (`CRYPTO_GRID`): take-profit up to 4.0 ATR against stops from 2.0 ATR, so a 45% hit rate is allowed to be profitable.
-- **Select on forward folds, not in-sample rank.** The leaderboard winner is by construction the best fit to the training block. The top four finalists are therefore re-run on two anchored forward folds that start strictly after the fitted data (`fold_bounds`, `walk_forward_score` in `loki_v8/train.py`), and the winner is the one with the best *worst* fold - one blow-up fold disqualifies a candidate regardless of how good the others looked. Each report records `selection: "walk_forward"` and the fold detail.
+Results shipped in `loki_v8/training_report_snapshot.json` (`universal`), data through 2026-11-06:
 
-The cross-symbol consensus is edge-weighted (`_edge_weight`): each symbol's vote scales with its own out-of-sample return and profit factor, and a symbol that trained but never traded out of sample gets a near-zero vote. A book with no out-of-sample metrics still produces the plain median, so fixtures and old snapshots behave exactly as before.
+| Holdout 2023→ | AI avg / yr | Profitable | AI avg worst DD | Buy & hold avg / yr | B&H avg worst DD |
+|---|---|---|---|---|---|
+| Stocks/ETFs (13) | +12.3% | 12/13 | −20.9% | +27.8% | −26.7% |
+| Crypto (8) | +9.2% | 7/8 | −29.4% | +17.3% | −71.3% |
 
-The hurdles moved with the objective (`CRYPTO_HURDLES`): 10 trades, profit factor 1.5, positive return, drawdown better than -30%, 45% win rate, profits in 55% of months. A low hit-rate bar plus a high profit-factor bar is a materially harder pair than 70% / 1.3 was, because it stops rewarding the tiny-target geometry.
-
-### Robustness gate (windows + simulated tape)
-
-Clearing the out-of-sample hurdle set is necessary but not sufficient: a 370-combination sweep over one decade will always find a corner of that decade that looks like an edge. After the sweep, each winning parameter set is re-tested twice (`loki_v8/synthetic.py`):
-
-- **Cross-window** — the same parameters re-run over the trailing 5, 7 and 10 years independently. An edge that only exists in one regime fails the short windows.
-- **Simulated tape** — tapes rebuilt from the symbol's *own* realised returns by block bootstrap (contiguous 20-bar blocks resampled with replacement, each sampled bar carrying its donor bar's OHLC geometry and volume). Fat tails, volatility clustering and intra-bar shape survive; the memorised path does not.
+Stocks use trend-only scoring, entry at score ≥ 30, vol-target sizing (20%), and hold until price breaks its 200-day average (10 ATR protective stop). Crypto uses trend-leader scoring, entry ≥ 8, SELL-signal exit. The AI makes money out of sample but trails buy-and-hold in the strong 2023-26 bull market; its edge is far smaller drawdowns. Historical results, not a promise.
 
 ```powershell
-python -m loki_v8.train_crypto --windows 5,7,10            # seeds default to 11,23,37,53,71
-python -m loki_v8.train_crypto --synthetic-seeds 11,23,37   # fewer tapes, faster
-python -m loki_v8.train_crypto --no-robustness              # hurdle result only, for comparison
+python train_long_history.py --write-snapshot        # ~30 min on 4 cores
 ```
 
-`good` is only true when the hurdle set, every window and the bootstrapped tapes all pass. Anything else is reported with the verdict naming which check failed, and there are three states rather than two:
+## Portfolio AI (21 markets at once)
 
-- `verified` - all three agreed.
-- `research only` - a check ran and the edge failed it.
-- `untested` - the tapes could not reach the pooled-fill floor, so they never got to measure the edge.
+`loki_v8/portfolio_ai.py` replays each market's verified profile (13 stocks/ETFs incl. gold and bonds, 8 coins), gives every active market an equal share of capital, and scales the whole book toward a target yearly volatility — capped so total holdings never exceed 100% of the account. The target (10%) was chosen on 2005-2022 only. Untouched holdout 2023 → Nov 2026: **+13.7%/yr, Sharpe 1.25, worst drop −10.5%, 64% of months profitable**, versus equal-weight buy-and-hold of the same markets at +21.9%/yr, Sharpe 0.98, worst drop −28.3%. `GET /api/fusion/ai/portfolio` returns what that exact book holds at the latest completed bar; the AI trading page's Portfolio AI panel mirrors it with paper money. Historical results, not a promise.
 
-The third state exists because the two failures look identical in raw output and they are not the same finding. A wide target against a wide stop fires rarely; at three tapes a genuinely good profile could pool six fills and be printed as "sim fail" beside a profile that lost money on thirty-two. Both keep `good` false - thin evidence is never promotion - but only the second is a verdict about the strategy. Five tapes are the default for the same reason: raising the tape count lifts the pooled fill count without lowering the floor, so the evidence gets stronger instead of the bar getting lower.
+## Security
 
-Bytes are deterministic per seed, so a re-run cannot move the goalposts. Both checks reuse the same underlying history, so they measure regime and path dependence - not independent evidence of future profit. The research-book card shows the verdict per symbol.
+- **Isolation between users:** account data is keyed only by the uid inside the signed session cookie (validated as a UUID); a request naming another owner is refused before the database; credentials can never be saved to the cloud; chat history is per browser session; Tradovate tokens are encrypted and owner-bound.
+- **Cookies:** HMAC-signed, HttpOnly, SameSite, Secure on HTTPS. Public deployments without `LOKI_GATE_SECRET` (or a Supabase key) now sign with a random per-process key instead of a constant from the source, so cookies cannot be forged; chat admin claims additionally require `LOKI_CHAT_ADMIN_CODE`.
+- **Headers:** strict Content-Security-Policy (scripts only from this site — no inline scripts exist), `frame-ancestors 'self'`, nosniff, Permissions-Policy, COOP, HSTS on HTTPS. Cross-site writes to account/chat endpoints are rejected.
+- **Rate limits** (`loki/api/rate_limit.py`): sign-in, sign-up, broker sign-in, revenue operator key, and the heavy AI/market endpoints.
+- Real orders, broker and native-engine routes only work from the local launcher with its session token and are off on Vercel. `main.py` binds to 127.0.0.1 unless `LOKI_HOST` says otherwise.
+- **Operators should set:** `LOKI_GATE_SECRET` (long random), `LOKI_CHAT_SESSION_SECRET`, `LOKI_SITE_CODE`, `LOKI_BROKER_ENCRYPTION_KEY`, and `LOKI_SECURE_COOKIES=1` behind any non-Vercel HTTPS proxy.
 
-Alongside the three-check gate, every card reports the final 20% of history - the segment the optimiser never saw - judged against the same thresholds. It is published as a finding rather than folded into `good`, because four to six trades in that tail is too small a sample to promote or demote on: a profile can clear every gate and still lose its last handful of trades, and the card says both things instead of the flattering one.
+## Privacy, terms and age
 
-Simulated crypto trading runs off the same book:
+- `/privacy`, `/cookies` and `/terms` (v6) are public and describe exactly what the code does: functional first-party cookies only (no analytics, advertising or third-party cookies — so no consent banner), browser-local storage for journals/watchlists/chat, optional account saves, chat turns kept at most 30 days, broker credentials never stored.
+- **Age:** entry and sign-up require an "I am 18 or older" confirmation, enforced server-side; no birth date is asked for or stored.
+- **Data rights:** `GET /api/account/export` (download my data), `POST /api/account/delete` (type DELETE; removes saves, published score and the login), and a "clear Loki data from this browser" control on `/privacy`.
+- **Minimisation:** no third-party requests from the browser (Google Fonts removed; CSP allows no external hosts).
+- **Claims:** performance figures are labelled as hypothetical/simulated with a limitations disclaimer; marketing lines that the evidence did not support were rewritten.
+- Set `LOKI_OPERATOR_NAME` and `LOKI_OPERATOR_EMAIL` so the policies name the data controller and a contact address. Have the policies reviewed for your jurisdiction.
 
-```powershell
-python -m loki_v8.crypto_paper                 # 180-bar replay blotter
-python -m loki_v8.crypto_paper --mode step     # one decision on the latest bar
-```
+## Opening experience
 
-`replay` fills at historical prices with slippage and writes a session ledger; `step` persists fills to an isolated crypto paper account. Neither places a real order. `--mode step --mirror` forwards fills to Alpaca's paper endpoint when `ALPACA_PAPER_API_KEY` and `ALPACA_PAPER_API_SECRET` are set; without them it reports the missing keys instead of ordering. A replay cannot be mirrored, because Alpaca only fills at live prices.
+`static/js/loki_scene.js` + `static/css/loki_scene.css` add a once-per-visit intro, animated market canvases, a live price tape and motion to the gate page and overview, plus an interface motion system: view transitions, 3D card tilt, a cursor aura, ambient aurora, numbers that count to new values, self-drawing charts and an animated allocation ring. `static/js/loki_radar.js` draws the **AI Market Radar** in the home banner — the Portfolio AI's 21 markets placed by live trend score, held positions glowing and pinging under a rotating sweep (data from `/api/fusion/ai/portfolio`). All presentation only; honours reduced-motion and pauses in hidden tabs.
+
+## AI self-check, daily briefing, price alerts
+
+- **Honest uncertainty:** the Portfolio AI's held-back result comes with a 90% block-bootstrap range (`holdout_ci`, currently about +5% to +23% a year).
+- **Self-health check:** every live plan compares the strategy's last 12 months with all rolling 12-month windows from 2005-2022 (`expected_range`) and reports `normal`, `below_range` or `above_range`.
+- **Daily AI briefing** on the overview: health meter, this week's entries/exits, and the uncertainty range; Talk to Loki answers "how is the AI doing?" and "what changed this week?".
+- **Price alerts** on Live markets: above/below alerts stored in this browser, checked on every board refresh, with an in-page toast and an optional browser notification.
+- The operator named in the policies defaults to Joshua Mathew (`LOKI_OPERATOR_NAME` / `LOKI_OPERATOR_EMAIL` override it).
+
+## Learning from mistakes
+
+`loki_v8/mistake_model.py` replays the AI's own trades, records 15 market features at every entry's signal bar and whether the trade made money after costs, and fits a small regularised logistic model. Live and in backtests the same gate then skips setups whose estimated win chance is below a threshold. It is trained only on trades that had already closed before the window it is judged on, the threshold is chosen on 2019-2022, and it ships only if the 2023+ holdout is not worse. Current result: on for stocks (validation score 0.44 → 0.51; holdout same +12.3%/yr with 108 instead of 127 trades), off for crypto (no validation gain). Rerun with `python train_long_history.py --from-report state/long_history_report.json --write-snapshot`.
+
+## Talk to Loki
+
+Both the workspace "Talk to Loki" panel and the `/ai-chat` room share `loki/api/loki_brain.py`: name any ticker or coin and it runs the live AI engine and explains every check in plain English; it also answers market checks, the AI's track record, how the AI works, and ~30 trading terms. No external language model is used; questions about your own portfolio/research go to the context-aware copilot.
+
+## Older per-symbol book
+
+`loki_v8/train.py` still provides the earlier 10-year per-symbol walk-forward book (`python -m loki_v8.train`). The live AI uses it only as a fallback when no verified universal profile exists for an asset class.
 
 ## Layout
 
@@ -98,4 +115,4 @@ python -m loki_v8.crypto_paper --mode step     # one decision on the latest bar
 - `core/` + `core_engine` history reduced to what the app imports; `loki_v8/` — the strategy engine behind the terminal; `components/` + `third_party/` — vendored originals pinned by hash-guards (`tests/test_fusion_provenance.py` fails on byte changes, on purpose).
 - `templates/`, `static/` — the served pages and their assets; `tests/` — the regression suite.
 
-Older desktop-era launchers, installers, duplicated guides and unreferenced modules were removed from the repository in 2026-10; history retains them.
+Older desktop-era launchers, installers, duplicated guides and unreferenced modules were removed in 2026-10 and 2026-11 (old standalone bot, crypto trainer, Supabase vault); history retains them.

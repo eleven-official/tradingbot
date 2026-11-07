@@ -19,7 +19,8 @@ import pandas as pd
 
 from .config import LokiConfig
 from .regime import is_bearish, regime_series
-from .risk import RiskManager
+from .risk import RiskManager, entry_quantity, realized_vol
+from . import mistake_model
 from .strategy import EnsembleStrategy
 
 
@@ -127,6 +128,12 @@ def run_backtest(
         else None
     )
 
+    vols = realized_vol(df["close"], cfg.vol_lookback, bars_per_year)
+    meta_p = None
+    if cfg.meta_filter and cfg.meta_filter.get("model"):
+        meta_p = mistake_model.predict_frame(
+            cfg.meta_filter["model"], mistake_model.feature_frame(frame, bars_per_year)
+        )
     warmup = max(cfg.lookback_bars, 60)
     cash = cfg.initial_cash
     risk = RiskManager(cfg)
@@ -212,6 +219,14 @@ def run_backtest(
         atr_now = float(atrs.iloc[i])
         regime = str(regimes.iloc[i - 1])
         bear = is_bearish(regime)
+        if cfg.exit_mode == "trend":
+            sma_prev = float(frame["sma_200"].iloc[i - 1])
+            trend_broken = bool(np.isfinite(sma_prev) and float(frame["close"].iloc[i - 1]) < sma_prev)
+            exit_long_signal = trend_broken
+            exit_short_signal = bool(np.isfinite(sma_prev) and float(frame["close"].iloc[i - 1]) > sma_prev)
+        else:
+            exit_long_signal = action == "SELL"
+            exit_short_signal = action == "BUY"
 
         # ------------------------------------------------------------------
         # Manage the existing position (stop / target / signal / time)
@@ -226,14 +241,14 @@ def run_backtest(
                     exit_price, reason = min(o, pos["stop"]), "stop"
                 elif pos["target"] > 0 and h >= pos["target"]:
                     exit_price, reason = max(o, pos["target"]), "target"
-                elif action == "SELL":
+                elif exit_long_signal:
                     exit_price, reason = c, "signal"
             else:  # short
                 if pos["stop"] > 0 and h >= pos["stop"]:
                     exit_price, reason = max(o, pos["stop"]), "stop"
                 elif pos["target"] > 0 and l <= pos["target"]:
                     exit_price, reason = min(o, pos["target"]), "target"
-                elif action == "BUY":
+                elif exit_short_signal:
                     exit_price, reason = c, "signal"
 
             # Partial scale-out: bank `partial_fraction` of the position at
@@ -316,14 +331,19 @@ def run_backtest(
             if action == "BUY":
                 allow_trend = (not cfg.require_trend_filter) or above_ma
                 allow_regime = (not cfg.regime_filter) or (not bear)
-                if allow_vol and allow_trend and allow_regime:
+                allow_meta = True
+                if meta_p is not None:
+                    p_prev = float(meta_p.iloc[i - 1])
+                    allow_meta = mistake_model.allows(cfg.meta_filter, p_prev if np.isfinite(p_prev) else None)
+                if allow_vol and allow_trend and allow_regime and allow_meta:
                     entry = _fill(o, "buy", cfg)
                     atr_val = atr_prev if np.isfinite(atr_prev) else entry * 0.02
                     stop = entry - cfg.stop_loss_atr * atr_val
-                    target = entry + cfg.take_profit_atr * atr_val
-                    qty = risk.position_size(equity_at(entry), entry, stop)
+                    target = entry + cfg.take_profit_atr * atr_val if cfg.take_profit_atr > 0 else 0.0
+                    vol_prev = float(vols.iloc[i - 1]) if np.isfinite(vols.iloc[i - 1]) else 0.0
+                    qty = entry_quantity(cfg, equity_at(entry), cash, entry, stop, vol_prev)
                     qty = scaled_qty(qty, regime)
-                    if advanced_sizing and entry > 0:
+                    if (advanced_sizing or cfg.sizing_mode == "vol_target") and entry > 0:
                         affordable = (cash - cfg.commission_per_trade) / entry
                         qty = min(qty, max(affordable, 0.0))
                     cost = qty * entry + cfg.commission_per_trade
@@ -347,8 +367,9 @@ def run_backtest(
                     entry = _fill(o, "sell", cfg)
                     atr_val = atr_prev if np.isfinite(atr_prev) else entry * 0.02
                     stop = entry + cfg.stop_loss_atr * atr_val
-                    target = entry - cfg.take_profit_atr * atr_val
-                    qty = risk.position_size(equity_at(entry), entry, stop)
+                    target = entry - cfg.take_profit_atr * atr_val if cfg.take_profit_atr > 0 else 0.0
+                    vol_prev = float(vols.iloc[i - 1]) if np.isfinite(vols.iloc[i - 1]) else 0.0
+                    qty = entry_quantity(cfg, equity_at(entry), cash, entry, stop, vol_prev)
                     qty = scaled_qty(qty, regime)
                     if qty > 0:
                         cash += entry * qty - cfg.commission_per_trade

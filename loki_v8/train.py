@@ -85,6 +85,11 @@ TRAINABLE_PARAMS: Tuple[str, ...] = tuple(DEFAULT_GRID) + (
 # the universe, the history window or credentials.
 UNSAFE_REPORT_FIELDS: Tuple[str, ...] = (
     "mode",
+    # Account-level circuit breakers belong to the live account, not to a
+    # strategy report: a shipped report may never switch them off.
+    "max_daily_loss_pct",
+    "max_consecutive_losses",
+    "max_open_positions",
     "symbols",
     "initial_cash",
     "state_dir",
@@ -1327,4 +1332,19 @@ def apply_crypto_consensus(report: Dict[str, Any], cfg: LokiConfig) -> Dict[str,
         return apply_consensus(report, cfg)
     applied = apply_params(cfg, consensus["params"])
     logger.info("applied crypto consensus params: %s", applied)
+    return applied
+
+
+def apply_universal(report: Dict[str, Any], symbol: str, cfg: LokiConfig) -> Dict[str, Any]:
+    """Apply the long-history universal profile for the symbol's asset class.
+
+    ``train_long_history.py`` fits ONE parameter set per asset class over
+    10-20 years and only marks it ``verified`` when it made money on the
+    untouched holdout. Unverified blocks are never applied.
+    """
+    block = ((report or {}).get("universal") or {}).get("crypto" if is_crypto(symbol) else "equity")
+    if not block or not block.get("verified") or not block.get("params"):
+        return {}
+    applied = apply_params(cfg, block["params"])
+    logger.info("applied universal %s profile for %s", "crypto" if is_crypto(symbol) else "equity", symbol)
     return applied

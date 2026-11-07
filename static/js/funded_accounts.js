@@ -43,6 +43,7 @@
     finally{busy=false;render();}
   }
   el('funded-connect-form').addEventListener('submit',e=>{e.preventDefault();if(busy)return;const form=new FormData(e.target),body={environment:form.get('environment'),access_token:String(form.get('access_token')).trim()};e.target.elements.access_token.value='';void load('/connect',body);});
+  el('funded-login-form')?.addEventListener('submit',e=>{e.preventDefault();if(busy)return;const f=e.target,form=new FormData(f);const body={environment:form.get('environment'),username:String(form.get('username')||'').trim(),password:String(form.get('password')||''),cid:Number(form.get('cid')),sec:String(form.get('sec')||'')};f.elements.password.value='';f.elements.sec.value='';void load('/login',body);});
   el('funded-refresh').addEventListener('click',()=>void load());
   el('funded-disconnect').addEventListener('click',()=>void load('/disconnect',{}));
   el('funded-account-select').addEventListener('change',render);

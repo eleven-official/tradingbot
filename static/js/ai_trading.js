@@ -112,16 +112,22 @@
 
   function openPosition(price, qty, trail) {
     const quant = trail.find((t) => t.agent === 'quant') || {};
+    const risk = trail.find((t) => t.agent === 'risk') || {};
     const fill = price * (1 + SLIPPAGE_RATE);
     const entryFee = qty * fill * FEE_RATE;
+    // The risk leg sizes stop/target from the live price with the verified
+    // profile's ATR multiples; older servers only sent the quant's levels.
     state.position = {
       symbol: state.symbol,
       qty,
       entry: fill,
       entryFee,
       costModel: '10bps-fee-5bps-slip-v1',
-      stop: quant.stop || 0,
-      target: quant.target || 0,
+      stop: Number(risk.stop) || quant.stop || 0,
+      target: Number(risk.target) || quant.target || 0,
+      atr: Number(risk.atr) || 0,
+      signalBar: risk.signal_bar || null,
+      leg1Done: false,
       opened: new Date().toISOString()
     };
     state.cash -= qty * fill + entryFee;
@@ -145,9 +151,70 @@
     logLine(`Closed ${pos.symbol} @ ${price.toFixed(2)} (${reason}) — ${pnl >= 0 ? 'won' : 'lost'} ${fmtMoney(Math.abs(pnl))}`, pnl >= 0 ? 'good' : 'bad');
   }
 
+  // Bank part of the position at the profile's partial target (once). The
+  // banked leg is journaled as its own trade, like the backtest does.
+  function scaleOut(price, fraction) {
+    const pos = state.position;
+    if (!pos || !(fraction > 0 && fraction < 1)) return;
+    const qty = roundQty(pos.symbol, pos.qty * fraction);
+    if (qty <= 0 || qty >= pos.qty) { pos.leg1Done = true; return; }
+    const fill = price * (1 - SLIPPAGE_RATE);
+    const exitFee = qty * fill * FEE_RATE;
+    const entryFeeShare = (Number(pos.entryFee) || 0) * (qty / pos.qty);
+    const pnl = (fill - pos.entry) * qty - entryFeeShare - exitFee;
+    state.cash += qty * fill - exitFee;
+    pos.entryFee = (Number(pos.entryFee) || 0) - entryFeeShare;
+    pos.qty -= qty;
+    pos.leg1Done = true;
+    state.trades.unshift({
+      symbol: pos.symbol, qty, entry: pos.entry, exit: fill, fees: entryFeeShare + exitFee,
+      costModel: pos.costModel, pnl, opened: pos.opened, closed: new Date().toISOString(), reason: 'partial target'
+    });
+    if (state.trades.length > 50) state.trades.length = 50;
+    logLine(`Banked ${qty} ${pos.symbol} @ ${price.toFixed(2)} (partial target) — stop lifted to ${Number(pos.stop).toFixed(2)}`, 'good');
+  }
+
+  const EXIT_WORDS = { stop: 'stop hit', target: 'target reached', signal: 'AI exit signal', time: 'time stop (max hold reached)' };
+  const GATE_WORDS = {
+    trend_filter: 'price is below its 200-day average (trend filter)',
+    volatility_cap: 'volatility is above the profile cap',
+    regime_filter: 'bear regime blocks new longs',
+    learned_filter: 'this setup looks like past losing trades (learned filter)',
+    signal: 'signal not strong enough',
+    warming_up: 'not enough history yet'
+  };
+  const RISK_WORDS = {
+    no_position_to_close: 'nothing to sell — no open position',
+    no_signal: 'no trade signal right now',
+    position_already_open: 'already holding this position',
+    daily_loss_limit: 'daily loss limit reached — resting until tomorrow',
+    consecutive_losses: 'losing streak today — resting until tomorrow',
+    max_open_positions: 'maximum open positions reached'
+  };
+  function riskReasonText(reason) {
+    const text = String(reason || 'unknown');
+    if (RISK_WORDS[text]) return RISK_WORDS[text];
+    if (text.startsWith('entry_gate:')) return GATE_WORDS[text.slice(11)] || text.slice(11).replace(/_/g, ' ');
+    return text.replace(/_/g, ' ');
+  }
+
+  function positionPayload() {
+    const pos = state.position;
+    if (!pos || pos.symbol !== state.symbol) return undefined;
+    return {
+      entry: pos.entry, stop: pos.stop || 0, target: pos.target || 0, atr: pos.atr || 0,
+      signal_bar: pos.signalBar || null, opened_at: pos.opened || null, leg1_done: !!pos.leg1Done
+    };
+  }
+
+  // The losing-streak guard is a cool-off for the current UTC day. Counting
+  // the streak across days froze the AI forever: after 3 losses it could not
+  // trade, so it could never post the win that resets the streak.
   function consecutiveLosses() {
+    const today = new Date().toISOString().slice(0, 10);
     let count = 0;
     for (const trade of state.trades) {
+      if (String(trade.closed || '').slice(0, 10) !== today) break;
       if (trade.pnl < 0) count += 1;
       else break;
     }
@@ -176,7 +243,9 @@
           open_positions: state.position ? 1 : 0,
           has_position: !!state.position,
           equity_start: dailyEquityBaseline(),
-          consecutive_losses: consecutiveLosses()
+          consecutive_losses: consecutiveLosses(),
+          cash: Math.max(0, state.cash),
+          position: positionPayload()
         })
       });
       if (!res.ok) {
@@ -199,7 +268,18 @@
 
       let exited = false;
       // Do not re-enter on the same decision as a protective exit.
-      if (state.position && state.position.symbol === data.symbol) {
+      const manage = data.manage;
+      if (state.position && state.position.symbol === data.symbol && manage) {
+        // Server-side management follows the verified backtest: ratcheted
+        // stop (breakeven / trailing), partial target, signal and time stop.
+        const newStop = Number(manage.stop);
+        if (Number.isFinite(newStop) && newStop > (state.position.stop || 0)) {
+          if (!manage.exit && !manage.scale_out) logLine(`Stop raised to ${newStop.toFixed(2)}${manage.trailing_armed ? ' (trailing)' : manage.breakeven_armed ? ' (breakeven)' : ''}`, 'info');
+          state.position.stop = newStop;
+        }
+        if (manage.exit) { closePosition(data.price, EXIT_WORDS[manage.reason] || String(manage.reason)); exited = true; }
+        else if (manage.scale_out > 0) scaleOut(data.price, Number(manage.scale_out));
+      } else if (state.position && state.position.symbol === data.symbol) {
         if (state.position.stop && data.price <= state.position.stop) { closePosition(data.price, 'stop hit'); exited = true; }
         else if (state.position.target && data.price >= state.position.target) { closePosition(data.price, 'target reached'); exited = true; }
       }
@@ -218,10 +298,10 @@
         } else {
           logLine(`BUY signal skipped — not enough paper cash.`, 'warn');
         }
-      } else if (action === 'SELL' && state.position && state.position.symbol === data.symbol) {
+      } else if (!manage && action === 'SELL' && state.position && state.position.symbol === data.symbol) {
         closePosition(data.price, 'AI exit signal');
       } else if (action === 'BUY' && risk.approved === false && !state.position) {
-        logLine(`HOLD — risk declined: ${risk.reason || 'unknown'}`, 'info');
+        logLine(`HOLD — BUY signal declined: ${riskReasonText(risk.reason)}`, 'info');
       } else {
         const reason = (quant.reasons || []).slice(0, 2).join(' · ');
         logLine(`HOLD ${data.symbol} @ ${data.price.toFixed(2)}${reason ? ' — ' + reason : ''}`, 'info');
@@ -232,7 +312,9 @@
         price: data.price,
         regime: data.regime,
         trained_profile_applied: data.trained_profile_applied,
-        trail: data.trail
+        trail: data.trail,
+        plan: data.plan || null,
+        profile: data.profile || null
       };
       state.curve.push({ t: Date.now(), e: equityNow() });
       if (state.curve.length > 240) state.curve.splice(0, state.curve.length - 240);
@@ -281,8 +363,10 @@
       }
       if (entry.agent === 'risk') {
         body = entry.approved
-          ? `<strong style="color:#b8f0d8">Approved</strong> — size ${escapeHtml(String(entry.qty))}`
-          : `<strong>Declined</strong> — ${escapeHtml(entry.reason || 'no signal')}`;
+          ? `<strong style="color:#b8f0d8">Approved</strong> — size ${escapeHtml(Number(entry.qty).toFixed(4))}` +
+            (entry.stop ? `<br>stop ${escapeHtml(Number(entry.stop).toFixed(2))} · target ${escapeHtml(Number(entry.target).toFixed(2))}` : '') +
+            (Number.isFinite(entry.exposure_pct) ? `<br><span style="color:#7f93a8">${escapeHtml(entry.exposure_pct)}% of equity invested · risks ${escapeHtml(entry.risk_pct_of_equity)}% at the stop</span>` : Number.isFinite(entry.risk_pct_of_equity) ? `<br><span style="color:#7f93a8">risks ${escapeHtml(entry.risk_pct_of_equity)}% of equity at the stop</span>` : '')
+          : `<strong>${['no_position_to_close', 'no_signal'].includes(entry.reason) ? 'Standing aside' : 'Declined'}</strong> — ${escapeHtml(riskReasonText(entry.reason || 'no_signal'))}`;
       }
       if (entry.agent === 'execution') {
         body = 'Paper fill happens in your browser journal — no real orders.';
@@ -291,15 +375,38 @@
         `<p style="letter-spacing:.14em;font-size:10.5px;color:${color};margin-bottom:6px">${name}</p>` +
         `<p style="font-size:13px;line-height:1.5;color:#e7f0ff">${body}</p></article>`;
     });
-    const profileBadge = data.trained_profile_applied
-      ? `<span class="tag">Trained profile active</span>`
-      : `<span class="tag">Default params (no trained profile)</span>`;
+    const source = data.profile && data.profile.source;
+    const profileBadge = source === 'universal_long_history'
+      ? `<span class="tag" title="One rulebook fitted on up to 20 years of history and checked on untouched recent data">20-year trained profile${data.profile.exit_mode === 'trend' ? ' · trend exit' : ''}</span>`
+      : data.trained_profile_applied
+        ? `<span class="tag">Trained profile active</span>`
+        : `<span class="tag">Default params (no trained profile)</span>`;
+    // Entry checklist: the same gates the verified backtest applied.
+    const plan = data.plan;
+    let gatesHtml = '';
+    if (plan && Array.isArray(plan.gates) && plan.gates.length) {
+      const rows = plan.gates.map((g) =>
+        `<li style="list-style:none;margin:2px 0"><span style="color:${g.passed ? '#b8f0d8' : '#ff9d9d'}">${g.passed ? '✓' : '✗'}</span> ` +
+        `<strong>${escapeHtml(String(g.name).replace(/_/g, ' '))}</strong> <span style="color:#7f93a8">— ${escapeHtml(g.detail || '')}</span></li>`
+      ).join('');
+      gatesHtml = `<div style="margin-top:12px;border:1px solid rgba(139,218,212,.14);border-radius:12px;padding:10px 14px">` +
+        `<p style="letter-spacing:.14em;font-size:10.5px;color:#8bdad4;margin-bottom:6px">ENTRY CHECKLIST · LAST COMPLETED BAR${plan.forming_bar_excluded ? ' (TODAY\'S FORMING CANDLE EXCLUDED)' : ''}</p>` +
+        `<ul style="padding:0;margin:0;font-size:13px">${rows}</ul></div>`;
+    } else if (plan && plan.ready === false) {
+      gatesHtml = `<p class="caption" style="margin-top:10px">Warming up: ${escapeHtml(plan.bars)} of ${escapeHtml(plan.bars_needed)} completed bars available.</p>`;
+    }
+    if (data.manage && state.position) {
+      const m = data.manage;
+      gatesHtml += `<p class="caption" style="margin-top:8px">Managing open position: held ${escapeHtml(m.bars_held)} bar(s)` +
+        (m.max_hold_bars ? ` of max ${escapeHtml(m.max_hold_bars)}` : '') +
+        ` · stop ${escapeHtml(Number(m.stop).toFixed(2))}${m.trailing_armed ? ' (trailing)' : m.breakeven_armed ? ' (breakeven)' : ''}</p>`;
+    }
     target.innerHTML =
       `<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">` +
       `<strong style="font-size:15px">${escapeHtml(data.symbol)}</strong>` +
       `<span style="color:#9fb0c2;font-size:13px">@ ${escapeHtml(Number(data.price).toFixed(2))} · regime ${escapeHtml(data.regime || '—')}</span>` +
       profileBadge + `</div>` +
-      `<div style="display:flex;flex-wrap:wrap;gap:10px">${cards.join('')}</div>`;
+      `<div style="display:flex;flex-wrap:wrap;gap:10px">${cards.join('')}</div>` + gatesHtml;
   }
 
   function drawCurve() {
@@ -523,7 +630,7 @@
     const trades = $('ai-trades');
     if (trades) {
       if (!state.trades.length) {
-        trades.innerHTML = '<p class="muted">No closed trades yet. The AI only fires when its verified edge lines up.</p>';
+        trades.innerHTML = '<p class="muted">No closed trades yet. The AI only enters when every rule in its checklist passes.</p>';
       } else {
         const rows = state.trades.slice(0, 12).map((t) =>
           `<tr><td>${fmtTime(t.closed)}</td><td>${escapeHtml(t.symbol)}</td><td>${escapeHtml(String(t.qty))}</td>` +
@@ -583,8 +690,9 @@
               equity: equityNow(),
               open_positions: state.position && state.position.symbol === symbol ? 1 : 0,
               has_position: !!(state.position && state.position.symbol === symbol),
-              equity_start: state.startCash,
-              consecutive_losses: consecutiveLosses()
+              equity_start: dailyEquityBaseline(),
+              consecutive_losses: consecutiveLosses(),
+              cash: Math.max(0, state.cash)
             })
           });
           if (!res.ok) { logLine(`${symbol}: AI feed unavailable.`, 'warn'); continue; }
@@ -595,7 +703,7 @@
           const action = (quant.action || 'HOLD').toUpperCase();
           let note = '';
           if (action !== 'HOLD') {
-            note = risk.approved ? ` · risk approved (${Number(risk.qty).toFixed(4)})` : ` · risk declined: ${risk.reason || ''}`;
+            note = risk.approved ? ` · risk approved (${Number(risk.qty).toFixed(4)})` : ` · declined: ${riskReasonText(risk.reason)}`;
           }
           logLine(
             `${symbol} @ ${Number(data.price).toFixed(2)} → ${action} · regime ${data.regime || '—'}${note}`,
@@ -619,7 +727,7 @@
   }
 
   const metric = (label, value) =>
-    `<article class="metric"><p>${label}</p><strong>${value}</strong></article>`;
+    `<article class="metric"><p>${label}</p><strong style="white-space:nowrap;font-size:clamp(18px,2.2vw,30px);overflow:hidden;text-overflow:ellipsis;display:block">${value}</strong></article>`;
 
   async function loadSymbols() {
     const select = $('ai-symbol');
@@ -716,6 +824,19 @@
       refreshCandles();
     });
     $('ai-scan').addEventListener('click', scanAll);
+    // Live markets → "Open AI trading" hands over its selected symbol. Only
+    // honoured when the runner is idle and flat, like a manual pick.
+    document.addEventListener('loki:ai-symbol', (event) => {
+      const wanted = String((event.detail && event.detail.symbol) || '').toUpperCase();
+      const select = $('ai-symbol');
+      if (!wanted || !select || state.running || state.position) return;
+      if (![...select.options].some((o) => o.value === wanted)) {
+        message(`${wanted} is not in the trained AI book yet — pick one of the listed symbols.`);
+        return;
+      }
+      select.value = wanted;
+      select.dispatchEvent(new Event('change'));
+    });
     ['ai-chart-symbol', 'ai-chart-timeframe'].forEach(id => $(id)?.addEventListener('change', refreshCandles));
     $('ai-chart-refresh')?.addEventListener('click', refreshCandles);
     setInterval(() => {

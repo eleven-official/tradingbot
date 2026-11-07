@@ -11,7 +11,7 @@
     .wrap { width: min(760px, 100%); margin: 0 auto; }
     .mark-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 30px; }
     .mark { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 1px solid rgba(139, 218, 212, .45); border-radius: 11px; font-weight: 800; color: #8bdad4; font-size: 18px; }
-    .mark-row b { font-size: 20px; letter-spacing: .04em; } .mark-row span { color: #7f93a8; font-size: 12px; }
+    .mark-row b { font-size: 20px; letter-spacing: .04em; } .mark-row span:not(.mark) { color: #7f93a8; font-size: 12px; }
     .eyebrow { color: #8bdad4; letter-spacing: .16em; font-size: 11px; font-weight: 600; margin-bottom: 8px; }
     h1 { font-size: 32px; line-height: 1.15; margin-bottom: 10px; } h1 em { color: #b8f0d8; font-style: normal; }
     .version { color: #7f93a8; font-size: 12.5px; margin-bottom: 26px; }
@@ -47,21 +47,27 @@
     <p class="version">Version {{ terms_version }} · Updated {{ terms_updated }} · You tick your agreement at the gate; this page holds the words you ticked.</p>
     <p class="muted">By ticking the box at the gate you confirm you have read these terms, understand them, and agree to use Loki under them. If you do not agree, do not enter.</p>
 
-    <nav class="terms-nav" aria-label="Terms navigation"><a href="/gate">Back to entry</a><a href="#risk">Profit disclaimer</a><a href="#liability">Liability</a></nav>
+    <nav class="terms-nav" aria-label="Terms navigation"><a href="/gate">Back to entry</a><a href="#age">Who can use Loki</a><a href="#risk">Profit disclaimer</a><a href="#liability">Liability</a><a href="/privacy">Privacy Policy</a><a href="/cookies">Cookie Policy</a></nav>
     <div class="card">
       <h2>1. What Loki is</h2>
       <p>Loki is a self-service research and trading workspace. The paper simulator runs in <strong>strict paper mode</strong>: simulated orders and simulated money. The separate local Alpaca live runner can submit real orders only after you connect a live account, enter trading limits and press Start LIVE AI trading. Broker orders and positions may remain after you stop the runner or close the page. <strong>Stopping automation never closes existing broker positions — cancel or manage them with your broker.</strong></p>
       <p>Loki is <strong>free to use</strong> — no subscription and no paywall. The one thing the house asks for is its fee: <strong>30% of recorded profits</strong> (§5 below, and the model explained on <a href="/revenue" style="color:#8bdad4">/revenue</a>). Nothing is charged automatically, and no visitor's paper results or game points are ever treated as money.</p>
     </div>
 
+    <div class="card key" id="age">
+      <h2>Who can use Loki</h2>
+      <p>You must be <strong>at least 18 years old</strong> (or the age of majority where you live, if that is higher) and able to enter a binding agreement. You confirm this when you enter and when you create an account; we do not ask for your date of birth. If we learn that an account or session belongs to someone younger, we will remove it and its data.</p>
+    </div>
+
     <div class="card key" id="risk">
       <h2>2. Not advice · No profits promised</h2>
       <p><strong>No profits are promised. Nothing on Loki is financial, investment, tax or legal advice, and nothing here is a promise, forecast, or guarantee that you will make money.</strong> Markets are uncertain, most trading attempts lose money, and any idea, scan, backtest, score, or AI commentary shown here can be wrong, incomplete, late, or unavailable. If you use these tools and do not make money — or lose money acting on something you chose to act on elsewhere, under your own credentials, your own judgement remains yours — <strong>that outcome is yours to own, not Loki's</strong>.</p>
+      <p><strong>Hypothetical performance.</strong> Performance figures shown on Loki (returns, Sharpe ratios, drawdowns, win rates, "held-back" or "holdout" tests) come from simulations on historical data with assumed fees and slippage. They are not results of actual trading, involve no real orders or liquidity, were produced by rules designed with knowledge of the past, and may not be achieved in the future. Paper-trading results are simulated too. No representation is made that any account will or is likely to achieve similar results.</p>
     </div>
 
     <div class="card">
       <h2>3. Your account and your data</h2>
-      <p>Your email and authentication credentials are handled by the account service. Workspace journals and game progress stay in your browser unless you explicitly save them to your account in the project database. Cloud workspace copies are private to your signed-in account. Publishing a game score makes your nickname, best score, publication count and publication time public; your email and private journals are not included. Account-specific browser records remain on the device and can be inspected by someone with access to that browser profile. Broker keys, passwords and session cookies are excluded from cloud workspace saves. The books behind the fee model (see <a href="/revenue" style="color:#8bdad4">/revenue</a>) are private operator records.</p>
+      <p>How we collect, use and protect personal data is set out in the <a href="/privacy" style="color:#8bdad4">Privacy Policy</a>; the cookies and browser storage we use are listed in the <a href="/cookies" style="color:#8bdad4">Cookie Policy</a>. Your email and authentication credentials are handled by the account service. Workspace journals and game progress stay in your browser unless you explicitly save them to your account in the project database. Cloud workspace copies are private to your signed-in account. Publishing a game score makes your nickname, best score, publication count and publication time public; your email and private journals are not included. Account-specific browser records remain on the device and can be inspected by someone with access to that browser profile. Broker keys, passwords and session cookies are excluded from cloud workspace saves. The books behind the fee model (see <a href="/revenue" style="color:#8bdad4">/revenue</a>) are private operator records.</p>
     </div>
 
     <div class="card">
@@ -83,7 +89,7 @@
       <p>These terms carry a version number. When they change, every browser is asked to tick again at the gate once — the old tick does not carry over. Questions go to the operator of this deployment: <a href="/transparency" style="color:#8bdad4">/transparency</a>.</p>
     </div>
 
-    <p class="foot">Loki {{ version }} · <a href="/transparency">Who runs Loki</a> · <a href="/revenue">Revenue model</a> · <a href="/">Back to the workspace</a></p>
+    <p class="foot">Loki {{ version }} · <a href="/privacy">Privacy</a> · <a href="/cookies">Cookies</a> · <a href="/transparency">Who runs Loki</a> · <a href="/revenue">Revenue model</a> · <a href="/">Back to the workspace</a></p>
   </div>
 </body>
 </html>

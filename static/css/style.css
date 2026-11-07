@@ -263,7 +263,7 @@
 #game .dive-panel{background:radial-gradient(ellipse at 90% 0,rgba(31,111,126,.22),transparent 55%),linear-gradient(165deg,#10212c,#0c151f 70%);border-color:#30505d;padding:clamp(20px,3vw,38px)}
 .dive-launch{display:flex;align-items:center;gap:24px;padding:22px 0 30px}
 .dive-launch h3{font-size:clamp(24px,3vw,36px);line-height:1.2;letter-spacing:-.7px;margin:9px 0 12px;max-width:22ch}
-.dive-sonar{display:grid;place-items:center;flex:0 0 100px;height:100px;border-radius:50%;font-size:76px;color:#8eddd5;border:1px solid #386170;background:radial-gradient(circle,#1b4c5b,transparent 70%);box-shadow:0 0 0 12px rgba(104,201,200,.04),0 0 0 25px rgba(104,201,200,.025)}
+span.dive-sonar{display:grid;place-items:center;flex:0 0 100px;height:100px;border-radius:50%;font-size:76px;color:#8eddd5;border:1px solid #386170;background:radial-gradient(circle,#1b4c5b,transparent 70%);box-shadow:0 0 0 12px rgba(104,201,200,.04),0 0 0 25px rgba(104,201,200,.025)}
 .dive-how{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:24px}
 .dive-how>span{padding:14px;border:1px solid #2c4352;border-radius:10px;font-size:12px;background:#101f2b}
 .dive-how strong{display:block;color:#8eddd5;font-size:11px;letter-spacing:1px;margin-bottom:5px}
@@ -293,7 +293,7 @@
 .dive-end-depth{font-size:clamp(32px,5vw,54px);font-variant-numeric:tabular-nums}
 .dive-result-row{padding:14px 12px;border-radius:10px}
 .dive-result-q,.dive-result-a{white-space:normal;overflow-wrap:anywhere}
-@media(max-width:760px){.dive-launch{gap:16px}.dive-sonar{flex-basis:60px;height:60px;font-size:48px}.dive-how{grid-template-columns:1fr;gap:8px}.dive-how>span{display:flex;gap:12px;align-items:center;padding:10px 14px}.dive-how strong{margin:0}.dive-form input{flex-basis:auto;width:100%}.dive-progress{gap:5px}.dive-start-row{align-items:stretch}.dive-start-row>.primary{width:100%}.dive-stat{flex:1;text-align:center}.dive-next{width:100%}}
+@media(max-width:760px){.dive-launch{gap:16px}span.dive-sonar{flex-basis:60px;height:60px;font-size:48px}.dive-how{grid-template-columns:1fr;gap:8px}.dive-how>span{display:flex;gap:12px;align-items:center;padding:10px 14px}.dive-how strong{margin:0}.dive-form input{flex-basis:auto;width:100%}.dive-progress{gap:5px}.dive-start-row{align-items:stretch}.dive-start-row>.primary{width:100%}.dive-stat{flex:1;text-align:center}.dive-next{width:100%}}
 
 .button{border-radius:9px;white-space:normal;text-align:center}
 .page-heading{max-width:100%;padding:36px 0 28px}

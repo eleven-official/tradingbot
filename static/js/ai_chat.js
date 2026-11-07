@@ -20,6 +20,34 @@
   const NAME_KEY = 'loki_chat_name';   // remembered on-device to skip gate friction — never a credential
   const DRAFT_KEY = 'loki_chat_draft'; // a half-typed message survives a reload
   const DRAFT_MAX = 500;
+  // The conversation itself is kept in this browser (per room name). Server
+  // memory can be per-instance on serverless hosts; the browser copy is what
+  // makes the chat reliably "still there" after a reload or a cold start.
+  const HISTORY_PREFIX = 'loki_chat_history_v1:';
+  const HISTORY_MAX = 200;
+
+  function historyKey() {
+    return HISTORY_PREFIX + String(identity.name || 'guest').trim().toLowerCase().slice(0, 24);
+  }
+  function loadHistory() {
+    try {
+      const rows = JSON.parse(window.localStorage.getItem(historyKey()) || '[]');
+      return Array.isArray(rows) ? rows.filter((r) => r && (r.kind === 'user' || r.kind === 'ai') && typeof r.text === 'string') : [];
+    } catch { return []; }
+  }
+  function saveHistory(rows) {
+    try { window.localStorage.setItem(historyKey(), JSON.stringify(rows.slice(-HISTORY_MAX))); } catch { /* storage full or private mode */ }
+  }
+  function remember(kind, text) {
+    if (kind !== 'user' && kind !== 'ai') return;
+    const rows = loadHistory();
+    rows.push({ kind, text: String(text).slice(0, 4000), t: Date.now() });
+    saveHistory(rows);
+  }
+  function say(kind, text, withCopy) {
+    remember(kind, text);
+    return bubble(kind, text, withCopy);
+  }
 
   function rememberedName() {
     try { return String(window.localStorage.getItem(NAME_KEY) || '').slice(0, 24); } catch { return ''; }
@@ -60,9 +88,13 @@
       badge.textContent = 'MEMBER';
       $('adminBox').style.display = 'none';
     }
+    $('stream').replaceChildren();
+    const saved = loadHistory();
+    for (const row of saved) bubble(row.kind, row.text);
+    if (saved.length) bubble('join', `— ${saved.length} saved message${saved.length === 1 ? '' : 's'} restored from this browser —`);
     bubble('join', identity.admin
       ? 'Loki: admin recognized — memory and teaching unlocked.'
-      : 'Loki: unlocked. Ask me anything about the tape — I remember this room.');
+      : `Loki: welcome${identity.name ? ', ' + identity.name : ''}. Ask me anything about the tape — this chat is saved on your device.`);
     const draft = restoreDraft();
     if (draft) { $('msgInput').value = draft; }
     $('msgInput').focus();
@@ -145,16 +177,21 @@
         }
         list.appendChild(li);
       }
-      // Replay the room's last turns so history survives page reloads.
+      // The browser copy is the primary history. Only when this browser has
+      // none (new device) are the server's recent turns replayed and saved.
       const turns = Array.isArray(data.turns) ? data.turns : [];
-      $('stream').innerHTML = '';
-      for (const turn of turns) {
-        if (String(turn.text || '').startsWith('[joined')) {
-          bubble('join', turn.text);
-        } else if (turn.role === 'ai') {
-          bubble('ai', turn.text);
-        } else {
-          bubble('user', turn.text);
+      if (!loadHistory().length && turns.length) {
+        const rows = [];
+        for (const turn of turns) {
+          const text = String(turn.text || '');
+          if (!text || text.startsWith('[joined')) continue;
+          rows.push({ kind: turn.role === 'ai' ? 'ai' : 'user', text, t: Math.round((Number(turn.created_at) || 0) * 1000) });
+        }
+        if (rows.length) {
+          saveHistory(rows);
+          $('stream').replaceChildren();
+          for (const row of rows) bubble(row.kind, row.text);
+          bubble('join', '— recent turns restored from Loki\'s memory —');
         }
       }
     } catch (error) {
@@ -197,11 +234,14 @@
     const btn = $('sendBtn');
     if (btn.disabled) return;
     btn.disabled = true;
-    bubble('user', text);
+    say('user', text);
     $('msgInput').value = '';
     saveDraft(text);
     const restoreFailedMessage = () => {
       if (!$('msgInput').value) { $('msgInput').value = text; saveDraft(text); }
+      // Unsent: keep it in the box for a retry, not in the saved history.
+      const rows = loadHistory();
+      if (rows.length && rows[rows.length - 1].kind === 'user' && rows[rows.length - 1].text === text) saveHistory(rows.slice(0, -1));
     };
     try {
       const res = await fetch('/api/ai/chat/message', {
@@ -216,7 +256,7 @@
         bubble('ai', String(data.detail || 'I glitched on that one — say it again?').slice(0, 200));
         return;
       }
-      bubble('ai', String(data.text || ''));
+      say('ai', String(data.text || ''));
       if (!$('msgInput').value) clearDraft();
 
       const learned = Array.isArray(data.learned) ? data.learned.filter((item) => item.fresh) : [];
@@ -277,6 +317,13 @@
   $('wipeBtn').addEventListener('click', async () => {
     if (!window.confirm('Wipe every fact and turn from Loki\'s memory? The wipe itself is journaled.')) return;
     await adminAction('wipe');
+  });
+
+  $('clearHistoryBtn').addEventListener('click', () => {
+    if (!window.confirm('Clear this conversation from this browser? Loki\'s shared memory is not affected.')) return;
+    try { window.localStorage.removeItem(historyKey()); } catch { /* private mode */ }
+    $('stream').replaceChildren();
+    bubble('join', 'Chat cleared on this device.');
   });
 
   $('logoutBtn').addEventListener('click', async () => {

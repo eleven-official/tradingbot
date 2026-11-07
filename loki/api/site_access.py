@@ -10,7 +10,7 @@ Activation rules:
 - The gate engages only for remote deployments (``VERCEL`` set) or when the
   launcher explicitly turns it on (``LOKI_SITE_GATE=1``). The local desktop
   launcher experience stays open, as designed by the fusion workspace.
-- The access code defaults to ``slayterisgay`` and stays configurable via
+- The access code defaults to ``flathead`` and stays configurable via
   ``LOKI_SITE_CODE`` so it can be changed without a deploy.
 """
 
@@ -40,13 +40,27 @@ SESSION_COOKIE = "loki_session"
 TERMS_COOKIE = "loki_terms"
 GATE_MAX_AGE = 30 * 24 * 3600
 SESSION_MAX_AGE = 14 * 24 * 3600
-_DEFAULT_CODE = "slayterisgay"
+_DEFAULT_CODE = "flathead"
 
 # The Terms of Use a visitor ticks before the door opens. Version stamps every
 # acceptance cookie: bump TERMS_VERSION whenever the document changes, and every
 # browser re-gates once to accept the new words.
-TERMS_VERSION = 5
-TERMS_UPDATED = "2026-11-03"
+TERMS_VERSION = 6
+TERMS_UPDATED = "2026-11-07"
+MINIMUM_AGE = 18
+
+# The operator (data controller) named in the policies and on /transparency.
+# Environment variables override these defaults per deployment.
+DEFAULT_OPERATOR_NAME = "Joshua Mathew"
+DEFAULT_OPERATOR_EMAIL = "joshuajestin2010@gmail.com"
+
+
+def operator_name() -> str:
+    return (os.environ.get("LOKI_OPERATOR_NAME") or "").strip() or DEFAULT_OPERATOR_NAME
+
+
+def operator_email() -> str:
+    return (os.environ.get("LOKI_OPERATOR_EMAIL") or "").strip() or DEFAULT_OPERATOR_EMAIL
 
 _COOKIE_SALT = b"loki-site-access-v1"
 _PROCESS_SECRET = secrets.token_bytes(32)
@@ -145,12 +159,34 @@ def _secret() -> bytes:
     material = f"{os.environ.get('SUPABASE_URL') or ''}\0{_supabase_key()}"
     if _supabase_key():
         return hashlib.sha256(_COOKIE_SALT + material.encode()).digest()
-    if os.environ.get("VERCEL"):
-        # A URL is public and cannot be signing material. Fail closed across
-        # instances until an operator supplies a real secret.
+    if os.environ.get("VERCEL") or gate_enabled():
+        # Any public deployment (Vercel, Docker, a VPS) without a configured
+        # secret must fail closed: a constant from the public source code
+        # would let anyone forge gate, session and chat cookies. A random
+        # per-process key costs only re-entry after a restart.
         return _PROCESS_SECRET
-    # Local/dev deployments: stable-but-throwaway secret keeps cookies verifiable.
+    # Gate off = private local run: a stable throwaway key keeps dev cookies.
     return hashlib.sha256(_COOKIE_SALT + b"loki-local-dev-gate").digest()
+
+
+def secret_is_configured() -> bool:
+    """True when cookies are signed with operator-supplied secret material."""
+    return bool((os.environ.get("LOKI_GATE_SECRET") or "").strip() or _supabase_key())
+
+
+def cookie_secure(request: Any = None) -> bool:
+    """Mark cookies Secure on Vercel, behind HTTPS, or when forced by env."""
+    if os.environ.get("VERCEL") or os.environ.get("LOKI_SECURE_COOKIES") == "1":
+        return True
+    try:
+        if request is None:
+            return False
+        if request.url.scheme == "https":
+            return True
+        # Trust the proxy's scheme header only on deployments that run behind one.
+        return gate_enabled() and request.headers.get("x-forwarded-proto", "").lower() == "https"
+    except AttributeError:
+        return False
 
 
 def _sign(payload: str) -> str:

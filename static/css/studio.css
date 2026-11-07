@@ -151,13 +151,14 @@ html { scroll-padding-top: 100px; }
 .loki-workspace .workspace-launchers div > span { font-size: 11px; margin-top: 5px; color: var(--muted); line-height: 1.5; }
 .loki-workspace .launcher-arrow { display: grid; place-items: center; flex: 0 0 24px; height: 24px; color: var(--subtle); border-radius: 50%; transition: color 180ms, transform 180ms; }
 .loki-workspace .workspace-launchers > a:hover .launcher-arrow { color: var(--accent); transform: translate(2px, -2px); }
-.loki-workspace #overview > .metrics-heading { order: 3; margin: 10px 0 -7px; }
+.loki-workspace #overview > .metrics-heading { order: 5; margin: 10px 0 -7px; }
 .loki-workspace .metrics-heading .caption { font-size: 10px; }
-.loki-workspace #overview > .metrics { order: 4; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.loki-workspace #overview > .chart-panel { grid-column: 1; order: 5; }
-.loki-workspace #overview > #next-steps-panel { grid-column: 2; order: 6; }
-.loki-workspace #overview > #market-floor { order: 7; }
-.loki-workspace #overview > #trained-book-panel { order: 8; }
+.loki-workspace #overview > .metrics { order: 6; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.loki-workspace #overview > .chart-panel { grid-column: 1; order: 7; }
+.loki-workspace #overview > #next-steps-panel { grid-column: 2; order: 8; }
+/* Live context first: real markets and the AI's track record sit right under the hero. */
+.loki-workspace #overview > #market-floor { order: 3; }
+.loki-workspace #overview > #trained-book-panel { order: 4; }
 .loki-workspace #overview > .workflow-heading { order: 9; margin-top: 10px; }
 .loki-workspace #overview > .workflow-grid { order: 10; }
 .loki-workspace #overview > .goal-note { order: 11; }

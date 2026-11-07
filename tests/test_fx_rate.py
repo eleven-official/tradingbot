@@ -75,6 +75,6 @@ class TestFxRate:
 
         monkeypatch.setattr(server_module.urllib.request, "urlopen", fake_urlopen)
         assert server_module._fetch_usd_aud_sync() == 1.4317
-        assert captured["url"].startswith("https://api.frankfurter.app/latest")
+        assert captured["url"].startswith("https://api.frankfurter.dev/v1/latest")
         user_agent = captured["headers"].get("User-agent", "")
         assert "LokiWorkspace" in user_agent, f"frankfurter must receive an identifying UA: {captured['headers']}"
