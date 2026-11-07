@@ -15,6 +15,7 @@ import json
 import math
 from pathlib import Path
 import statistics
+from typing import Any
 
 import requests
 
@@ -24,7 +25,7 @@ ROOT = Path("state/public_derivatives")
 DOLT = "https://www.dolthub.com/api/v1alpha1/post-no-preference/options/master"
 
 
-def download(name, url, params=None):
+def download(name: str, url: str, params: dict[str, str] | None = None) -> bytes | None:
     path = ROOT / name
     if path.exists():
         cached = path.read_bytes()
@@ -66,23 +67,35 @@ def download(name, url, params=None):
     raise RuntimeError("Download attempts exhausted")
 
 
-def options_month(start):
+def options_month(start: date) -> list[dict[str, str]]:
     query = (
         "SELECT * FROM option_chain WHERE act_symbol = 'SPY' "
         f"AND date = '{start}' "
         "ORDER BY date, expiration, strike, call_put LIMIT 20000"
     )
     raw = download(f"options-day-{start}.json", DOLT, {"q": query})
+    if raw is None:
+        raise ValueError("Missing public SQL response for the requested date")
     payload = json.loads(raw)
     if payload.get("query_execution_status") != "Success":
         raise ValueError(payload)
     rows = payload["rows"]
     if len(rows) >= 20000:
         raise ValueError("Options query truncated; narrow the date interval")
-    return rows
+    columns = (
+        "date", "act_symbol", "expiration", "strike", "call_put", "bid", "ask",
+        "vol", "delta", "gamma", "theta", "vega", "rho",
+    )
+    # Guard against silent upstream schema drift; unexpected rows invalid.
+    normalized = []
+    for row in rows:
+        if any(not isinstance(row.get(column), str) for column in columns):
+            raise ValueError("Unexpected option_chain row schema")
+        normalized.append({column: row[column] for column in columns})
+    return normalized
 
 
-def futures_month(period):
+def futures_month(period: tuple[int, int]) -> list[dict[str, Any]]:
     year, month = period
     # Standard monthly VX expiration: 30 days before next month's third Friday.
     following = date(year + (month == 12), month % 12 + 1, 1)
@@ -121,9 +134,9 @@ def futures_month(period):
     return rows
 
 
-def option_examples(rows):
-    chains = {}
-    selected = {}
+def option_examples(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
+    chains: dict[tuple[str, str, str], list[tuple[date, float, float, list[float]]]] = {}
+    selected: dict[date, tuple[float, tuple[str, str, str]]] = {}
     for row in rows:
         try:
             bid, ask = float(row["bid"]), float(row["ask"])
@@ -155,6 +168,7 @@ def option_examples(rows):
         for signal, entry, exit_ in zip(chain, chain[1:], chain[2:]):
             if key[2] != "Call":
                 continue
+            match = selected.get(signal[0])
             if not (0 < (entry[0] - signal[0]).days <= 4 and 0 < (exit_[0] - entry[0]).days <= 4):
                 continue
             if entry[0] >= date.fromisoformat(key[0]) or exit_[0] >= date.fromisoformat(key[0]):
@@ -170,15 +184,15 @@ def option_examples(rows):
                 "gross": gross,
                 "cost": cost,
                 "capital": entry[2] * 100 + cost / 2,
-                "selected_for_replay": selected.get(signal[0], (None, None))[1] == key,
+                "selected_for_replay": match is not None and match[1] == key,
             }
             candidates.append(record)
     return sorted(candidates, key=lambda r: (r["signal"], r["contract"]))
 
 
-def futures_examples(rows):
-    contracts = {}
-    selected = {}
+def futures_examples(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    contracts: dict[str, list[dict[str, Any]]] = {}
+    selected: dict[str, tuple[float, str]] = {}
     for row in rows:
         contracts.setdefault(row["contract"], []).append(row)
         day = date.fromisoformat(row["date"])
@@ -186,12 +200,13 @@ def futures_examples(rows):
             rank = (-row["volume"], row["contract"])
             if row["date"] not in selected or rank < selected[row["date"]]:
                 selected[row["date"]] = rank
-    candidates = {}
+    candidates: dict[date, tuple[tuple[float, str], dict[str, Any]]] = {}
     for contract, chain in contracts.items():
         chain.sort(key=lambda r: r["date"])
         for i in range(20, len(chain) - 1):
             signal, entry = chain[i], chain[i + 1]
-            if selected.get(signal["date"], (None, None))[1] != contract:
+            choice = selected.get(signal["date"])
+            if choice is None or choice[1] != contract:
                 continue
             day = date.fromisoformat(signal["date"])
             if not 0 < (date.fromisoformat(entry["date"]) - day).days <= 4:
@@ -226,7 +241,9 @@ def futures_examples(rows):
     return [value[1] for _, value in sorted(candidates.items())]
 
 
-def replay(rows, model, threshold, multiple=1):
+def replay(
+    rows: list[dict[str, Any]], model: dict[str, Any], threshold: float, multiple: int = 1
+) -> dict[str, Any]:
     pnl = 0.0
     count = 0
     peak, drawdown = 50000.0, 0.0
@@ -261,7 +278,7 @@ def replay(rows, model, threshold, multiple=1):
     }
 
 
-def train(rows, name, feature_names):
+def train(rows: list[dict[str, Any]], name: str, feature_names: list[str]) -> None:
     if any(len(r["x"]) != 5 or not all(math.isfinite(x) for x in r["x"]) for r in rows):
         raise ValueError("Nonfinite or malformed feature vector")
     train_rows = [r for r in rows if r["exit"] < "2024-01-01"]
@@ -350,7 +367,7 @@ def train(rows, name, feature_names):
     )
 
 
-def main():
+def main() -> None:
     ROOT.mkdir(parents=True, exist_ok=True)
     calendar_path = ROOT / "SPY-sessions.json"
     if not calendar_path.exists():

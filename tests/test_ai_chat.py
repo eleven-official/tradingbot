@@ -11,6 +11,7 @@ Three honesty contracts pinned here:
    admin cookie may teach or wipe.
 """
 
+import json
 import pytest
 import time
 from fastapi.testclient import TestClient
@@ -34,6 +35,65 @@ client = TestClient(app)
 )
 def test_intent_uses_words_and_preserves_questions(message, expected):
     assert ai_chat._intent(message) == expected
+
+
+def test_derivatives_block_quotes_saved_reports(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai_chat, "_DERIVATIVE_DIR", tmp_path)
+    assert ai_chat._derivatives_research_block("what about VX options?") == []
+    (tmp_path / "VX-futures-report.json").write_text(
+        json.dumps(
+            {
+                "status": "no_validation_edge_wait_in_cash",
+                "sample_counts": {"train": 1653, "validation": 251, "test": 250},
+                "test": {"trades": 0, "net_pnl_usd": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    lines = ai_chat._derivatives_research_block("how do the futures models do?")
+    assert any("status no_validation_edge_wait_in_cash" in line for line in lines)
+    assert any("heldout trades 0, net P&L $0.00" in line for line in lines)
+    assert any("research only, not advice" in line for line in lines)
+    # Malformed artifacts are skipped rather than invented.
+    (tmp_path / "SPY-options-report.json").write_text("not json", encoding="utf-8")
+    assert len(ai_chat._derivatives_research_block("option research status?")) == len(lines)
+    assert ai_chat._derivatives_research_block("price of SPY?") == []
+
+
+def test_compose_reply_includes_research_block(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai_chat, "_DERIVATIVE_DIR", tmp_path)
+    (tmp_path / "SPY-options-report.json").write_text(
+        json.dumps(
+            {
+                "status": "insufficient_replay_coverage",
+                "sample_counts": {"train": 413, "validation": 761, "test": 1659},
+                "test": {"trades": 0, "net_pnl_usd": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    reply = ai_chat._compose_reply(
+        "what did the options research find?", "friend", False, [], None, [], 0, None
+    )
+    assert "status insufficient_replay_coverage" in reply
+    plain = ai_chat._compose_reply("nice day outside", "friend", False, [], None, [], 0, None)
+    assert "status insufficient_replay_coverage" not in plain
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        ("VX options research, please", "VX"),
+        ("spy is crashing", "SPY"),
+        ("WHAT did the options research find about VX?", "VX"),
+        ("hello, what is SPY doing?", "SPY"),
+        ("what happened today", None),
+        ("Why is the market down?", None),
+        ("T stock looks heavy", "T"),
+    ],
+)
+def test_detect_symbol_needs_capitals_or_known_names(message, expected):
+    assert ai_chat.detect_symbol(message) == expected
 
 
 @pytest.fixture()

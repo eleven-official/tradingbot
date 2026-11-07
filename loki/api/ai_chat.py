@@ -93,6 +93,9 @@ else:
     _DB_PATH = _DB_DIR / "memory.sqlite3"
 _DB_LOCK = threading.RLock()
 
+# Locally saved public-data derivatives research (offline reports, never orders).
+_DERIVATIVE_DIR = Path(__file__).resolve().parents[2] / "state" / "public_derivatives"
+
 _COOKIE_SALT = b"loki-sentient-chat-v1"
 _PROCESS_SECRET = os.environ.get("LOKI_CHAT_SESSION_SECRET", "").encode() or secrets.token_bytes(32)
 
@@ -330,7 +333,68 @@ def _normalize_name(value: str) -> str:
 # ---------------------------------------------------------------------------
 # Internet access: public feeds only, learned facts carry their source link.
 # ---------------------------------------------------------------------------
+# Shouted at sentence start but still just words, not tickers.
+_COMMON_SHOUTED_WORDS = {
+    "WHAT",
+    "WHY",
+    "HOW",
+    "WILL",
+    "WHEN",
+    "WHO",
+    "WHICH",
+    "SHOULD",
+    "WHERE",
+    "THIS",
+    "THAT",
+    "WITH",
+    "FROM",
+    "HAVE",
+    "BEEN",
+    "NEXT",
+    "SHOW",
+    "NAME",
+    "PRICE",
+    "PLEASE",
+    "THANKS",
+    "GOOD",
+    "MORNING",
+    "EVENING",
+    "HELLO",
+}
 _TICKER_TOKEN = re.compile(r"\b([A-Z]{1,5})\b")
+# Casual names still accepted when the writer skipped capitals.
+_KNOWN_SYMBOLS = {
+    "spx",
+    "spy",
+    "qqq",
+    "iwm",
+    "dia",
+    "vix",
+    "aapl",
+    "msft",
+    "nvda",
+    "tsla",
+    "meta",
+    "amzn",
+    "googl",
+    "nflx",
+    "amd",
+    "mu",
+    "nq",
+    "es",
+    "rt",
+    "ym",
+    "mes",
+    "mnq",
+    "btc",
+    "eth",
+    "sol",
+    "xrp",
+    "doge",
+    "vxx",
+    "uvxy",
+    "gme",
+}
 _SYMBOL_BLACKLIST = {
     "A",
     "I",
@@ -382,11 +446,20 @@ _SYMBOL_BLACKLIST = {
 
 
 def detect_symbol(message: str) -> Optional[str]:
-    """First plausible ticker in a chat message, honest enough to fetch."""
+    """First plausible ticker in a chat message, honest enough to fetch.
+
+    A token counts when the writer actually typed it in capital letters
+    (`VX`, `SPY`) or it is a well-known symbol typed casually (`spy`).
+    Ordinary words like "What" cannot become tickers; that mistake used to
+    send the internet sweep chasing the word WHAT as if it were a security.
+    """
+    shouted = set(re.findall(r"\b[A-Z][A-Z0-9.]{0,4}\b", message))
     for token in _TICKER_TOKEN.findall(message.upper()):
-        if token in _SYMBOL_BLACKLIST:
+        if token in _SYMBOL_BLACKLIST or token in _COMMON_SHOUTED_WORDS:
             continue
         if len(token) == 1 and token not in {"T", "F"}:
+            continue
+        if token not in shouted and token.lower() not in _KNOWN_SYMBOLS:
             continue
         return str(token)
     return None
@@ -534,6 +607,48 @@ def _intent(text: str) -> str:
     return "chat"
 
 
+def _derivatives_research_block(text: str) -> List[str]:
+    """Quote the locally saved public-data research reports, honestly.
+
+    Read-only derived answers from ``state/public_derivatives``; a missing or
+    malformed report contributes nothing instead of an invented answer.
+    """
+    words = set(re.findall(r"[a-z0-9]+", text.lower()))
+    if not words.intersection(("options", "option", "futures", "vx", "volatility", "derivatives")):
+        return []
+    lines: List[str] = []
+    for instrument in ("SPY-options", "VX-futures"):
+        path = _DERIVATIVE_DIR / f"{instrument}-report.json"
+        if not path.is_file():
+            continue
+        try:
+            report = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        try:
+            samples = report["sample_counts"]
+            test = report["test"]
+            status = re.sub(r"[^a-z0-9_-]", "", str(report["status"])).strip("-_")[:40]
+            trained = int(samples["train"])
+            validation = int(samples["validation"])
+            heldout = int(samples["test"])
+            trades = int(test["trades"])
+            pnl = float(test["net_pnl_usd"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        lines.append(
+            f"{instrument.replace('-', ' ')} research (offline, from public data): status "
+            f"{status or 'unknown'}; trained {trained} / validation {validation} / holdout "
+            f"{heldout} examples; heldout trades {trades}, net P&L ${pnl:.2f}."
+        )
+    if lines:
+        lines.append(
+            "These models do not trade or ship orders and do not prove profitability — "
+            "research only, not advice."
+        )
+    return lines
+
+
 def _daypart() -> str:
     hour = time.gmtime().tm_hour  # UTC — the room stands for anyone, anywhere
     if 5 <= hour < 12:
@@ -632,6 +747,7 @@ def _compose_reply(
         parts.append(f"No live price for {symbol} right now — the tape is quiet here.")
     parts.extend(_fresh_news_block(fresh))
     parts.extend(_memory_block(facts, fresh_texts, bool(fresh)))
+    parts.extend(_derivatives_research_block(text))
     if intent == "trade":
         change = quote.get("change_pct") if isinstance(quote, dict) else None
         lean = (
