@@ -122,7 +122,15 @@ def learn_history():
     from core.fusion.history import public_history
     from core.fusion.learning import train_research
 
-    dataset = _call(public_history)
+    try:
+        dataset = public_history()
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        # A network failure, not a missing local engine: say which.
+        raise HTTPException(
+            503, "The public history source could not be reached right now; try again in a minute."
+        ) from exc
+    except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(422, str(exc)) from exc
     return _call(train_research, dataset["observations"], source=dataset["source"])
 
 
@@ -703,4 +711,7 @@ def research_book(response: Response):
         "robustness": report.get("robustness"),
         "consensus_support_pct": consensus.get("support_pct"),
         "symbols": summary,
+        # 10-20 year universal profiles (train_long_history.py): pooled and
+        # per-symbol results on the untouched holdout, next to buy-and-hold.
+        "universal": report.get("universal"),
     }

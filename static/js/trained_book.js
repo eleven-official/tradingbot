@@ -157,11 +157,47 @@
     }
   };
 
+  /** 10-20 year universal profiles vs buy-and-hold on the untouched holdout. */
+  const renderUniversal = (block) => {
+    const host = document.getElementById('universal-book');
+    if (!host) return;
+    if (!block || (!block.equity && !block.crypto)) { host.innerHTML = ''; return; }
+    const pct = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? '—' : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`);
+    const tone = (v) => (Number(v) >= 0 ? '#b8f0d8' : '#ffb3a7');
+    const card = (label, b) => {
+      if (!b) return '';
+      const p = b.holdout_pooled || {};
+      const params = b.params || {};
+      const since = b.windows && b.windows.holdout ? String(b.windows.holdout[0]).slice(0, 4) : '2023';
+      const rows = (b.holdout || []).filter((h) => h.strategy && h.strategy.trades !== undefined).map((h) =>
+        `<tr><td>${escapeHtml(h.symbol)}</td><td style="color:${tone(h.strategy.cagr_pct)}">${pct(h.strategy.cagr_pct)}</td><td>${num(h.strategy.max_dd_pct)}</td>` +
+        `<td>${escapeHtml(h.strategy.trades)}</td><td>${num(h.strategy.profit_factor, 2, '')}</td><td style="color:#9fb0c2">${pct(h.buy_hold && h.buy_hold.cagr_pct)}</td><td style="color:#9fb0c2">${num(h.buy_hold && h.buy_hold.max_dd_pct)}</td></tr>`).join('');
+      const status = b.verified
+        ? '<span style="font-size:11.5px;border-radius:999px;padding:3px 10px;color:#b8f0d8;background:rgba(184,240,216,.12)">✓ made money on the holdout · live AI uses it</span>'
+        : '<span style="font-size:11.5px;border-radius:999px;padding:3px 10px;color:#f0c98b;background:rgba(240,201,139,.1)">holdout not convincing · live AI keeps the older book</span>';
+      return `<article style="${cardStyle}flex:1 1 420px;min-width:0">` +
+        `<p style="letter-spacing:.14em;font-size:10.5px;color:#8bdad4">${escapeHtml(label)} · HOLDOUT ${escapeHtml(since)}→NOW</p>` +
+        `<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:baseline">` +
+        `<span><strong style="font-size:22px;color:${tone(p.mean_cagr_pct)}">${pct(p.mean_cagr_pct)}</strong> <span class="caption">avg / year</span></span>` +
+        `<span><strong style="font-size:18px">${escapeHtml(p.profitable_symbols ?? '—')}/${escapeHtml(p.symbols ?? '—')}</strong> <span class="caption">symbols profitable</span></span>` +
+        `<span><strong style="font-size:18px">${num(p.mean_max_dd_pct)}</strong> <span class="caption">avg worst drawdown</span></span></div>` +
+        `<p class="caption">Buy &amp; hold, same symbols and dates: ${pct(p.buy_hold_mean_cagr_pct)} / year, ${num(p.buy_hold_mean_max_dd_pct)} worst drawdown · ${escapeHtml(p.total_trades ?? 0)} trades after ${escapeHtml(block.fees_bps_per_side ?? 10)} bps fees + ${escapeHtml(block.slippage_bps_per_side ?? 5)} bps slippage per side.</p>` +
+        status +
+        `<details><summary class="caption">Per-symbol results · rules: ${escapeHtml(params.factor_preset || '')}, entry ≥ ${escapeHtml(params.signal_threshold)}, stop ${escapeHtml(params.stop_loss_atr)} ATR${Number(params.trailing_stop_atr) > 0 ? `, trailing ${escapeHtml(params.trailing_stop_atr)} ATR` : ''}, ${escapeHtml(params.target_vol_pct)}% vol target</summary>` +
+        `<div class="table-scroll"><table style="font-size:12.5px;width:100%"><thead><tr><th>Symbol</th><th>AI / yr</th><th>AI max DD</th><th>Trades</th><th>PF</th><th>B&amp;H / yr</th><th>B&amp;H max DD</th></tr></thead><tbody>${rows}</tbody></table></div></details>` +
+        `</article>`;
+    };
+    host.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:12px;margin:12px 0">${card('STOCKS & ETFS', block.equity)}${card('CRYPTO', block.crypto)}</div>` +
+      `<p class="caption">Trained ${escapeHtml(String(block.generated_at || '').slice(0, 10))} on data through ${escapeHtml((block.equity || block.crypto || {}).data_through || '—')}. Past results on historical data, never a promise about the next trade.</p>`;
+  };
+
   const init = async () => {
     try {
       const res = await fetch('/api/fusion/research-book', { cache: 'no-store' });
       if (!res.ok) return;
-      render(await res.json());
+      const book = await res.json();
+      renderUniversal(book.universal);
+      render(book);
     } catch {
       /* keep the card hidden — evidence must never be faked */
     }

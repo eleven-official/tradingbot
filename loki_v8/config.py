@@ -75,6 +75,21 @@ class LokiConfig:
     regime_sizing: bool = False  # half position size in RANGING regimes
     vol_target_sizing: bool = False  # shrink size when ATR% is above its rolling median
 
+    # --- Capital allocation (v9) -------------------------------------------
+    # "risk": size so a stop-out loses risk_per_trade_pct of equity (classic).
+    # "vol_target": size so the position's annualised volatility is about
+    # target_vol_pct of equity, capped at max_exposure_pct. The classic mode
+    # with wide stops left ~90% of the account idle; vol targeting keeps the
+    # risk budget while actually putting capital to work.
+    sizing_mode: str = "risk"
+    target_vol_pct: float = 15.0
+    max_exposure_pct: float = 100.0
+    vol_lookback: int = 20  # bars of daily returns for realised volatility
+    # "signal": exit when the composite score flips to SELL (classic).
+    # "trend": hold through score wobbles; exit when the last completed close
+    # breaks below its 200-bar average (stops still apply).
+    exit_mode: str = "signal"
+
     # --- Multi-factor ensemble weights -----------------------------------
     # Relative weight of each factor stack in the composite score. Weights
     # are normalized internally, so only the ratios matter. The trainer can

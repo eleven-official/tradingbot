@@ -436,11 +436,17 @@ _FX_HEADERS = {
 
 
 def _fetch_usd_aud_sync() -> float:
-    url = "https://api.frankfurter.app/latest?from=USD&to=AUD"
-    request = urllib.request.Request(url, headers=_FX_HEADERS)  # noqa: S310 - fixed https URL
-    with urllib.request.urlopen(request, timeout=10) as res:
-        data = json.loads(res.read().decode())
-    rate = float(data["rates"]["AUD"])
+    try:
+        url = "https://api.frankfurter.app/latest?from=USD&to=AUD"
+        request = urllib.request.Request(url, headers=_FX_HEADERS)  # noqa: S310 - fixed https URL
+        with urllib.request.urlopen(request, timeout=10) as res:
+            data = json.loads(res.read().decode())
+        rate = float(data["rates"]["AUD"])
+    except Exception:  # noqa: BLE001 - second source below
+        # Backup source: Yahoo's public USD/AUD quote (same feed as the board).
+        from loki.api.market_feed import fetch_quote
+
+        rate = float(fetch_quote("AUD=X")["price"])
     if not rate > 0:
         raise ValueError("Rate feed returned a non-positive USD/AUD rate.")
     return rate

@@ -190,8 +190,8 @@ class EnsembleStrategy:
         reasons: List[str] = []
         if action == "BUY":
             stop = entry - self.cfg.stop_loss_atr * atr
-            target = entry + self.cfg.take_profit_atr * atr
-            target2 = entry + (self.cfg.take_profit_atr * 1.6) * atr
+            target = entry + self.cfg.take_profit_atr * atr if self.cfg.take_profit_atr > 0 else 0.0
+            target2 = entry + (self.cfg.take_profit_atr * 1.6) * atr if self.cfg.take_profit_atr > 0 else 0.0
             if last["ema_9"] > last["ema_21"]:
                 reasons.append("Bullish EMA ribbon stack (EMA9 > EMA21)")
             if last["supertrend"] > 0:
@@ -206,8 +206,8 @@ class EnsembleStrategy:
                 reasons.append("TTM Squeeze released positive momentum")
         else:
             stop = entry + self.cfg.stop_loss_atr * atr
-            target = entry - self.cfg.take_profit_atr * atr
-            target2 = entry - (self.cfg.take_profit_atr * 1.6) * atr
+            target = entry - self.cfg.take_profit_atr * atr if self.cfg.take_profit_atr > 0 else 0.0
+            target2 = entry - (self.cfg.take_profit_atr * 1.6) * atr if self.cfg.take_profit_atr > 0 else 0.0
             if last["ema_9"] < last["ema_21"]:
                 reasons.append("Bearish EMA breakdown (EMA9 < EMA21)")
             if last["supertrend"] < 0:
@@ -228,7 +228,7 @@ class EnsembleStrategy:
         )
 
         risk_dist = abs(entry - stop)
-        reward_dist = abs(target - entry)
+        reward_dist = abs(target - entry) if target > 0 else 0.0
         rr = round(reward_dist / risk_dist, 2) if risk_dist > 0 else 1.5
 
         partial = 0.0

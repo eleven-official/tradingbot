@@ -157,7 +157,7 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn('id="ai-next-tick"', source)  # next-check countdown slot
         self.assertIn('id="visit-note"', source)  # what-changed-since-last-visit slot
         self.assertLess(
-            source.index('data-view="integrations"'),
+            source.index('data-view="trading-desk"'),
             source.index('data-view="game"'),
             "Bored? should sit at the very bottom of the navigation bar",
         )
@@ -170,7 +170,7 @@ class DeploymentConfigTests(unittest.TestCase):
             self.assertLess(source.index(visible), group_start)
         self.assertIn('id="nav-more-toggle"', source)
         for grouped in ("agent-council", "simulated-market", "real-market",
-                        "scenarios", "copilot", "paper-planner", "integrations", "game"):
+                        "scenarios", "copilot", "paper-planner", "trading-desk", "game"):
             self.assertGreater(source.index(f'data-view="{grouped}"'), group_start, grouped)
         # Account pill mounts into the topbar instead of floating over content.
         auth_js = (ROOT / "static" / "js" / "loki_auth.js").read_text(encoding="utf-8")

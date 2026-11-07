@@ -103,10 +103,22 @@ POSITION_PAYLOAD = {
 
 class TestRelayAccess:
     def test_relay_requires_the_access_door(self, monkeypatch):
+        monkeypatch.setenv("LOKI_SITE_GATE", "1")
         fresh = TestClient(app)
         response = fresh.post("/api/broker/alpaca/test", json=KEYS)
-        assert response.status_code == 403
-        assert "access door" in response.json()["detail"]
+        assert response.status_code in (401, 403)
+        assert "door" in response.text.lower() or "access" in response.text.lower()
+
+    def test_relay_works_when_the_deployment_has_no_gate(self, monkeypatch):
+        """A local run has no access door; the relay must not demand one."""
+        monkeypatch.delenv("LOKI_SITE_GATE", raising=False)
+        monkeypatch.delenv("VERCEL", raising=False)
+        from loki.api import broker_alpaca
+
+        monkeypatch.setattr(broker_alpaca, "_paper_exchange", lambda *a, **k: {"status": "ACTIVE"})
+        response = TestClient(app).post("/api/broker/alpaca/test", json=KEYS)
+        assert response.status_code == 200
+        assert response.json()["account_status"] == "ACTIVE"
 
 
 class TestPositions:

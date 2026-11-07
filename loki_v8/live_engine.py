@@ -33,7 +33,7 @@ import pandas as pd
 
 from .config import LokiConfig
 from .regime import is_bearish, regime_series
-from .risk import RiskManager
+from .risk import entry_quantity, realized_vol
 from .strategy import EnsembleStrategy
 
 # Equity daily bars are complete once the regular session has closed. A
@@ -114,7 +114,7 @@ def score_completed(df: pd.DataFrame, cfg: LokiConfig) -> pd.DataFrame:
     return EnsembleStrategy(cfg).score_frame(df)
 
 
-def plan_entry(frame: pd.DataFrame, cfg: LokiConfig) -> Dict[str, Any]:
+def plan_entry(frame: pd.DataFrame, cfg: LokiConfig, bars_per_year: int = 252) -> Dict[str, Any]:
     """Entry decision for the *next* bar from a scored frame of completed bars.
 
     Mirrors the backtest's entry block: action from the last completed
@@ -143,6 +143,7 @@ def plan_entry(frame: pd.DataFrame, cfg: LokiConfig) -> Dict[str, Any]:
     close = _finite(last.get("close"))
     sma200 = _finite(last.get("sma_200"), default=float("nan"))
     regime = str(regime_series(frame).iloc[-1])
+    ann_vol = _finite(realized_vol(frame["close"], cfg.vol_lookback, bars_per_year).iloc[-1])
 
     strategy = EnsembleStrategy(cfg)
     action = strategy.action_for(score, atr_pct, atr_med)
@@ -198,6 +199,8 @@ def plan_entry(frame: pd.DataFrame, cfg: LokiConfig) -> Dict[str, Any]:
         "regime": regime,
         "above_sma200": above_ma,
         "size_multiplier": round(size_multiplier(cfg, score, regime, atr_pct, atr_med), 4),
+        "ann_vol": round(ann_vol, 6),
+        "sizing_mode": cfg.sizing_mode,
         "stop_atr": float(cfg.stop_loss_atr),
         "target_atr": float(cfg.take_profit_atr),
         "partial_tp_atr": float(cfg.partial_tp_atr),
@@ -220,10 +223,11 @@ def size_entry(
     if price <= 0 or atr <= 0:
         return {"qty": 0.0, "stop": 0.0, "target": 0.0, "reason": "no_price_or_atr"}
     stop = price - cfg.stop_loss_atr * atr
-    target = price + cfg.take_profit_atr * atr
+    target = price + cfg.take_profit_atr * atr if cfg.take_profit_atr > 0 else 0.0
     if stop <= 0:
         return {"qty": 0.0, "stop": 0.0, "target": target, "reason": "stop_below_zero"}
-    qty = RiskManager(cfg).position_size(equity, price, stop) * _finite(plan.get("size_multiplier"), 1.0)
+    base = entry_quantity(cfg, equity, cash, price, stop, _finite(plan.get("ann_vol")))
+    qty = base * _finite(plan.get("size_multiplier"), 1.0)
     affordable = max(0.0, cash) / price
     capped = qty > affordable
     qty = max(0.0, min(qty, affordable))
@@ -240,6 +244,7 @@ def size_entry(
         "atr": atr,
         "risk_amount": risk_amount,
         "risk_pct_of_equity": (risk_amount / equity * 100.0) if equity > 0 else 0.0,
+        "exposure_pct": (qty * price / equity * 100.0) if equity > 0 else 0.0,
         "capped_by_cash": capped,
         "reason": "ok" if qty > 0 else "no_size",
     }
@@ -353,3 +358,16 @@ def _bars_since(frame: pd.DataFrame, position: Dict[str, Any]) -> pd.DataFrame:
     else:
         mask = index > ts
     return frame.loc[np.asarray(mask)]
+
+
+def exit_signal(cfg: LokiConfig, plan: Optional[Dict[str, Any]], quant_action: Optional[str]) -> str:
+    """The signal-exit vote the backtest would use for an open long.
+
+    ``signal`` mode exits on a SELL score; ``trend`` mode exits only when the
+    last completed close is below its 200-bar average.
+    """
+    if cfg.exit_mode == "trend":
+        if plan and plan.get("ready"):
+            return "HOLD" if plan.get("above_sma200") else "SELL"
+        return "HOLD"
+    return str(quant_action or "HOLD").upper()

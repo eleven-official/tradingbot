@@ -44,6 +44,7 @@ _ANALYSIS_LOCK = threading.Lock()
 _ANALYSIS_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _PIPELINE_CACHE: Dict[str, Tuple[Any, Any, bool]] = {}
 _PIPELINE_LOCK = threading.Lock()
+_PROFILE_SOURCE: Dict[str, str] = {}
 
 
 class AiPositionBody(BaseModel):
@@ -81,7 +82,7 @@ def _get_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
     from loki_v8.broker import PaperBroker
     from loki_v8.config import LokiConfig
     from loki_v8.data import is_crypto
-    from loki_v8.train import apply_best, apply_crypto_consensus, load_report
+    from loki_v8.train import apply_best, apply_crypto_consensus, apply_universal, load_report
 
     # The strategy refuses to signal below ``lookback_bars`` (250). A 1y daily
     # window is 365 crypto bars or ~250 equity bars — no slack at all, and a
@@ -90,10 +91,18 @@ def _get_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
     crypto = is_crypto(symbol)
     cfg = LokiConfig(period="3y" if crypto else "2y")
     applied: Dict[str, Any] = {}
+    source = "default"
     try:
         report = load_report()
         if report:
-            applied = apply_best(report, symbol, cfg) or {}
+            # Prefer the 10-20 year universal profile when it passed its
+            # untouched holdout; fall back to the older per-symbol book.
+            applied = apply_universal(report, symbol, cfg) or {}
+            if applied:
+                source = "universal_long_history"
+            else:
+                applied = apply_best(report, symbol, cfg) or {}
+                source = "per_symbol" if applied else "default"
             if not applied and crypto:
                 # No verified per-symbol profile: trade the crypto consensus
                 # rather than the shipped defaults. ``applied`` stays empty so
@@ -103,6 +112,7 @@ def _get_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
     except Exception as exc:  # noqa: BLE001 - degrade to default config
         logger.warning("trained profile unavailable for %s: %s", symbol, exc.__class__.__name__)
     pipeline = LokiAgentPipeline(cfg, broker=PaperBroker(cfg))
+    _PROFILE_SOURCE[symbol] = source
     entry = (pipeline, cfg, bool(applied))
     with _PIPELINE_LOCK:
         _PIPELINE_CACHE[symbol] = entry
@@ -180,7 +190,9 @@ def _analyze(symbol: str) -> Dict[str, Any]:
     }
     try:
         scored = live_engine.score_completed(frame, cfg)
-        analysis["plan"] = live_engine.plan_entry(scored, cfg)
+        analysis["plan"] = live_engine.plan_entry(
+            scored, cfg, bars_per_year=365 if is_crypto(symbol) else 252
+        )
         analysis["plan"]["forming_bar_excluded"] = bool(dropped_forming)
         analysis["managed_frame"] = scored[["close", "atr"]].tail(max(cfg.max_hold_bars, 30) + 10)
     except Exception as exc:  # noqa: BLE001 - plan is additive; keep the trail
@@ -230,7 +242,7 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
             cfg,
             payload.position.model_dump(),
             analysis["price"],
-            (quant or {}).get("action", "HOLD"),
+            live_engine.exit_signal(cfg, plan, (quant or {}).get("action", "HOLD")),
         )
     execution = {
         "executed": False,
@@ -254,7 +266,7 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
     }
     if plan:
         body["plan"] = plan
-        body["profile"] = _profile_summary(cfg)
+        body["profile"] = {**_profile_summary(cfg), "source": _PROFILE_SOURCE.get(symbol, "default")}
     if manage is not None:
         body["manage"] = manage
     return body
@@ -286,6 +298,7 @@ def _apply_plan(
         "atr": sized["atr"],
         "signal_bar": plan.get("signal_bar"),
         "risk_pct_of_equity": round(sized["risk_pct_of_equity"], 3),
+        "exposure_pct": round(sized["exposure_pct"], 2),
         "size_multiplier": plan.get("size_multiplier", 1.0),
         "capped_by_cash": sized["capped_by_cash"],
     }
@@ -307,6 +320,10 @@ def _profile_summary(cfg: Any) -> Dict[str, Any]:
         "adaptive_threshold": cfg.adaptive_threshold,
         "conviction_sizing": cfg.conviction_sizing,
         "vol_target_sizing": cfg.vol_target_sizing,
+        "sizing_mode": cfg.sizing_mode,
+        "exit_mode": cfg.exit_mode,
+        "target_vol_pct": cfg.target_vol_pct,
+        "max_exposure_pct": cfg.max_exposure_pct,
     }
 
 

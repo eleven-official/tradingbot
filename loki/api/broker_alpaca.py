@@ -73,6 +73,9 @@ class AlpacaBarsRequest(AlpacaPaperKeys):
 
 def _require_gate(request: Request) -> None:
     """The relay serves people who already passed the workspace's door."""
+    if not site_access.gate_enabled():
+        # No door on this deployment (local run): nothing to have passed.
+        return
     cookie = request.cookies.get(site_access.GATE_COOKIE)
     if not site_access.verify_gate_cookie_value(cookie or ""):
         raise HTTPException(403, "Open the workspace through its access door first.")

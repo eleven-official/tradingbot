@@ -182,8 +182,17 @@
     signal: 'signal not strong enough',
     warming_up: 'not enough history yet'
   };
+  const RISK_WORDS = {
+    no_position_to_close: 'nothing to sell — no open position',
+    no_signal: 'no trade signal right now',
+    position_already_open: 'already holding this position',
+    daily_loss_limit: 'daily loss limit reached — resting until tomorrow',
+    consecutive_losses: 'losing streak today — resting until tomorrow',
+    max_open_positions: 'maximum open positions reached'
+  };
   function riskReasonText(reason) {
     const text = String(reason || 'unknown');
+    if (RISK_WORDS[text]) return RISK_WORDS[text];
     if (text.startsWith('entry_gate:')) return GATE_WORDS[text.slice(11)] || text.slice(11).replace(/_/g, ' ');
     return text.replace(/_/g, ' ');
   }
@@ -197,9 +206,14 @@
     };
   }
 
+  // The losing-streak guard is a cool-off for the current UTC day. Counting
+  // the streak across days froze the AI forever: after 3 losses it could not
+  // trade, so it could never post the win that resets the streak.
   function consecutiveLosses() {
+    const today = new Date().toISOString().slice(0, 10);
     let count = 0;
     for (const trade of state.trades) {
+      if (String(trade.closed || '').slice(0, 10) !== today) break;
       if (trade.pnl < 0) count += 1;
       else break;
     }
@@ -298,7 +312,8 @@
         regime: data.regime,
         trained_profile_applied: data.trained_profile_applied,
         trail: data.trail,
-        plan: data.plan || null
+        plan: data.plan || null,
+        profile: data.profile || null
       };
       state.curve.push({ t: Date.now(), e: equityNow() });
       if (state.curve.length > 240) state.curve.splice(0, state.curve.length - 240);
@@ -349,8 +364,8 @@
         body = entry.approved
           ? `<strong style="color:#b8f0d8">Approved</strong> — size ${escapeHtml(Number(entry.qty).toFixed(4))}` +
             (entry.stop ? `<br>stop ${escapeHtml(Number(entry.stop).toFixed(2))} · target ${escapeHtml(Number(entry.target).toFixed(2))}` : '') +
-            (Number.isFinite(entry.risk_pct_of_equity) ? `<br><span style="color:#7f93a8">risks ${escapeHtml(entry.risk_pct_of_equity)}% of equity at the stop</span>` : '')
-          : `<strong>Declined</strong> — ${escapeHtml(riskReasonText(entry.reason || 'no_signal'))}`;
+            (Number.isFinite(entry.exposure_pct) ? `<br><span style="color:#7f93a8">${escapeHtml(entry.exposure_pct)}% of equity invested · risks ${escapeHtml(entry.risk_pct_of_equity)}% at the stop</span>` : Number.isFinite(entry.risk_pct_of_equity) ? `<br><span style="color:#7f93a8">risks ${escapeHtml(entry.risk_pct_of_equity)}% of equity at the stop</span>` : '')
+          : `<strong>${['no_position_to_close', 'no_signal'].includes(entry.reason) ? 'Standing aside' : 'Declined'}</strong> — ${escapeHtml(riskReasonText(entry.reason || 'no_signal'))}`;
       }
       if (entry.agent === 'execution') {
         body = 'Paper fill happens in your browser journal — no real orders.';
@@ -359,9 +374,12 @@
         `<p style="letter-spacing:.14em;font-size:10.5px;color:${color};margin-bottom:6px">${name}</p>` +
         `<p style="font-size:13px;line-height:1.5;color:#e7f0ff">${body}</p></article>`;
     });
-    const profileBadge = data.trained_profile_applied
-      ? `<span class="tag">Trained profile active</span>`
-      : `<span class="tag">Default params (no trained profile)</span>`;
+    const source = data.profile && data.profile.source;
+    const profileBadge = source === 'universal_long_history'
+      ? `<span class="tag" title="One rulebook fitted on up to 20 years of history and checked on untouched recent data">20-year trained profile${data.profile.exit_mode === 'trend' ? ' · trend exit' : ''}</span>`
+      : data.trained_profile_applied
+        ? `<span class="tag">Trained profile active</span>`
+        : `<span class="tag">Default params (no trained profile)</span>`;
     // Entry checklist: the same gates the verified backtest applied.
     const plan = data.plan;
     let gatesHtml = '';
@@ -708,7 +726,7 @@
   }
 
   const metric = (label, value) =>
-    `<article class="metric"><p>${label}</p><strong>${value}</strong></article>`;
+    `<article class="metric"><p>${label}</p><strong style="white-space:nowrap;font-size:clamp(18px,2.2vw,30px);overflow:hidden;text-overflow:ellipsis;display:block">${value}</strong></article>`;
 
   async function loadSymbols() {
     const select = $('ai-symbol');

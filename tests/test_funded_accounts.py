@@ -111,3 +111,63 @@ def test_partial_data_failure_is_not_reported_as_empty_positions(monkeypatch):
     result = tradovate.snapshot("demo", TOKEN)
     assert result["connected"] and result["positions"] is None and result["balances"] is None
     assert len(result["messages"]) == 2
+
+
+def test_credential_sign_in_keeps_only_the_issued_token(client, monkeypatch):
+    seen = {}
+
+    def fake_request_token(environment, name, password, cid, sec, app_id):
+        seen.update(environment=environment, name=name, cid=cid)
+        return TOKEN, int(time.time()) + 600
+
+    monkeypatch.setattr(tradovate, "request_token", fake_request_token)
+    response = client.post("/api/account/funded/login", json={
+        "environment": "demo", "username": "trader1", "password": "hunter2-secret",
+        "cid": 1234, "sec": "api-secret-value"})
+    assert response.status_code == 200, response.text
+    assert seen == {"environment": "demo", "name": "trader1", "cid": 1234}
+    for secret in ("hunter2-secret", "api-secret-value", TOKEN):
+        assert secret not in response.text and secret not in response.headers["set-cookie"]
+    assert client.get("/api/account/funded").json()["connected"] is True
+
+
+def test_credential_sign_in_failures_are_human_and_set_no_cookie(client, monkeypatch):
+    def refuse(*args, **kwargs):
+        raise tradovate.TradovateError("Incorrect username or password.")
+
+    monkeypatch.setattr(tradovate, "request_token", refuse)
+    response = client.post("/api/account/funded/login", json={
+        "environment": "demo", "username": "trader1", "password": "pw-never-echoed",
+        "cid": 1, "sec": "s"})
+    assert response.status_code == 422
+    assert "Incorrect username" in response.json()["detail"]
+    assert "pw-never-echoed" not in response.text
+    assert "set-cookie" not in response.headers
+    bad = client.post("/api/account/funded/login", json={"environment": "demo", "password": "pw-never-echoed"})
+    assert bad.status_code == 422 and "pw-never-echoed" not in bad.text
+
+
+def test_request_token_maps_tradovate_answers(monkeypatch):
+    class Answer:
+        def __init__(self, payload, status=200):
+            self.payload, self.status_code = payload, status
+
+        def json(self):
+            return self.payload
+
+    answers = iter([
+        Answer({"accessToken": "t" * 40, "expirationTime": "2030-01-01T00:00:00Z"}),
+        Answer({"errorText": "Incorrect username or password."}),
+        Answer({"p-ticket": "abc", "p-time": 15}),
+    ])
+    calls = []
+    monkeypatch.setattr(tradovate.requests, "post", lambda url, **kw: calls.append(url) or next(answers))
+    token, expires = tradovate.request_token("demo", "u", "p", 1, "s")
+    assert token == "t" * 40 and expires == 1893456000
+    assert calls[0] == "https://demo.tradovateapi.com/v1/auth/accesstokenrequest"
+    with pytest.raises(tradovate.TradovateError, match="Incorrect"):
+        tradovate.request_token("demo", "u", "p", 1, "s")
+    with pytest.raises(tradovate.TradovateError, match="15 seconds"):
+        tradovate.request_token("demo", "u", "p", 1, "s")
+    with pytest.raises(tradovate.TradovateError):
+        tradovate.request_token("elsewhere", "u", "p", 1, "s")

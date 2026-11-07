@@ -38,6 +38,11 @@ PROFILES = [
     dict(signal_threshold=8.0, require_trend_filter=False, max_atr_pct=2.05, conviction_sizing=True),
     dict(signal_threshold=15.0, adaptive_threshold=True, breakeven_atr=0.5, trailing_stop_atr=2.0),
     dict(signal_threshold=10.0, partial_tp_atr=1.5, take_profit_atr=4.0, vol_target_sizing=True),
+    # v9 universal shape: vol-target sizing, no fixed target, trailing exit.
+    dict(signal_threshold=5.0, sizing_mode="vol_target", target_vol_pct=15.0, take_profit_atr=0.0,
+         stop_loss_atr=6.0, trailing_stop_atr=4.0, max_hold_bars=0),
+    dict(signal_threshold=8.0, sizing_mode="vol_target", take_profit_atr=0.0, stop_loss_atr=10.0,
+         max_hold_bars=0, exit_mode="trend"),
 ]
 
 
@@ -196,3 +201,40 @@ class TestManagement:
         assert out["scale_out"] == 0.5 and out["stop"] == pytest.approx(101.2)
         again = live_engine.manage_position(frame, cfg, {**pos, "leg1_done": True}, 101.2, "HOLD")
         assert again["scale_out"] == 0.0 and not again["exit"]
+
+
+class TestVolTargetSizing:
+    def test_exposure_follows_target_over_realised_vol_and_is_capped(self):
+        cfg = LokiConfig(sizing_mode="vol_target", target_vol_pct=15.0, max_exposure_pct=100.0,
+                         stop_loss_atr=3.0, take_profit_atr=0.0)
+        calm = live_engine.size_entry(cfg, {"atr": 2.0, "ann_vol": 0.30, "size_multiplier": 1.0}, 100.0, 10_000, 10_000)
+        assert calm["exposure_pct"] == pytest.approx(50.0)  # 15% / 30%
+        assert calm["target"] == 0.0  # no fixed target: winners run
+        quiet = live_engine.size_entry(cfg, {"atr": 2.0, "ann_vol": 0.05, "size_multiplier": 1.0}, 100.0, 10_000, 10_000)
+        assert quiet["exposure_pct"] == pytest.approx(100.0)  # capped
+        broke = live_engine.size_entry(cfg, {"atr": 2.0, "ann_vol": 0.05, "size_multiplier": 1.0}, 100.0, 10_000, 2_000)
+        assert broke["exposure_pct"] == pytest.approx(20.0) and broke["capped_by_cash"]
+        unknown = live_engine.size_entry(cfg, {"atr": 2.0, "ann_vol": 0.0, "size_multiplier": 1.0}, 100.0, 10_000, 10_000)
+        assert unknown["qty"] == 0.0  # no volatility estimate: no trade
+
+    def test_backtest_uses_far_more_capital_than_classic_sizing(self):
+        df = _tape()
+        base = dict(signal_threshold=5.0, take_profit_atr=0.0, stop_loss_atr=6.0, trailing_stop_atr=4.0, max_hold_bars=0)
+        classic = run_backtest(df, LokiConfig(**base))
+        vol = run_backtest(df, LokiConfig(**base, sizing_mode="vol_target", target_vol_pct=20.0))
+        notional = lambda r: sum(t.qty * t.entry_price for t in r.trades) / max(1, len(r.trades))  # noqa: E731
+        assert notional(vol) > 2 * notional(classic)
+        assert all(t.qty * t.entry_price <= 100_000 * 1.01 for t in vol.trades)
+
+    def test_plan_reports_realised_vol(self):
+        df = _tape()
+        cfg = LokiConfig(sizing_mode="vol_target")
+        plan = live_engine.plan_entry(EnsembleStrategy(cfg).score_frame(df), cfg)
+        assert 0.05 < plan["ann_vol"] < 1.0 and plan["sizing_mode"] == "vol_target"
+
+
+def test_trend_exit_vote():
+    cfg = LokiConfig(exit_mode="trend")
+    assert live_engine.exit_signal(cfg, {"ready": True, "above_sma200": True}, "SELL") == "HOLD"
+    assert live_engine.exit_signal(cfg, {"ready": True, "above_sma200": False}, "BUY") == "SELL"
+    assert live_engine.exit_signal(LokiConfig(), {"ready": True, "above_sma200": True}, "sell") == "SELL"

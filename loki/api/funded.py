@@ -86,6 +86,61 @@ class ConnectBody(BaseModel):
     access_token: SecretStr = Field(min_length=16, max_length=1800)
 
 
+class LoginBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    environment: Literal["demo", "live"]
+    username: str = Field(min_length=1, max_length=120)
+    password: SecretStr = Field(min_length=1, max_length=200)
+    cid: int = Field(ge=0, le=10_000_000)
+    sec: SecretStr = Field(min_length=1, max_length=200)
+    app_id: str = Field(default="Loki", min_length=1, max_length=60)
+
+
+async def _read_limited(request: Request, limit: int = 4096) -> bytes:
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > limit:
+            raise HTTPException(413, "Connection request is too large.")
+    return bytes(raw)
+
+
+@router.post("/login")
+async def login(request: Request, response: Response) -> dict[str, Any]:
+    """Sign in with Tradovate API credentials; only the issued token is kept."""
+    uid = owner(request)
+    cipher()
+    try:
+        body = LoginBody.model_validate_json(await _read_limited(request))
+    except ValueError:
+        # Never echo submitted credentials back.
+        raise HTTPException(
+            422, "Enter your Tradovate username, password, API client ID (CID) and API secret."
+        ) from None
+    try:
+        token, expires = await run_in_threadpool(
+            tradovate.request_token,
+            body.environment,
+            body.username.strip(),
+            body.password.get_secret_value(),
+            body.cid,
+            body.sec.get_secret_value(),
+            body.app_id.strip(),
+        )
+    except tradovate.TradovateError as exc:
+        raise HTTPException(422, str(exc)) from None
+    now = int(time.time())
+    data = {
+        "owner": uid,
+        "environment": body.environment,
+        "token": token,
+        "expires": min(now + TTL, expires) if expires and expires > now else now + TTL,
+    }
+    result = await account_snapshot(data)
+    set_session(response, request, data)
+    return result
+
+
 @router.get("")
 async def status(request: Request) -> dict[str, Any]:
     uid = owner(request)

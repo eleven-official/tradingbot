@@ -96,3 +96,25 @@ test('same-day losses keep the original daily baseline', async () => {
   await r.check(100, 5);
   assert.equal(r.requests[0].body.equity_start, 10000);
 });
+
+test('losing-streak guard only counts today, so an old streak cannot freeze the AI', async () => {
+  const old = '2020-01-0' ;
+  const losses = [1, 2, 3].map((d) => ({pnl: -10, closed: `${old}${d}T15:00:00Z`}));
+  const paper = runner({trades: losses});
+  await paper.check(100, 1);
+  assert.equal(paper.requests[0].body.consecutive_losses, 0);
+  const today = new Date().toISOString();
+  const fresh = runner({trades: [{pnl: -5, closed: today}, {pnl: -5, closed: today}, ...losses]});
+  await fresh.check(100, 1);
+  assert.equal(fresh.requests[0].body.consecutive_losses, 2);
+});
+
+test('step sends the open position so the server can manage it', async () => {
+  const paper = runner({position: {symbol: 'SPY', qty: 3, entry: 100, stop: 95, target: 0, atr: 2,
+    signalBar: '2026-01-05T00:00:00', opened: '2026-01-06T15:00:00Z', leg1Done: false}});
+  await paper.check(101, 1);
+  const sent = paper.requests[0].body.position;
+  assert.equal(sent.entry, 100);
+  assert.equal(sent.signal_bar, '2026-01-05T00:00:00');
+  assert.equal(sent.leg1_done, false);
+});
