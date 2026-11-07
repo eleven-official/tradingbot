@@ -43,6 +43,26 @@ Optional environment variables: `LOKI_SITE_GATE=1` enables the gate, `SUPABASE_U
 
 The AI paper trader (`/api/fusion/ai/step`) decides through `loki_v8/live_engine.py`, which mirrors `run_backtest` bar for bar: it scores only the last *completed* daily bar (today's forming candle is excluded), applies the same trend / regime / volatility gates and conviction / vol-target sizing, and manages open positions with the profile's time stop, breakeven lock, trailing stop and partial target. `tests/test_live_engine.py` replays backtests and checks the live planner agrees on every entry decision.
 
+## 20-year universal profiles (current live AI)
+
+`train_long_history.py` fits ONE rulebook for stocks/ETFs and one for crypto on daily data from 2004 (crypto from 2014), using the same `run_backtest` the live engine mirrors, with 10 bps fees + 5 bps slippage per side:
+
+- **select** on the worse of development (2005-2018; crypto 2015-2020) and validation (2019-2022; crypto 2021-2022) scores;
+- **report once** on the untouched holdout (2023 onward); the live AI only uses a block marked `verified` (made money on the holdout).
+
+Results shipped in `loki_v8/training_report_snapshot.json` (`universal`), data through 2026-11-06:
+
+| Holdout 2023→ | AI avg / yr | Profitable | AI avg worst DD | Buy & hold avg / yr | B&H avg worst DD |
+|---|---|---|---|---|---|
+| Stocks/ETFs (13) | +12.3% | 12/13 | −20.9% | +27.8% | −26.7% |
+| Crypto (8) | +9.2% | 7/8 | −29.4% | +17.3% | −71.3% |
+
+Stocks use trend-only scoring, entry at score ≥ 30, vol-target sizing (20%), and hold until price breaks its 200-day average (10 ATR protective stop). Crypto uses trend-leader scoring, entry ≥ 8, SELL-signal exit. The AI makes money out of sample but trails buy-and-hold in the strong 2023-26 bull market; its edge is far smaller drawdowns. Historical results, not a promise.
+
+```powershell
+python train_long_history.py --write-snapshot        # ~30 min on 4 cores
+```
+
 ## Strategy book and paper sessions
 
 The ensemble's execution parameters are trained walk-forward per symbol and verified out of sample (`loki_v8/train.py`). The verified profiles ship in `loki_v8/training_report_snapshot.json`, and that snapshot is what the server applies to a symbol before it emits a decision.
