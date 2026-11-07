@@ -22,56 +22,51 @@ from core.copilot import LokiCopilot
 from core.risk_preview import preview_position
 from core.strategy_lab import evaluate_strategy
 from loki.api import site_access
-from loki.api.member_data import router as member_router
-from loki.api.ai_paper import router as ai_paper_router
-from loki.api.news_desk import router as news_desk_router
 from loki.api.ai_chat import router as ai_chat_router
-from loki.api.fusion import router as fusion_router
+from loki.api.ai_paper import router as ai_paper_router
+from loki.api.analogue import router as analogue_router
+from loki.api.broker_alpaca import router as broker_alpaca_router
+from loki.api.broker_workspace import router as broker_workspace_router
+from loki.api.cloud_research import router as cloud_research_router
 from loki.api.dive_board import router as dive_board_router
 from loki.api.dive_sessions import router as dive_sessions_router
+from loki.api.funded import router as funded_router
+from loki.api.fusion import router as fusion_router
+from loki.api.indicator_page import router as indicator_page_router
+from loki.api.live_markets import router as live_markets_router
+from loki.api.member_data import router as member_router
+from loki.api.news_desk import router as news_desk_router
+from loki.api.paper_tools import router as paper_tools_router
 from loki.api.revenue import router as revenue_router
-from loki.api.broker_workspace import router as broker_workspace_router
+from loki.api.trading_desk import router as trading_desk_router
+from loki.api.watchtower import router as watchtower_router
 
 app = FastAPI(
     title="Loki Trading Platform",
     version=__version__,
     description="Loki research workspace and read-only trading copilot",
 )
-app.include_router(fusion_router)
-app.include_router(broker_workspace_router)
-app.include_router(ai_paper_router)
-app.include_router(ai_chat_router)
-from loki.api.paper_tools import router as paper_tools_router
-
-app.include_router(paper_tools_router)
-from loki.api.watchtower import router as watchtower_router
-
-app.include_router(watchtower_router)
-from loki.api.broker_alpaca import router as broker_alpaca_router
-
-app.include_router(broker_alpaca_router)
-from loki.api.trading_desk import router as trading_desk_router
-
-app.include_router(trading_desk_router)
-from loki.api.news_desk import router as news_desk_router
-
-app.include_router(news_desk_router)
-app.include_router(dive_board_router)
-app.include_router(dive_sessions_router)
-app.include_router(revenue_router)
-app.include_router(member_router)
-from loki.api.cloud_research import router as cloud_research_router
-
-app.include_router(cloud_research_router)
-from loki.api.funded import router as funded_router
-
-app.include_router(funded_router)
-from loki.api.analogue import router as analogue_router
-
-app.include_router(analogue_router)
-from loki.api.indicator_page import router as indicator_page_router
-
-app.include_router(indicator_page_router)
+for _router in (
+    fusion_router,
+    broker_workspace_router,
+    ai_paper_router,
+    ai_chat_router,
+    paper_tools_router,
+    watchtower_router,
+    live_markets_router,
+    broker_alpaca_router,
+    trading_desk_router,
+    news_desk_router,
+    dive_board_router,
+    dive_sessions_router,
+    revenue_router,
+    member_router,
+    cloud_research_router,
+    funded_router,
+    analogue_router,
+    indicator_page_router,
+):
+    app.include_router(_router)
 
 
 @app.middleware("http")

@@ -13,7 +13,7 @@
     .mark-row { display: flex; align-items: center; gap: 12px; }
     .mark { display: inline-grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(201,184,255,.45); border-radius: 12px; font-weight: 800; color: #c9b8ff; font-size: 19px; }
     .mark-row b { font-size: 20px; letter-spacing: .04em; }
-    .mark-row span { color: #7f93a8; font-size: 12px; display: block; letter-spacing: .14em; }
+    .mark-row span:not(.mark) { color: #7f93a8; font-size: 12px; display: block; letter-spacing: .14em; }
     .eyebrow { color: #c9b8ff; letter-spacing: .18em; font-size: 11px; font-weight: 600; margin-bottom: 8px; }
     h1 { font-size: 30px; line-height: 1.15; margin-bottom: 10px; } h1 em { color: #c9b8ff; font-style: normal; }
     p.muted { color: #9fb0c2; font-size: 14px; line-height: 1.65; }
@@ -90,7 +90,7 @@
     <section id="room" hidden>
       <div class="pill-row">
         <div><span class="badge" id="whoBadge">MEMBER</span> <span class="muted" id="whoName" style="margin-left:8px"></span></div>
-        <button class="quiet" id="logoutBtn">Leave the room</button>
+        <div><button class="quiet" id="clearHistoryBtn" type="button" title="Removes the saved conversation from this browser">Clear my chat</button> <button class="quiet" id="logoutBtn">Leave the room</button></div>
       </div>
       <div class="room">
         <div class="card">
@@ -106,7 +106,8 @@
             <button type="button" class="quiet" data-ask="what is moving BTC/USD?">BTC pulse</button>
             <button type="button" class="quiet" data-ask="what do you remember?">what you remember</button>
           </div>
-          <p class="muted" style="font-size:11.5px;margin-top:8px" id="learnNote">Internet sweeps refresh at most every 5 minutes — quiet until then.</p>
+          <p class="muted" style="font-size:11.5px;margin-top:8px">Your conversation is saved in this browser, so it is still here when you come back.</p>
+          <p class="muted" style="font-size:11.5px;margin-top:4px" id="learnNote">Internet sweeps refresh at most every 5 minutes — quiet until then.</p>
         </div>
         <aside class="card panel">
           <h2>LOKI'S MEMORY</h2>

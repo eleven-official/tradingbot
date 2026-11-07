@@ -35,6 +35,14 @@ Optional environment variables: `LOKI_SITE_GATE=1` enables the gate, `SUPABASE_U
 - The "Bored?" game is entirely local: scores and dive history never leave the browser, and its rarity tiers are hand-written bank data, not measurements from other players.
 - `pytest` (all Python tests), plus `node --test` for the two JavaScript test modules. The CI workflows in `.github/` run both on every push.
 
+## Live markets
+
+`/#live-markets` is a self-refreshing board (every ~15 s while the view is open and the tab is visible) covering crypto majors, US mega-caps, indices, commodities and FX, with session status, top movers, flash-on-change tiles and a personal watchlist saved in the browser. Clicking a tile opens its chart and the AI engine's review-only read for that symbol. Served by `loki/api/live_markets.py` (`/api/markets/live`, `/api/markets/quotes`); crypto comes from Binance Spot (live), everything else from Yahoo Finance (near-live). Failed feeds stay visible per tile.
+
+## Live AI follows the verified rules
+
+The AI paper trader (`/api/fusion/ai/step`) decides through `loki_v8/live_engine.py`, which mirrors `run_backtest` bar for bar: it scores only the last *completed* daily bar (today's forming candle is excluded), applies the same trend / regime / volatility gates and conviction / vol-target sizing, and manages open positions with the profile's time stop, breakeven lock, trailing stop and partial target. `tests/test_live_engine.py` replays backtests and checks the live planner agrees on every entry decision.
+
 ## Strategy book and paper sessions
 
 The ensemble's execution parameters are trained walk-forward per symbol and verified out of sample (`loki_v8/train.py`). The verified profiles ship in `loki_v8/training_report_snapshot.json`, and that snapshot is what the server applies to a symbol before it emits a decision.

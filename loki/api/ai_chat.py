@@ -28,6 +28,7 @@ import os
 import re
 import secrets
 import sqlite3
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -97,7 +98,33 @@ _DB_LOCK = threading.RLock()
 _DERIVATIVE_DIR = Path(__file__).resolve().parents[2] / "state" / "public_derivatives"
 
 _COOKIE_SALT = b"loki-sentient-chat-v1"
-_PROCESS_SECRET = os.environ.get("LOKI_CHAT_SESSION_SECRET", "").encode() or secrets.token_bytes(32)
+_PROCESS_SECRET = secrets.token_bytes(32)
+# Serverless hosts (Vercel) ship the code read-only; only the temp dir is
+# writable. Memory there is per-instance, so the browser keeps its own copy
+# of the conversation too (static/js/ai_chat.js).
+_FALLBACK_DB_DIR = Path(tempfile.gettempdir()) / "loki_ai_chat"
+if not _env_db and os.environ.get("VERCEL"):
+    _DB_DIR = _FALLBACK_DB_DIR
+    _DB_PATH = _DB_DIR / "memory.sqlite3"
+
+
+def _session_secret() -> bytes:
+    """Cookie signing key that survives cold starts and multiple instances.
+
+    A random per-process key logged every visitor out whenever a serverless
+    instance recycled. Prefer an explicit chat secret, then the site gate's
+    stable secret material (never sent anywhere), and only then the
+    per-process fallback.
+    """
+    explicit = os.environ.get("LOKI_CHAT_SESSION_SECRET", "").strip()
+    if explicit:
+        return explicit.encode()
+    try:
+        from loki.api import site_access
+
+        return hmac.new(site_access._secret(), b"loki-chat-session", hashlib.sha256).digest()
+    except Exception:  # noqa: BLE001 - never block chat on gate config
+        return _PROCESS_SECRET
 
 
 def _chat_code() -> str:
@@ -140,10 +167,29 @@ CREATE INDEX IF NOT EXISTS turns_created ON turns (created_at DESC);
 """
 
 
-def _connect() -> sqlite3.Connection:
+def _open_db() -> sqlite3.Connection:
     _DB_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_DB_PATH, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        conn.close()
+        raise
+    return conn
+
+
+def _connect() -> sqlite3.Connection:
+    global _DB_DIR, _DB_PATH
+    try:
+        conn = _open_db()
+    except (OSError, sqlite3.OperationalError) as exc:
+        # Read-only deploy directory: fall back to the writable temp dir
+        # instead of failing every chat request with a 500.
+        if _DB_DIR == _FALLBACK_DB_DIR:
+            raise
+        logger.warning("chat memory dir not writable (%s); using temp dir", exc.__class__.__name__)
+        _DB_DIR, _DB_PATH = _FALLBACK_DB_DIR, _FALLBACK_DB_DIR / "memory.sqlite3"
+        conn = _open_db()
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     with _DB_LOCK:
@@ -282,7 +328,7 @@ def admin_journal(action: str, detail: str) -> None:
 # ---------------------------------------------------------------------------
 def _sign(payload: str) -> str:
     return hmac.new(
-        _COOKIE_SALT + _PROCESS_SECRET, payload.encode("utf-8"), hashlib.sha256
+        _COOKIE_SALT + _session_secret(), payload.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
 

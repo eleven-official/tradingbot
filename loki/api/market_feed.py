@@ -78,14 +78,18 @@ class Quote:
     observed_at: float
 
 
-def fetch_quote(symbol: str) -> dict[str, Any]:
-    """One normalized public quote, cached briefly per symbol."""
+def fetch_quote(symbol: str, max_age: float = QUOTE_TTL_SECONDS) -> dict[str, Any]:
+    """One normalized public quote, cached briefly per symbol.
+
+    ``max_age`` lets the live markets board ask for fresher numbers than the
+    watchtower; every caller shares one cache either way.
+    """
     normalized = normalize_symbol(symbol)
     provider = classify_symbol(normalized)
     key = f"{provider}:{normalized}"
     now = time.time()
     cached = _quote_cache.get(key)
-    if cached is not None and now - cached[0] < QUOTE_TTL_SECONDS:
+    if cached is not None and now - cached[0] < max(1.0, max_age):
         return dict(cached[1])
     if provider == "binance":
         fresh = _fetch_binance_quote(normalized)
@@ -255,11 +259,13 @@ def _fetch_yahoo_quote(symbol: str) -> dict[str, Any]:
     )
 
 
-def quote_or_failure(symbol: str, label: str | None = None) -> dict[str, Any]:
+def quote_or_failure(
+    symbol: str, label: str | None = None, max_age: float = QUOTE_TTL_SECONDS
+) -> dict[str, Any]:
     """Convert one provider call into either a quote or an honest failure."""
     try:
         normalized = normalize_symbol(symbol)
-        result = fetch_quote(normalized)
+        result = fetch_quote(normalized, max_age) if max_age != QUOTE_TTL_SECONDS else fetch_quote(normalized)
     except (MarketFeedError, MarketDataError) as error:
         try:
             normalized = normalize_symbol(symbol)

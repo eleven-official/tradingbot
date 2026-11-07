@@ -27,13 +27,13 @@ import math
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from loki.api.fusion import _private_response
-from loki_v8 import memory_agent
+from loki_v8 import live_engine, memory_agent
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,19 @@ _PIPELINE_CACHE: Dict[str, Tuple[Any, Any, bool]] = {}
 _PIPELINE_LOCK = threading.Lock()
 
 
+class AiPositionBody(BaseModel):
+    """The browser journal's open position, so the server can manage it."""
+
+    model_config = ConfigDict(extra="ignore")
+    entry: float = Field(gt=0.0, le=1e12)
+    stop: float = Field(default=0.0, ge=0.0, le=1e12)
+    target: float = Field(default=0.0, ge=0.0, le=1e12)
+    atr: float = Field(default=0.0, ge=0.0, le=1e12)
+    signal_bar: Optional[str] = Field(default=None, max_length=40)
+    opened_at: Optional[str] = Field(default=None, max_length=40)
+    leg1_done: bool = False
+
+
 class AiStepBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     symbol: str = Field(min_length=1, max_length=12, pattern=r"^[A-Za-z0-9.^=\-]+$")
@@ -54,6 +67,8 @@ class AiStepBody(BaseModel):
     has_position: bool = False
     equity_start: float = Field(default=0.0, ge=0.0, le=100_000_000.0)
     consecutive_losses: int = Field(default=0, ge=0, le=100)
+    cash: Optional[float] = Field(default=None, ge=0.0, le=100_000_000.0)
+    position: Optional[AiPositionBody] = None
 
 
 def _get_pipeline(symbol: str) -> Tuple[Any, Any, bool]:
@@ -124,9 +139,16 @@ def _analyze(symbol: str) -> Dict[str, Any]:
 
     pipeline, cfg, trained_applied = _get_pipeline(symbol)
     try:
-        frame = pipeline.provider.fetch_history(symbol, cfg.period, cfg.timeframe)
-        if frame is None or frame.empty:
+        raw = pipeline.provider.fetch_history(symbol, cfg.period, cfg.timeframe)
+        if raw is None or raw.empty:
             raise ValueError("no history")
+        # Decide on completed bars only, exactly like the verified backtest:
+        # the forming daily candle can flip a signal intraday.
+        from loki_v8.data import is_crypto
+
+        frame, dropped_forming = live_engine.drop_forming_bar(
+            raw, crypto=is_crypto(symbol), timeframe=cfg.timeframe
+        )
         regime = detect_regime(frame)
         # The memory agent reviews past postures on the same fetched frame
         # BEFORE the Director runs, so the thesis can carry the self-review.
@@ -136,7 +158,7 @@ def _analyze(symbol: str) -> Dict[str, Any]:
         quotes = pipeline.provider.get_quotes([symbol])
         price = float(quotes.get(symbol) or 0.0)
         if not math.isfinite(price) or price <= 0.0:
-            price = float(frame["close"].iloc[-1])
+            price = float(raw["close"].iloc[-1])
         if not math.isfinite(price) or price <= 0.0:
             raise ValueError("No finite positive market price")
     except HTTPException:
@@ -156,6 +178,13 @@ def _analyze(symbol: str) -> Dict[str, Any]:
         "director": director,
         "quant": signal,
     }
+    try:
+        scored = live_engine.score_completed(frame, cfg)
+        analysis["plan"] = live_engine.plan_entry(scored, cfg)
+        analysis["plan"]["forming_bar_excluded"] = bool(dropped_forming)
+        analysis["managed_frame"] = scored[["close", "atr"]].tail(max(cfg.max_hold_bars, 30) + 10)
+    except Exception as exc:  # noqa: BLE001 - plan is additive; keep the trail
+        logger.warning("live plan unavailable for %s: %s", symbol, exc.__class__.__name__)
     with _ANALYSIS_LOCK:
         _ANALYSIS_CACHE[symbol] = (time.time(), analysis)
     return analysis
@@ -191,6 +220,18 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
         }
     elif quant and quant.get("action") == "BUY" and payload.has_position:
         risk = {"approved": False, "action": "BUY", "reason": "position_already_open"}
+    plan = analysis.get("plan")
+    if plan and risk.get("approved") and risk.get("action") == "BUY":
+        risk = _apply_plan(cfg, plan, risk, analysis["price"], payload)
+    manage = None
+    if payload.position is not None and analysis.get("managed_frame") is not None:
+        manage = live_engine.manage_position(
+            analysis["managed_frame"],
+            cfg,
+            payload.position.model_dump(),
+            analysis["price"],
+            (quant or {}).get("action", "HOLD"),
+        )
     execution = {
         "executed": False,
         "reason": "paper_fill_by_browser",
@@ -203,13 +244,69 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
         {"agent": "risk", **risk},
         {"agent": "execution", **execution},
     ]
-    return {
+    body: Dict[str, Any] = {
         "symbol": symbol,
         "price": analysis["price"],
         "regime": analysis.get("regime"),
         "trained_profile_applied": analysis.get("trained_profile_applied", False),
         "trail": trail,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    if plan:
+        body["plan"] = plan
+        body["profile"] = _profile_summary(cfg)
+    if manage is not None:
+        body["manage"] = manage
+    return body
+
+
+def _apply_plan(
+    cfg: Any, plan: Dict[str, Any], risk: Dict[str, Any], price: float, payload: AiStepBody
+) -> Dict[str, Any]:
+    """Hold a risk-approved BUY to the verified backtest's gates and sizing."""
+    if not plan.get("allowed"):
+        return {
+            "approved": False,
+            "action": "BUY",
+            "reason": f"entry_gate:{plan.get('reason', 'hold')}",
+            "gates": plan.get("gates", []),
+        }
+    cash = payload.cash if payload.cash is not None else payload.equity
+    sized = live_engine.size_entry(cfg, plan, price, payload.equity, cash)
+    if sized["qty"] <= 0:
+        return {"approved": False, "action": "BUY", "reason": sized["reason"]}
+    return {
+        **risk,
+        "approved": True,
+        "reason": "ok",
+        "qty": sized["qty"],
+        "stop": sized["stop"],
+        "target": sized["target"],
+        "partial": sized["partial"],
+        "atr": sized["atr"],
+        "signal_bar": plan.get("signal_bar"),
+        "risk_pct_of_equity": round(sized["risk_pct_of_equity"], 3),
+        "size_multiplier": plan.get("size_multiplier", 1.0),
+        "capped_by_cash": sized["capped_by_cash"],
+    }
+
+
+def _profile_summary(cfg: Any) -> Dict[str, Any]:
+    """The rules the live engine is applying, so the UI can show them."""
+    return {
+        "signal_threshold": cfg.signal_threshold,
+        "stop_loss_atr": cfg.stop_loss_atr,
+        "take_profit_atr": cfg.take_profit_atr,
+        "max_hold_bars": cfg.max_hold_bars,
+        "breakeven_atr": cfg.breakeven_atr,
+        "trailing_stop_atr": cfg.trailing_stop_atr,
+        "partial_tp_atr": cfg.partial_tp_atr,
+        "require_trend_filter": cfg.require_trend_filter,
+        "max_atr_pct": cfg.max_atr_pct,
+        "risk_per_trade_pct": cfg.risk_per_trade_pct,
+        "adaptive_threshold": cfg.adaptive_threshold,
+        "conviction_sizing": cfg.conviction_sizing,
+        "vol_target_sizing": cfg.vol_target_sizing,
     }
 
 

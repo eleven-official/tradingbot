@@ -5,10 +5,10 @@
   <meta name="description" content="Loki brings strategy research, structured agent reviews, paper portfolios, and scenario analysis into one evidence-led workspace.">
   <title>Loki · Trading intelligence</title>
   <script src="/api/account/storage-context.js" defer></script><script src="/static/js/scoped_storage.js?v={{ version }}" defer></script><script src="/static/js/cloud_sync.js?v={{ version }}" defer></script>
-  <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/proof_engine.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/desk.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/dive_board.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script><script src="/static/js/aurora.js?v={{ version }}" defer></script>
+  <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/proof_engine.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/desk.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/dive_board.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/live_markets.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script><script src="/static/js/aurora.js?v={{ version }}" defer></script>
   <link rel="stylesheet" href="/static/css/trading.css?v={{ version }}">
   <link rel="stylesheet" href="/static/css/workspace-polish.css?v={{ version }}">
-  <link rel="stylesheet" href="/static/css/studio.css?v={{ version }}">
+  <link rel="stylesheet" href="/static/css/studio.css?v={{ version }}"><link rel="stylesheet" href="/static/css/live_markets.css?v={{ version }}">
 </head>
 <body class="loki-workspace">
   <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0">
@@ -38,6 +38,7 @@
       <a href="#cloud-research" data-view="cloud-research"><svg class="ui-icon" aria-hidden="true"><use href="#icon-layers"/></svg> Cloud research</a>
       <a href="#portfolio" data-view="portfolio"><svg class="ui-icon" aria-hidden="true"><use href="#icon-wallet"/></svg> Paper portfolio</a>
       <a href="#ai-trading" data-view="ai-trading"><svg class="ui-icon" aria-hidden="true"><use href="#icon-spark"/></svg> AI trading</a>
+      <a href="#live-markets" data-view="live-markets"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chart"/></svg> Live markets <span class="nav-live-dot" aria-hidden="true"></span></a>
       <a href="#news" data-view="news"><svg class="ui-icon" aria-hidden="true"><use href="#icon-news"/></svg> News</a>
       <button type="button" class="nav-more" id="nav-more-toggle" aria-expanded="false" aria-controls="nav-more-group"><svg class="ui-icon" aria-hidden="true"><use href="#icon-layers"/></svg> More tools <span class="nav-chevron" aria-hidden="true">⌄</span></button>
       <div class="nav-more-group" id="nav-more-group" hidden>
@@ -126,6 +127,37 @@
         <a href="#scenarios" class="workflow-card"><span class="step-number">04</span><span class="workflow-icon" aria-hidden="true"><svg class="ui-icon"><use href="#icon-shield"/></svg></span><h3>Stress it</h3><p>See what a market shock would do to your portfolio.</p><span class="text-link">Scenarios →</span></a>
       </div>
       <div class="goal-note"><span aria-hidden="true">◎</span><div><strong>Aim for 70% winning trades. Demand more than a headline.</strong><p>Loki tracks sample size, uncertainty, costs, expectancy, and drawdown alongside win rate. A historical win rate cannot guarantee the next trade.</p></div><a href="#copilot" class="text-link" data-ask="What evidence do I need for a 70% win rate?">Ask Loki ↗</a></div>
+    </section>
+    <section id="live-markets" class="workspace-view" aria-label="Live markets" hidden>
+      <div class="page-heading"><p class="eyebrow">LOKI / LIVE MARKETS</p><h1>Live markets.</h1><p class="muted">Crypto, stocks, indices, commodities and FX on one board — updating on its own while this view is open. Click any tile for its chart and the AI's current read.</p></div>
+      <section class="panel lm-head">
+        <div class="lm-status-row">
+          <div class="lm-sessions" id="lm-sessions" aria-label="Market sessions"></div>
+          <div class="lm-controls">
+            <span class="lm-live" id="lm-live"><span class="lm-pulse" aria-hidden="true"></span><span id="lm-live-text">Connecting…</span></span>
+            <button class="button secondary" id="lm-pause" type="button" aria-pressed="false">Pause</button>
+            <button class="button secondary" id="lm-refresh" type="button">Refresh ↻</button>
+          </div>
+        </div>
+        <div class="lm-movers" id="lm-movers" aria-label="Top movers"></div>
+      </section>
+      <section class="panel">
+        <div class="lm-toolbar">
+          <div class="lm-tabs" role="tablist" aria-label="Market category" id="lm-tabs"></div>
+          <form class="lm-add" id="lm-add-form" autocomplete="off"><input id="lm-add-input" maxlength="15" placeholder="Add symbol · e.g. NFLX or LINK/USDT" aria-label="Add a symbol to your watchlist"><button class="button secondary" type="submit">Add ★</button></form>
+        </div>
+        <p id="lm-message" class="form-message" role="status"></p>
+        <div class="lm-grid" id="lm-grid" aria-live="polite"><p class="muted">Loading the board…</p></div>
+        <p class="caption" id="lm-note">Crypto via Binance Spot (live). Stocks, indices, commodities and FX via Yahoo Finance (near-live, can lag by minutes). Your watchlist is saved in this browser. Market context only — never advice.</p>
+      </section>
+      <section class="panel lm-detail" id="lm-detail" hidden>
+        <div class="section-title"><div><p class="eyebrow" id="lm-detail-eyebrow">SELECTED</p><h2 id="lm-detail-title">—</h2></div><div class="button-row" id="lm-tf" role="group" aria-label="Chart timeframe"><button type="button" class="button secondary" data-tf="5m">5m</button><button type="button" class="button secondary" data-tf="1h">1h</button><button type="button" class="button secondary active" data-tf="1d">1D</button></div></div>
+        <div class="lm-chart-wrap"><canvas id="lm-chart" height="300" aria-label="Price chart"></canvas><p class="muted lm-chart-empty" id="lm-chart-empty" hidden></p></div>
+        <div class="lm-ai">
+          <div class="section-title"><div><p class="eyebrow">AI READ · SAME ENGINE AS AI TRADING</p><h3>What would the AI do right now?</h3></div><div class="button-row"><button type="button" class="button primary" id="lm-ask-ai">Ask the AI →</button><a class="button secondary" id="lm-trade-link" href="#ai-trading">Open AI trading</a></div></div>
+          <div id="lm-ai-out"><p class="caption">Runs the trained strategy's entry checklist on the last completed daily bar. Review only — nothing is bought.</p></div>
+        </div>
+      </section>
     </section>
     <section id="cloud-research" class="workspace-view" aria-label="Cloud research" hidden>
       <div class="page-heading"><p class="eyebrow">LOKI / PERSISTENT CLOUD RESEARCH</p><h1>Cloud research.</h1><p class="muted">Your existing Loki account, backed by resumable cloud workers. Existing local models, paper accounts and broker controls remain separate and unchanged.</p></div>

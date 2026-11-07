@@ -398,3 +398,76 @@ class TestBars:
         assert [c["t"] for c in data["candles"]] == sorted(c["t"] for c in data["candles"])
         assert data["as_of"] == data["candles"][-1]["t"]
         assert "not a Lucid execution feed" in data["note"]
+
+
+# --- live engine wiring: gates, sizing and position management -------------
+
+PLAN_OK = {
+    "ready": True,
+    "action": "BUY",
+    "allowed": True,
+    "reason": "ok",
+    "atr": 5.0,
+    "size_multiplier": 1.0,
+    "signal_bar": "2026-01-08T00:00:00",
+    "gates": [],
+}
+
+
+class TestLivePlan:
+    def _with_plan(self, monkeypatch, plan, frame=None):
+        analysis = {**ANALYSIS, "plan": plan}
+        if frame is not None:
+            analysis["managed_frame"] = frame
+        monkeypatch.setattr(ai_paper, "_analyze", lambda symbol: analysis)
+        monkeypatch.setattr(
+            ai_paper, "_get_pipeline", lambda symbol: (FakePipeline(), LokiConfig(), True)
+        )
+
+    def test_failed_gate_declines_the_buy_with_its_name(self, monkeypatch):
+        gates = [{"name": "trend_filter", "passed": False, "detail": "close below"}]
+        self._with_plan(monkeypatch, {**PLAN_OK, "allowed": False, "reason": "trend_filter", "gates": gates})
+        risk = client.post("/api/fusion/ai/step", json={"symbol": "SPY"}).json()["trail"][3]
+        assert risk["approved"] is False
+        assert risk["reason"] == "entry_gate:trend_filter"
+        assert risk["gates"] == gates
+
+    def test_allowed_buy_is_sized_from_the_live_price_and_capped_by_cash(self, monkeypatch):
+        self._with_plan(monkeypatch, PLAN_OK)
+        data = client.post(
+            "/api/fusion/ai/step", json={"symbol": "SPY", "equity": 10000, "cash": 10000}
+        ).json()
+        risk = data["trail"][3]
+        assert risk["approved"] is True
+        assert risk["stop"] == pytest.approx(512.4 - 2.0 * 5.0)
+        assert risk["target"] == pytest.approx(512.4 + 3.0 * 5.0)
+        assert risk["qty"] == pytest.approx(10.0)  # $100 risk / $10 stop distance
+        assert risk["signal_bar"] == PLAN_OK["signal_bar"]
+        assert data["profile"]["require_trend_filter"] is True
+        poor = client.post(
+            "/api/fusion/ai/step", json={"symbol": "SPY", "equity": 10000, "cash": 1024.8}
+        ).json()["trail"][3]
+        assert poor["qty"] == pytest.approx(2.0) and poor["capped_by_cash"] is True
+
+    def test_open_position_gets_a_management_decision(self, monkeypatch):
+        idx = pd.bdate_range("2026-01-05", periods=4)
+        frame = pd.DataFrame({"close": [500.0, 505, 510, 515], "atr": [5.0] * 4}, index=idx)
+        self._with_plan(monkeypatch, PLAN_OK, frame)
+        data = client.post(
+            "/api/fusion/ai/step",
+            json={
+                "symbol": "SPY",
+                "has_position": True,
+                "open_positions": 1,
+                "position": {
+                    "entry": 500.0,
+                    "stop": 490.0,
+                    "target": 600.0,
+                    "atr": 5.0,
+                    "signal_bar": str(idx[0]),
+                },
+            },
+        ).json()
+        manage = data["manage"]
+        assert manage["bars_held"] == 3
+        assert manage["exit"] is False
