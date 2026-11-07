@@ -12,7 +12,7 @@ client_nofollow = TestClient(app, follow_redirects=False)
 def _open_gate(browser):
     code = site_access.expected_code()
     opened = browser.post(
-        "/api/gate", json={"code": code, "accepted_terms": True}
+        "/api/gate", json={"code": code, "accepted_terms": True, "confirmed_age": True}
     )
     assert opened.status_code == 200
     return opened
@@ -41,7 +41,7 @@ def test_indicator_page_is_gated_on_remote_deployments(monkeypatch):
 
 def test_wrong_code_does_not_open_the_indicator_page(monkeypatch):
     monkeypatch.setenv("VERCEL", "1")
-    denied = client.post("/api/gate", json={"code": "wrong-code", "accepted_terms": True})
+    denied = client.post("/api/gate", json={"code": "wrong-code", "accepted_terms": True, "confirmed_age": True})
     assert denied.status_code == 403
     assert client_nofollow.get("/indicator").status_code == 303
 

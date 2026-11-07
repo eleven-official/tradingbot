@@ -81,6 +81,7 @@ _MESSAGE_MAX = 500
 _NAME_MAX = 24
 _MEMORY_LIMIT = 180
 _STORE_ROWS = 400
+TURN_RETENTION_SECONDS = 30 * 24 * 3600
 _FACT_LEN = 220
 _LEARN_INTERVAL = 300.0  # one internet sweep at most every five minutes
 _MEMO_TTL = 900.0  # how long a fresh "internet lesson" is quoted verbatim
@@ -231,6 +232,8 @@ def record_turn(role: str, name: str, text: str, session: str = "") -> None:
             "(SELECT id FROM turns ORDER BY created_at DESC LIMIT ?)",
             (_STORE_ROWS,),
         )
+        # Data minimisation: conversation turns expire after 30 days.
+        conn.execute("DELETE FROM turns WHERE created_at < ?", (time.time() - TURN_RETENTION_SECONDS,))
 
 
 def add_fact(kind: str, text: str, source: str = "", weight: float = 1.0) -> int:

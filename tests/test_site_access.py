@@ -62,7 +62,7 @@ class TestGateFlow:
         rejected = client.post("/api/gate", json={"code": "chocolate"})
         assert rejected.status_code == 403
 
-        accepted = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True})
+        accepted = client.post("/api/gate", json={"code": "flathead", "accepted_terms": True, "confirmed_age": True})
         assert accepted.status_code == 200
         cookie = accepted.cookies.get(site_access.GATE_COOKIE)
         assert cookie and site_access.verify_gate_cookie_value(cookie)
@@ -91,10 +91,10 @@ class TestGateThrottle:
         monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
         for _ in range(10):
             assert client.post(
-                "/api/gate", json={"code": "nope", "accepted_terms": True}
+                "/api/gate", json={"code": "nope", "accepted_terms": True, "confirmed_age": True}
             ).status_code == 403
         throttled = client.post(
-            "/api/gate", json={"code": "flathead", "accepted_terms": True}
+            "/api/gate", json={"code": "flathead", "accepted_terms": True, "confirmed_age": True}
         )
         assert throttled.status_code == 429
         # the throttle precedes the consent check: a throttled body without a
@@ -104,10 +104,10 @@ class TestGateThrottle:
 
         monkeypatch.setattr(site_access, "_GATE_ATTEMPTS", {})
         assert client.post(
-            "/api/gate", json={"code": "nope", "accepted_terms": True}
+            "/api/gate", json={"code": "nope", "accepted_terms": True, "confirmed_age": True}
         ).status_code == 403
         accepted = client.post(
-            "/api/gate", json={"code": "flathead", "accepted_terms": True}
+            "/api/gate", json={"code": "flathead", "accepted_terms": True, "confirmed_age": True}
         )
         assert accepted.status_code == 200
         # A correct code clears the failure record for that client.
@@ -147,7 +147,7 @@ class TestAccounts:
         monkeypatch.setattr(site_access, "create_account", fake_create)
         response = client.post(
             "/api/auth/sign-up",
-            json={"email": "moon@test.io", "password": "longenough12", "nickname": "Moon Runner"},
+            json={"email": "moon@test.io", "password": "longenough12", "nickname": "Moon Runner", "age_confirmed": True},
         )
         assert response.status_code == 200
         assert response.json() == {"email": "moon@test.io", "nickname": "Moon Runner"}
@@ -180,13 +180,13 @@ class TestAccounts:
         self._stub_admin(monkeypatch)
         short = client.post(
             "/api/auth/sign-up",
-            json={"email": "moon@test.io", "password": "short", "nickname": "Moon Runner"},
+            json={"email": "moon@test.io", "password": "short", "nickname": "Moon Runner", "age_confirmed": True},
         )
         assert short.status_code == 422
 
         bad = client.post(
             "/api/auth/sign-up",
-            json={"email": "moon@test.io", "password": "longenough12", "nickname": "bad!name"},
+            json={"email": "moon@test.io", "password": "longenough12", "nickname": "bad!name", "age_confirmed": True},
         )
         assert bad.status_code == 400
 
@@ -262,7 +262,7 @@ class TestAccounts:
         monkeypatch.setattr(site_access, "update_nickname", fake_update)
         created = client.post(
             "/api/auth/sign-up",
-            json={"email": "nick@test.io", "password": "longenough12", "nickname": "Nick Hero"},
+            json={"email": "nick@test.io", "password": "longenough12", "nickname": "Nick Hero", "age_confirmed": True},
         )
         assert created.status_code == 200
         updated = client.put("/api/auth/nickname", json={"nickname": "Renamed Hero"})

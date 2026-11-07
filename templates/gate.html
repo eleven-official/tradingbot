@@ -5,9 +5,6 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Loki · Access</title>
   <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/loki_scene.css?v={{ version }}">
   <script src="/static/js/loki_scene.js?v={{ version }}" defer></script>
   <style>
@@ -99,7 +96,7 @@
       <div class="peek-card loki-glow loki-rise" style="--rise:5"><b>03 / Practise</b><span>Explore simulated trades without moving real money.</span></div>
       <div class="peek-card loki-glow loki-rise" style="--rise:6"><b>04 / Take a dive</b><span>A rare-answer game for the moments between scans.</span></div>
     </div>
-    <div class="entry-foot">Research workspace · <a href="/terms">Terms of Use</a> · v{{ version }}</div>
+    <div class="entry-foot">Research workspace · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/cookies">Cookies</a> · v{{ version }}</div>
   </section>
   <div class="card loki-glow loki-rise" id="card" style="--rise:2">
     <div class="brand-row"><span class="mark">L</span><b>LOKI</b></div>
@@ -116,6 +113,10 @@
       <label class="terms-box" id="terms-box" for="terms-ok">
         <input id="terms-ok" name="accepted_terms" type="checkbox" required />
         <span>I have read the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a> and accept them, especially this: <b>nothing here is financial advice and no profits are promised — I use Loki at my own risk.</b></span>
+      </label>
+      <label class="terms-box" id="age-box" for="age-ok">
+        <input id="age-ok" name="confirmed_age" type="checkbox" required />
+        <span>I am <b>18 or older</b>. Loki is for adults only. We do not ask for your birth date — only this confirmation.</span>
       </label>
       <button class="go loki-sheen" id="go" type="submit">Open Loki ↗</button>
     </form>

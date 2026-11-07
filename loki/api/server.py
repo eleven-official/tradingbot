@@ -72,13 +72,13 @@ for _router in (
 
 # Scripts only from this site (no inline scripts anywhere), so injected
 # markup cannot run code; styles allow inline for the component styling and
-# Google Fonts; nothing may frame the site except itself.
+# nothing may frame the site except itself.
 CONTENT_SECURITY_POLICY = "; ".join(
     (
         "default-src 'self'",
         "script-src 'self'",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com data:",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self' data:",
         "img-src 'self' data: blob:",
         "connect-src 'self'",
         "frame-ancestors 'self'",
@@ -246,6 +246,29 @@ async def terms_page(request: Request):
     )
 
 
+def _policy_context() -> Dict[str, Any]:
+    return {
+        "version": __version__,
+        "terms_version": site_access.TERMS_VERSION,
+        "terms_updated": site_access.TERMS_UPDATED,
+        "minimum_age": site_access.MINIMUM_AGE,
+        "operator_name": (os.environ.get("LOKI_OPERATOR_NAME") or "").strip(),
+        "operator_email": (os.environ.get("LOKI_OPERATOR_EMAIL") or "").strip(),
+    }
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page(request: Request):
+    """Privacy Policy — public, readable before entering."""
+    return templates.TemplateResponse(request=request, name="privacy.html", context=_policy_context())
+
+
+@app.get("/cookies", response_class=HTMLResponse)
+async def cookies_page(request: Request):
+    """Cookie Policy — public, readable before entering."""
+    return templates.TemplateResponse(request=request, name="cookies.html", context=_policy_context())
+
+
 @app.get("/transparency", response_class=HTMLResponse)
 async def transparency_page(request: Request):
     """Who runs Loki, how to reach them, and the plain-language privacy/data summary."""
@@ -313,6 +336,12 @@ async def access_gate_submit(request: Request):
             status_code=403,
             detail="Tick the terms box — that is the agreement, not a formality.",
         )
+    # Age is confirmed, never collected: only the yes travels, no birth date.
+    if body.get("confirmed_age") is not True:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Loki is for adults: confirm you are {site_access.MINIMUM_AGE} or older to enter.",
+        )
     if not site_access.code_matches(str(body.get("code") or "")):
         site_access.record_gate_failure(client_ip)
         raise HTTPException(status_code=403, detail="That is not the code.")
@@ -350,6 +379,7 @@ class AuthBody(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=8, max_length=128)
     nickname: Optional[str] = Field(default=None, max_length=24)
+    age_confirmed: Optional[bool] = None
 
 
 class NicknameBody(BaseModel):
@@ -379,6 +409,11 @@ async def auth_sign_up(body: AuthBody, response: Response):
     if not nickname:
         raise HTTPException(
             status_code=400, detail="Pick a nickname (2-24 letters, numbers or dashes)."
+        )
+    if body.age_confirmed is not True:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Accounts are for adults: confirm you are {site_access.MINIMUM_AGE} or older.",
         )
     user = await site_access.create_account(email, body.password, nickname)
     uid = str(user.get("id") or "")

@@ -80,6 +80,57 @@ async def merge_workspace(request: Request, body: WorkspaceChanges) -> dict:
     return {"saved": True, "updated_at": rows[0]["updated_at"]}
 
 
+@router.get("/export")
+async def export_my_data(request: Request) -> Response:
+    """Everything the server holds for the signed-in account, as one JSON file."""
+    member = require_member(request)
+    uid = member["uid"]
+    workspace = await run_in_threadpool(database, "GET", f"/rest/v1/member_workspace?user_id=eq.{uid}&select=items,updated_at&limit=1")
+    scores = await run_in_threadpool(database, "GET", f"/rest/v1/member_dive_scores?user_id=eq.{uid}&select=nickname,best_score,dives,updated_at&limit=1")
+    body = {
+        "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "account": {"email": member["email"], "nickname": member["nickname"]},
+        "workspace": workspace[0] if workspace else None,
+        "published_game_score": scores[0] if scores else None,
+        "note": "Data kept only in your browser (paper journals, chat history, watchlists, broker keys) is not on the server; use the browser export in the workspace for that.",
+    }
+    return Response(json.dumps(body, indent=2), media_type="application/json",
+                    headers={"Content-Disposition": "attachment; filename=loki-my-data.json", "Cache-Control": "private, no-store"})
+
+
+class DeleteBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm: str = Field(max_length=20)
+
+
+@router.post("/delete")
+async def delete_my_account(request: Request, body: DeleteBody) -> Response:
+    """Erase the signed-in account: saved workspace, published score, login."""
+    member = require_member(request)
+    if body.confirm != "DELETE":
+        raise HTTPException(400, "Type DELETE to confirm — this cannot be undone.")
+    if request.headers.get("x-workspace-owner") != member["uid"]:
+        raise HTTPException(409, "Your signed-in account changed. Reload before deleting.")
+    uid = member["uid"]
+    await run_in_threadpool(database, "DELETE", f"/rest/v1/member_workspace?user_id=eq.{uid}")
+    await run_in_threadpool(database, "DELETE", f"/rest/v1/member_dive_scores?user_id=eq.{uid}")
+    await run_in_threadpool(delete_auth_user, uid)
+    response = Response(json.dumps({"deleted": True}), media_type="application/json")
+    response.delete_cookie(site_access.SESSION_COOKIE, path="/")
+    return response
+
+
+def delete_auth_user(uid: str) -> None:
+    url, key = site_access._supabase_config()
+    try:
+        answer = requests.delete(f"{url}/auth/v1/admin/users/{uid}", headers=site_access._supa_headers(key),
+                                 timeout=15, allow_redirects=False)
+    except requests.RequestException as exc:
+        raise HTTPException(503, "Your data was removed but the login could not be deleted; try again.") from exc
+    if answer.status_code not in (200, 204, 404):
+        raise HTTPException(503, "Your data was removed but the login could not be deleted; try again.")
+
+
 @router.get("/storage-context.js")
 async def storage_context(request: Request) -> Response:
     session = site_access.read_session_cookie_value(request.cookies.get(site_access.SESSION_COOKIE))

@@ -73,7 +73,7 @@ GLOSSARY: Dict[Tuple[str, ...], str] = {
     ("rsi", "relative strength index"): "RSI scores recent up-moves against down-moves on a 0-100 scale. Above ~70 is often called overbought, below ~30 oversold. In Loki it is one small input to the momentum factor — never a trigger on its own.",
     ("macd",): "MACD compares a fast and a slow moving average of price. When the fast one rises above the slow one, momentum is turning up. Loki uses MACD as one vote inside its momentum factor.",
     ("moving average", "200-day", "200 day", "sma", "ema"): "A moving average is the average closing price over the last N days. The 200-day average is the classic long-term trend line: above it, the trend is up. Loki's AI only buys above it, and for stocks it exits when price closes back below it.",
-    ("drawdown", "max drawdown"): "Drawdown is how far an account falls from its previous peak before recovering. A −20% drawdown means $10,000 dipped to $8,000 at its worst. Loki optimises to keep drawdowns smaller than simply holding — over 2023-26 its average worst drop was about −21% on stocks versus −27% for buy-and-hold.",
+    ("drawdown", "max drawdown"): "Drawdown is how far an account falls from its previous peak before recovering. A −20% drawdown means $10,000 dipped to $8,000 at its worst. Loki optimises to keep drawdowns smaller than simply holding — in its 2023-26 simulation its average worst drop was about −21% on stocks versus −27% for buy-and-hold.",
     ("sharpe", "sharpe ratio"): "The Sharpe ratio is return divided by volatility — return per unit of bumpiness. Above 1 is strong for a single strategy. Loki selects its rules on Sharpe (with a drawdown penalty) rather than raw profit, because raw profit rewards luck.",
     ("profit factor",): "Profit factor = total money won ÷ total money lost. Above 1 means the strategy made money; 2 means it won twice what it lost. A high profit factor with few trades is weak evidence, so Loki also reports trade counts.",
     ("win rate", "hit rate"): "Win rate is the share of trades that made money. It's overrated: a strategy winning 35% of the time can be very profitable if winners are big and losers are cut fast — that's how Loki's trend rules work.",
@@ -90,7 +90,7 @@ GLOSSARY: Dict[Tuple[str, ...], str] = {
     ("diversification", "diversify"): "Diversification is spreading money across assets that don't move together, so one bad bet can't sink the account. Holding several uncorrelated trend positions smooths returns far more than any single one.",
     ("etf",): "An ETF (exchange-traded fund) is a basket of assets that trades like one stock — SPY holds the S&P 500, QQQ the Nasdaq-100, GLD gold. Loki's stock AI was trained on 13 major ETFs and stocks.",
     ("bull market", "bear market", "bull", "bear", "regime"): "A bull market is a sustained uptrend, a bear market a sustained downtrend (often −20% or more). Loki classifies every day into STRONG_BULL, BULL, RANGING, BEAR or CRISIS from its trend and volatility, and blocks new buys in bear regimes.",
-    ("crypto", "cryptocurrency"): "Crypto trades 24/7 and is roughly 3-4× as volatile as stocks. Loki trains a separate rulebook for it; over 2023-26 it averaged about +9% a year with a −29% average worst drop, against −71% for just holding coins.",
+    ("crypto", "cryptocurrency"): "Crypto trades 24/7 and is roughly 3-4× as volatile as stocks. Loki trains a separate rulebook for it; in its 2023-26 simulation it averaged about +9% a year with a −29% average worst drop, against −71% for just holding coins (hypothetical results).",
     ("expectancy",): "Expectancy is the average profit per trade (wins and losses combined). Positive expectancy after costs is the only thing that makes a strategy worth running.",
     ("candle", "candlestick"): "A candlestick shows one period's open, high, low and close. Green means it closed above the open, red below. Loki's AI decides on completed daily candles only — never on today's still-forming one.",
     ("alpaca",): "Alpaca is a US broker with a free paper-trading API. In Loki's AI trading page you can paste your Alpaca paper keys (they stay in your browser) to see your account and send clicked paper orders.",
@@ -181,7 +181,7 @@ def _symbol_record(symbol: str) -> Optional[str]:
         for row in (uni.get(kind) or {}).get("holdout") or []:
             if row.get("symbol") == symbol and row.get("strategy"):
                 s, b = row["strategy"], row.get("buy_hold") or {}
-                return (f"On the untouched 2023→now test, the AI's rules made {_pct(s.get('cagr_pct'))} a year on {symbol} "
+                return (f"In a simulation on held-back 2023→now data (hypothetical), the AI's rules made {_pct(s.get('cagr_pct'))} a year on {symbol} "
                         f"over {s.get('trades')} trades (worst drop {_pct(s.get('max_dd_pct'))}), versus {_pct(b.get('cagr_pct'))} "
                         f"a year and {_pct(b.get('max_dd_pct'))} worst drop for simply holding it.")
     return None
@@ -265,14 +265,14 @@ def track_record() -> str:
     eq, cr = (uni.get("equity") or {}), (uni.get("crypto") or {})
     if not eq and not cr:
         return "The 20-year track record isn't loaded on this server yet."
-    out = ["Honest numbers. The AI's rules were chosen using 2005-2022 only, then tested once on 2023→now — data they never saw — after fees and slippage:"]
+    out = ["Simulated (hypothetical) results. The AI's rules were chosen using 2005-2022 only, then tested once on 2023→now — data they never saw — with assumed fees and slippage:"]
     for label, b in (("Stocks/ETFs", eq), ("Crypto", cr)):
         p = b.get("holdout_pooled") or {}
         if p:
             out.append(f"• {label}: {_pct(p.get('mean_cagr_pct'))} a year on average, profitable on {p.get('profitable_symbols')} of "
                        f"{p.get('symbols')} symbols, average worst drop {_pct(p.get('mean_max_dd_pct'))}. Simply holding the same "
                        f"assets: {_pct(p.get('buy_hold_mean_cagr_pct'))} a year with {_pct(p.get('buy_hold_mean_max_dd_pct'))} worst drop.")
-    out.append("So: it makes money on unseen data and crashes far less, but it trailed buy-and-hold in the very strong 2023-26 bull run. Past results never guarantee the next trade.")
+    out.append("In that simulation it was profitable on data held back from training, with smaller drawdowns than holding, but it trailed buy-and-hold in the strong 2023-26 bull run. These are hypothetical results, not real trading: simulations have limits and future results can differ.")
     return "\n".join(out)
 
 
@@ -299,7 +299,7 @@ def portfolio_answer() -> str:
     lines = ["The Portfolio AI runs the verified strategy on 21 markets at once — 13 stocks/ETFs (including gold and bonds) "
              "and 8 coins — shares capital equally, scales the whole book to a steady risk level, and never holds more than 100% of the account."]
     if h:
-        lines.append(f"On unseen 2023→now data it made {_pct(h.get('cagr_pct'))} a year with a Sharpe of {h.get('sharpe')} and a worst drop of "
+        lines.append(f"In a simulation on held-back 2023→now data (hypothetical, not real trading) it made {_pct(h.get('cagr_pct'))} a year with a Sharpe of {h.get('sharpe')} and a worst drop of "
                      f"{_pct(h.get('max_dd_pct'))}; holding all 21 equally made {_pct(b.get('cagr_pct'))} a year but fell {_pct(b.get('max_dd_pct'))} at worst.")
     plan = _portfolio()
     if plan and plan.get("positions"):

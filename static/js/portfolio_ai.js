@@ -141,7 +141,7 @@
     if (!h) { $('pf-record').innerHTML = ''; return; }
     const cell = (label, value, sub, tone) => `<div class="pf-stat"><span>${esc(label)}</span><strong style="color:${tone || 'inherit'}">${esc(value)}</strong><small>${esc(sub)}</small></div>`;
     $('pf-record').innerHTML =
-      cell('Return / year (2023→now, unseen)', pct(h.cagr_pct), `buy & hold ${pct(b && b.cagr_pct)}`, '#a8f0c6') +
+      cell('Simulated return / year (2023→now)', pct(h.cagr_pct), `buy & hold ${pct(b && b.cagr_pct)}`, '#a8f0c6') +
       cell('Sharpe ratio', Number(h.sharpe).toFixed(2), `buy & hold ${b ? Number(b.sharpe).toFixed(2) : '—'}`) +
       cell('Worst drop', pct(h.max_dd_pct), `buy & hold ${pct(b && b.max_dd_pct)}`, '#ffb3a7') +
       cell('Profitable months', `${Number(h.profitable_months_pct).toFixed(0)}%`, `risk target ${plan.target_vol_pct}% / yr`);

@@ -630,7 +630,7 @@
     const trades = $('ai-trades');
     if (trades) {
       if (!state.trades.length) {
-        trades.innerHTML = '<p class="muted">No closed trades yet. The AI only fires when its verified edge lines up.</p>';
+        trades.innerHTML = '<p class="muted">No closed trades yet. The AI only enters when every rule in its checklist passes.</p>';
       } else {
         const rows = state.trades.slice(0, 12).map((t) =>
           `<tr><td>${fmtTime(t.closed)}</td><td>${escapeHtml(t.symbol)}</td><td>${escapeHtml(String(t.qty))}</td>` +

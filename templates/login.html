@@ -6,9 +6,6 @@
   <title>Loki · Sign in</title>
   <script src="/api/account/storage-context.js"></script><script src="/static/js/scoped_storage.js?v={{ version }}"></script>
   <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; }
     body { min-height: 100vh; display: grid; place-items: center; background: #060a12; color: #e7f0ff; font-family: Inter, system-ui, sans-serif; padding: 24px; }
@@ -49,11 +46,12 @@
       </div>
       <div class="field"><label for="email">Email</label><input id="email" type="email" required placeholder="you@example.com" autocomplete="email" autofocus></div>
       <div class="field"><label for="password">Password</label><input id="password" type="password" required minlength="8" placeholder="8+ characters" autocomplete="current-password"></div>
+      <label class="field age-field" id="age-field" hidden><input id="age-ok" type="checkbox" style="width:auto;margin-right:8px;vertical-align:middle"> I am 18 or older (we only ask for this confirmation, never your birth date).</label>
       <button id="primary" type="submit">Sign in ↗</button>
       <div class="row"><button type="button" class="ghost" id="toggle">New here? Create an account →</button></div>
     </form>
     <div id="msg" role="status" aria-live="polite"></div>
-    <p class="foot">Accounts keep Loki personal — nothing here is shared. Loki is free to use; the only ask is the house's 30% fee of recorded profits. <a href="#" id="guest-link" style="color:#8bdad4">Continue as guest →</a></p>
+    <p class="foot">We keep only your email, nickname and what you choose to save — see the <a href="/privacy" style="color:#8bdad4">Privacy Policy</a> and <a href="/cookies" style="color:#8bdad4">Cookie Policy</a>. Loki is free to use; the only ask is the house's 30% fee of recorded profits. <a href="#" id="guest-link" style="color:#8bdad4">Continue as guest →</a></p>
   </div>
   <script src="/static/js/page_login.js?v={{ version }}" defer></script>
 </body>

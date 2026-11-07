@@ -173,10 +173,10 @@
         `<tr><td>${escapeHtml(h.symbol)}</td><td style="color:${tone(h.strategy.cagr_pct)}">${pct(h.strategy.cagr_pct)}</td><td>${num(h.strategy.max_dd_pct)}</td>` +
         `<td>${escapeHtml(h.strategy.trades)}</td><td>${num(h.strategy.profit_factor, 2, '')}</td><td style="color:#9fb0c2">${pct(h.buy_hold && h.buy_hold.cagr_pct)}</td><td style="color:#9fb0c2">${num(h.buy_hold && h.buy_hold.max_dd_pct)}</td></tr>`).join('');
       const status = b.verified
-        ? '<span style="font-size:11.5px;border-radius:999px;padding:3px 10px;color:#b8f0d8;background:rgba(184,240,216,.12)">✓ made money on the holdout · live AI uses it</span>'
-        : '<span style="font-size:11.5px;border-radius:999px;padding:3px 10px;color:#f0c98b;background:rgba(240,201,139,.1)">holdout not convincing · live AI keeps the older book</span>';
+        ? '<span style="font-size:11.5px;border-radius:999px;padding:3px 10px;color:#b8f0d8;background:rgba(184,240,216,.12)">✓ profitable in simulation on held-back data · live AI uses it</span>'
+        : '<span style="font-size:11.5px;border-radius:999px;padding:3px 10px;color:#f0c98b;background:rgba(240,201,139,.1)">held-back simulation not convincing · live AI keeps the older book</span>';
       return `<article style="${cardStyle}flex:1 1 420px;min-width:0">` +
-        `<p style="letter-spacing:.14em;font-size:10.5px;color:#8bdad4">${escapeHtml(label)} · HOLDOUT ${escapeHtml(since)}→NOW</p>` +
+        `<p style="letter-spacing:.14em;font-size:10.5px;color:#8bdad4">${escapeHtml(label)} · SIMULATED ${escapeHtml(since)}→NOW</p>` +
         `<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:baseline">` +
         `<span><strong style="font-size:22px;color:${tone(p.mean_cagr_pct)}">${pct(p.mean_cagr_pct)}</strong> <span class="caption">avg / year</span></span>` +
         `<span><strong style="font-size:18px">${escapeHtml(p.profitable_symbols ?? '—')}/${escapeHtml(p.symbols ?? '—')}</strong> <span class="caption">symbols profitable</span></span>` +
@@ -210,7 +210,7 @@
       }
       const h = pf.holdout, bh = pf.holdout_buy_hold || {};
       pfHtml = `<article style="${cardStyle}width:100%;margin-top:12px;border-color:rgba(168,240,198,.4)">` +
-        `<p style="letter-spacing:.14em;font-size:10.5px;color:#a8f0c6">PORTFOLIO AI · 21 MARKETS AT ONCE · HOLDOUT 2023→NOW</p>` +
+        `<p style="letter-spacing:.14em;font-size:10.5px;color:#a8f0c6">PORTFOLIO AI · 21 MARKETS · SIMULATED ON HELD-BACK 2023→NOW DATA</p>` +
         `<div style="display:flex;flex-wrap:wrap;gap:22px;align-items:baseline">` +
         `<span><strong style="font-size:26px;color:${tone(h.cagr_pct)}">${pct(h.cagr_pct)}</strong> <span class="caption">avg / year</span></span>` +
         `<span><strong style="font-size:20px">${escapeHtml(Number(h.sharpe).toFixed(2))}</strong> <span class="caption">Sharpe (buy &amp; hold ${escapeHtml(Number(bh.sharpe).toFixed(2))})</span></span>` +
@@ -219,7 +219,7 @@
         svg + `<p class="caption">Every market runs its verified rules; capital is shared equally and the book is scaled to ${escapeHtml(pf.target_vol_pct)}% yearly volatility (chosen on 2005–2022 only), never above 100% invested. <a class="text-link" href="#ai-trading">Run it with paper money →</a></p></article>`;
     }
     host.innerHTML = pfHtml + `<div style="display:flex;flex-wrap:wrap;gap:12px;margin:12px 0">${card('STOCKS & ETFS', block.equity)}${card('CRYPTO', block.crypto)}</div>` +
-      `<p class="caption">Trained ${escapeHtml(String(block.generated_at || '').slice(0, 10))} on data through ${escapeHtml((block.equity || block.crypto || {}).data_through || '—')}. Past results on historical data, never a promise about the next trade.</p>`;
+      `<p class="caption">Trained ${escapeHtml(String(block.generated_at || '').slice(0, 10))} on data through ${escapeHtml((block.equity || block.crypto || {}).data_through || '—')}. Hypothetical performance: simulated on historical data with assumed fees and slippage — not actual trading. Simulated results have inherent limits (no real orders or liquidity, rules designed with knowledge of the past) and do not predict future results. Not financial advice.</p>`;
   };
 
   const init = async () => {

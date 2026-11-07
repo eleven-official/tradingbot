@@ -13,6 +13,7 @@ toggle.addEventListener('click', () => {
   mode = mode === 'login' ? 'signup' : 'login';
   $('nick-field').hidden = mode !== 'signup';
   $('nick-callout').hidden = mode !== 'signup';
+  $('age-field').hidden = mode !== 'signup';
   $('primary').textContent = mode === 'login' ? 'Sign in ↗' : 'Create my account ↗';
   toggle.textContent = mode === 'login' ? 'New here? Create an account →' : '← I already have an account';
   msg.textContent = '';
@@ -20,6 +21,10 @@ toggle.addEventListener('click', () => {
 $('auth-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const btn = $('primary');
+  if (mode === 'signup' && !$('age-ok').checked) {
+    msg.className = ''; msg.textContent = 'Accounts are for adults: tick the box to confirm you are 18 or older.';
+    return;
+  }
   btn.disabled = true;
   msg.className = ''; msg.textContent = mode === 'login' ? 'Signing in…' : 'Creating your account…';
   try {
@@ -29,7 +34,8 @@ $('auth-form').addEventListener('submit', async (event) => {
       body: JSON.stringify({
         email: $('email').value.trim(),
         password: $('password').value,
-        nickname: $('nickname').value.trim() || null
+        nickname: $('nickname').value.trim() || null,
+        ...(mode === 'signup' ? { age_confirmed: $('age-ok').checked } : {})
       })
     });
     if (!res.ok) {

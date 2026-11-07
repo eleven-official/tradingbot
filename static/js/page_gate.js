@@ -27,6 +27,16 @@ formEl.addEventListener('submit', async (event) => {
     return;
   }
   termsBox.classList.remove('unchecked');
+  const ageEl = document.getElementById('age-ok');
+  const ageBox = document.getElementById('age-box');
+  if (!ageEl.checked) {
+    setMsg('Confirm you are 18 or older — Loki is for adults only.');
+    ageBox.classList.add('unchecked');
+    ageEl.focus();
+    btn.disabled = false;
+    return;
+  }
+  ageBox.classList.remove('unchecked');
   if (!codeEl.value.trim()) {
     setMsg('Type the access code first — the field is above the tick.');
     codeEl.focus();
@@ -39,7 +49,7 @@ formEl.addEventListener('submit', async (event) => {
     const res = await fetch('/api/gate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: codeEl.value, accepted_terms: termsEl.checked })
+      body: JSON.stringify({ code: codeEl.value, accepted_terms: termsEl.checked, confirmed_age: ageEl.checked })
     });
     if (res.status === 403) {
       let detail = '';
