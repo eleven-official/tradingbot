@@ -35,6 +35,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+
+from loki.api import site_access
 from pydantic import BaseModel, ConfigDict, Field
 
 from loki.api.market_feed import MarketFeedError, fetch_quote, latest_headlines_for_query
@@ -122,9 +124,13 @@ def _session_secret() -> bytes:
     try:
         from loki.api import site_access
 
-        return hmac.new(site_access._secret(), b"loki-chat-session", hashlib.sha256).digest()
+        # Only borrow the gate's key when an operator configured it; a local
+        # dev constant must never sign chat cookies (admin claims ride them).
+        if site_access.secret_is_configured():
+            return hmac.new(site_access._secret(), b"loki-chat-session", hashlib.sha256).digest()
     except Exception:  # noqa: BLE001 - never block chat on gate config
-        return _PROCESS_SECRET
+        pass
+    return _PROCESS_SECRET
 
 
 def _chat_code() -> str:
@@ -826,7 +832,7 @@ def _set_chat_cookie(
         ),
         max_age=COOKIE_MAX_AGE,
         httponly=True,
-        secure=request.url.scheme == "https" or bool(os.getenv("VERCEL")),
+        secure=site_access.cookie_secure(request),
         samesite="lax",
         path="/",
     )

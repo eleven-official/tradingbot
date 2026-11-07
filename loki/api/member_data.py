@@ -22,6 +22,7 @@ WORKSPACE_KEYS = frozenset({
     "loki_practice_stats_v1", "loki_watchlist_v1", "loki_pinned_report_v1",
     "loki_council_history_v1", "loki_news_seen_v1", "loki_dive_badges",
     "loki_dive_streak", "loki_dive_challenge_wins",
+    "loki_portfolio_ai_v1", "loki_live_watchlist_v1", "loki_live_prefs_v1",
 })
 
 

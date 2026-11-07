@@ -145,12 +145,34 @@ def _secret() -> bytes:
     material = f"{os.environ.get('SUPABASE_URL') or ''}\0{_supabase_key()}"
     if _supabase_key():
         return hashlib.sha256(_COOKIE_SALT + material.encode()).digest()
-    if os.environ.get("VERCEL"):
-        # A URL is public and cannot be signing material. Fail closed across
-        # instances until an operator supplies a real secret.
+    if os.environ.get("VERCEL") or gate_enabled():
+        # Any public deployment (Vercel, Docker, a VPS) without a configured
+        # secret must fail closed: a constant from the public source code
+        # would let anyone forge gate, session and chat cookies. A random
+        # per-process key costs only re-entry after a restart.
         return _PROCESS_SECRET
-    # Local/dev deployments: stable-but-throwaway secret keeps cookies verifiable.
+    # Gate off = private local run: a stable throwaway key keeps dev cookies.
     return hashlib.sha256(_COOKIE_SALT + b"loki-local-dev-gate").digest()
+
+
+def secret_is_configured() -> bool:
+    """True when cookies are signed with operator-supplied secret material."""
+    return bool((os.environ.get("LOKI_GATE_SECRET") or "").strip() or _supabase_key())
+
+
+def cookie_secure(request: Any = None) -> bool:
+    """Mark cookies Secure on Vercel, behind HTTPS, or when forced by env."""
+    if os.environ.get("VERCEL") or os.environ.get("LOKI_SECURE_COOKIES") == "1":
+        return True
+    try:
+        if request is None:
+            return False
+        if request.url.scheme == "https":
+            return True
+        # Trust the proxy's scheme header only on deployments that run behind one.
+        return gate_enabled() and request.headers.get("x-forwarded-proto", "").lower() == "https"
+    except AttributeError:
+        return False
 
 
 def _sign(payload: str) -> str:

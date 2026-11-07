@@ -382,7 +382,7 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("openPalette", palette)
 
     def test_gate_page_recovery_explanations_and_preview(self):
-        source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8")
+        source = (ROOT / "templates" / "gate.html").read_text(encoding="utf-8") + (ROOT / "static" / "js" / "page_gate.js").read_text(encoding="utf-8")
         self.assertIn('id="need-help"', source)  # "Need help getting in?" affordance
         self.assertIn('id="help-block"', source)  # inline recovery guidance
         self.assertIn('id="forget-device"', source)  # shared-computer eraser
@@ -434,7 +434,7 @@ class DeploymentConfigTests(unittest.TestCase):
         # honestly says so — but that must not be the FIRST time the visitor
         # learns it. The /api/auth/session probe answers {"enabled": false} in
         # guest mode, and the page renders that state up front.
-        template = (ROOT / "templates" / "login.html").read_text(encoding="utf-8")
+        template = (ROOT / "templates" / "login.html").read_text(encoding="utf-8") + (ROOT / "static" / "js" / "page_login.js").read_text(encoding="utf-8")
         self.assertIn("me.enabled === false", template)
         self.assertIn("the workspace works as a guest meanwhile", template)
         self.assertIn('id="guest-link"', template)  # the honest exit stays

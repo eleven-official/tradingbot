@@ -19,3 +19,9 @@ def offline_brain(monkeypatch, request):
     monkeypatch.setattr(loki_brain, "_ai_read", lambda symbol: None)
     monkeypatch.setattr(loki_brain, "_quotes", lambda symbols: [])
     monkeypatch.setattr(loki_brain, "_portfolio", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def no_rate_limits(monkeypatch):
+    """The suite hammers endpoints on purpose; rate-limit tests opt back in."""
+    monkeypatch.setenv("LOKI_RATE_LIMITS", "0")

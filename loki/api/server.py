@@ -22,7 +22,7 @@ from loki.version import __version__
 from core.copilot import LokiCopilot
 from core.risk_preview import preview_position
 from core.strategy_lab import evaluate_strategy
-from loki.api import site_access
+from loki.api import rate_limit, site_access
 from loki.api.ai_chat import router as ai_chat_router
 from loki.api.ai_paper import router as ai_paper_router
 from loki.api.analogue import router as analogue_router
@@ -70,6 +70,25 @@ for _router in (
     app.include_router(_router)
 
 
+# Scripts only from this site (no inline scripts anywhere), so injected
+# markup cannot run code; styles allow inline for the component styling and
+# Google Fonts; nothing may frame the site except itself.
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com data:",
+        "img-src 'self' data: blob:",
+        "connect-src 'self'",
+        "frame-ancestors 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+    )
+)
+
+
 @app.middleware("http")
 async def member_privacy_boundary(request: Request, call_next):
     private = request.url.path.startswith(("/api/auth/", "/api/account/", "/api/ai/chat/"))
@@ -92,10 +111,22 @@ async def member_privacy_boundary(request: Request, call_next):
                 status_code=403,
                 headers={"Cache-Control": "no-store"},
             )
+    wait = rate_limit.check(request)
+    if wait is not None:
+        return JSONResponse(
+            {"detail": "Too many requests from this connection — wait a moment and try again."},
+            status_code=429,
+            headers={"Retry-After": str(wait), "Cache-Control": "no-store"},
+        )
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    if site_access.cookie_secure(request):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if private:
         response.headers["Cache-Control"] = "private, no-store"
         response.headers["Vary"] = "Cookie"
@@ -293,7 +324,7 @@ async def access_gate_submit(request: Request):
         max_age=site_access.GATE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=bool(os.environ.get("VERCEL")),
+        secure=site_access.cookie_secure(request),
     )
     response.set_cookie(
         site_access.TERMS_COOKIE,
@@ -301,7 +332,7 @@ async def access_gate_submit(request: Request):
         max_age=site_access.GATE_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=bool(os.environ.get("VERCEL")),
+        secure=site_access.cookie_secure(request),
     )
     return response
 
@@ -335,7 +366,7 @@ def _session_cookie(response: Response, uid: str, email: str, nickname: str) -> 
         max_age=site_access.SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
-        secure=bool(os.environ.get("VERCEL")),
+        secure=site_access.cookie_secure(),
     )
 
 
@@ -416,7 +447,7 @@ async def auth_session(request: Request, response: Response):
         max_age=max(0, int(site_access.SESSION_MAX_AGE - (time.time() - int(session["iat"])))),
         httponly=True,
         samesite="lax",
-        secure=bool(os.environ.get("VERCEL")),
+        secure=site_access.cookie_secure(request),
     )
     return {"enabled": True, "email": session.get("email"), "nickname": session.get("nickname")}
 

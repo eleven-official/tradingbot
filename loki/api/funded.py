@@ -5,6 +5,7 @@ import os
 import time
 
 from cryptography.fernet import Fernet, InvalidToken
+from loki.api import site_access
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -65,7 +66,7 @@ def set_session(response: Response, request: Request, data: dict[str, Any]) -> N
         encoded,
         max_age=TTL,
         httponly=True,
-        secure=request.url.scheme == "https" or bool(os.getenv("VERCEL")),
+        secure=site_access.cookie_secure(request),
         samesite="strict",
         path=COOKIE_PATH,
     )

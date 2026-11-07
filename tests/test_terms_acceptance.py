@@ -137,7 +137,7 @@ def test_a_badge_baked_under_old_words_stops_opening_the_door(monkeypatch):
 
 
 def test_the_gate_script_posts_the_real_checkbox_state():
-    gate_html = (REPO / "templates" / "gate.html").read_text(encoding="utf-8")
+    gate_html = (REPO / "templates" / "gate.html").read_text(encoding="utf-8") + (REPO / "static" / "js" / "page_gate.js").read_text(encoding="utf-8")
     assert "accepted_terms: termsEl.checked" in gate_html
     assert "Tick the terms box first" in gate_html  # client blocks quietly; server still verifies
     assert 'novalidate' in gate_html  # native required bubbles swallow the submit event — our words replace them
