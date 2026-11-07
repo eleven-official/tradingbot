@@ -181,6 +181,16 @@ def ai_step(payload: AiStepBody, response: Response) -> Dict[str, Any]:
         payload.open_positions,
         analysis["price"],
     )
+    if quant and quant.get("action") == "SELL":
+        # Entry limits must not prevent reducing an existing long position.
+        risk = {
+            "approved": payload.has_position,
+            "action": "SELL",
+            "qty": 0.0,
+            "reason": "close_existing_position" if payload.has_position else "no_position_to_close",
+        }
+    elif quant and quant.get("action") == "BUY" and payload.has_position:
+        risk = {"approved": False, "action": "BUY", "reason": "position_already_open"}
     execution = {
         "executed": False,
         "reason": "paper_fill_by_browser",
@@ -237,10 +247,7 @@ def ai_bars(
         frame = frame[~frame.index.duplicated(keep="last")]
         for stamp, row in frame.tail(limit).iterrows():
             try:
-                values = [
-                    float(row[label])
-                    for label in ("open", "high", "low", "close", "volume")
-                ]
+                values = [float(row[label]) for label in ("open", "high", "low", "close", "volume")]
             except (KeyError, TypeError, ValueError):
                 continue
             if not all(math.isfinite(value) for value in values):

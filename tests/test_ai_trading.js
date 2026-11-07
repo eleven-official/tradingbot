@@ -81,3 +81,18 @@ test('unchanged quote round trip loses fees and slippage rather than reporting a
   assert.ok(closed.trades[0].pnl < 0);
   assert.ok(Math.abs(closed.cash - 10000 - closed.trades[0].pnl) < 1e-8);
 });
+
+test('daily loss baseline rolls forward instead of comparing against lifetime starting capital', async () => {
+  const r = runner({cash: 9000, startCash: 10000, riskDay: '2020-01-01', dayStartEquity: 10000});
+  await r.check(100, 5);
+  assert.equal(r.requests[0].body.equity_start, 9000);
+  await r.check(101, 5);
+  assert.equal(r.requests[1].body.equity_start, 9000);
+});
+
+test('same-day losses keep the original daily baseline', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const r = runner({cash: 9000, riskDay: today, dayStartEquity: 10000});
+  await r.check(100, 5);
+  assert.equal(r.requests[0].body.equity_start, 10000);
+});

@@ -100,6 +100,16 @@
     return total;
   }
 
+  function dailyEquityBaseline() {
+    const today = new Date().toISOString().slice(0, 10);
+    if (state.riskDay !== today || !Number.isFinite(state.dayStartEquity) || state.dayStartEquity <= 0) {
+      state.riskDay = today;
+      state.dayStartEquity = equityNow();
+      save();
+    }
+    return state.dayStartEquity;
+  }
+
   function openPosition(price, qty, trail) {
     const quant = trail.find((t) => t.agent === 'quant') || {};
     const fill = price * (1 + SLIPPAGE_RATE);
@@ -165,7 +175,7 @@
           equity: equityNow(),
           open_positions: state.position ? 1 : 0,
           has_position: !!state.position,
-          equity_start: state.startCash,
+          equity_start: dailyEquityBaseline(),
           consecutive_losses: consecutiveLosses()
         })
       });

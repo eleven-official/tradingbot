@@ -112,8 +112,56 @@ def _stub(monkeypatch):
 
 
 class TestAiStep:
+    def test_sell_closes_existing_position_even_at_entry_loss_limit(self, monkeypatch):
+        _stub(monkeypatch)
+        analysis = {**ANALYSIS, "quant": {**ANALYSIS["quant"], "action": "SELL"}}
+        monkeypatch.setattr(ai_paper, "_analyze", lambda symbol: analysis)
+        result = client.post(
+            "/api/fusion/ai/step",
+            json={
+                "symbol": "SPY",
+                "equity": 500,
+                "equity_start": 10000,
+                "has_position": True,
+                "open_positions": 1,
+            },
+        ).json()
+        assert result["trail"][3]["approved"] is True
+        assert result["trail"][3]["reason"] == "close_existing_position"
+
+    def test_sell_without_a_position_is_not_an_executable_trade(self, monkeypatch):
+        _stub(monkeypatch)
+        monkeypatch.setattr(
+            ai_paper,
+            "_analyze",
+            lambda symbol: {
+                **ANALYSIS,
+                "quant": {**ANALYSIS["quant"], "action": "SELL"},
+            },
+        )
+        result = client.post("/api/fusion/ai/step", json={"symbol": "SPY"}).json()
+        assert result["trail"][3]["approved"] is False
+        assert result["trail"][3]["reason"] == "no_position_to_close"
+
+    def test_valid_buy_approved_but_duplicate_position_declined(self, monkeypatch):
+        _stub(monkeypatch)
+        result = client.post("/api/fusion/ai/step", json={"symbol": "SPY"}).json()
+        assert result["trail"][3]["approved"] is True
+        assert result["trail"][3]["qty"] > 0
+        duplicate = client.post(
+            "/api/fusion/ai/step",
+            json={
+                "symbol": "SPY",
+                "has_position": True,
+                "open_positions": 1,
+            },
+        ).json()
+        assert duplicate["trail"][3]["reason"] == "position_already_open"
+
     def test_missing_day_baseline_uses_callers_equity(self):
-        agent = ai_paper._risk_agent_for(LokiConfig(), ai_paper.AiStepBody(symbol="SPY", equity=10000))
+        agent = ai_paper._risk_agent_for(
+            LokiConfig(), ai_paper.AiStepBody(symbol="SPY", equity=10000)
+        )
         assert agent.risk.day_start_equity == 10000
 
     def test_step_returns_full_trail(self, monkeypatch):
