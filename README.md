@@ -26,7 +26,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8124
 ```
 
-Optional environment variables: `LOKI_SITE_GATE=1` enables the gate, `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` enable the login flow, Alpaca keys are browser-held and verify through the relay (`/api/broker/alpaca/*`) whenever the user enters them.
+Optional environment variables: `LOKI_SITE_GATE=1` enables the gate (default code `flathead`; set `LOKI_SITE_CODE` to change it), `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` enable the login flow, Alpaca keys are browser-held and verify through the relay (`/api/broker/alpaca/*`) whenever the user enters them.
 
 ## Guarantees
 
@@ -62,6 +62,14 @@ Stocks use trend-only scoring, entry at score ≥ 30, vol-target sizing (20%), a
 ```powershell
 python train_long_history.py --write-snapshot        # ~30 min on 4 cores
 ```
+
+## Learning from mistakes
+
+`loki_v8/mistake_model.py` replays the AI's own trades, records 15 market features at every entry's signal bar and whether the trade made money after costs, and fits a small regularised logistic model. Live and in backtests the same gate then skips setups whose estimated win chance is below a threshold. It is trained only on trades that had already closed before the window it is judged on, the threshold is chosen on 2019-2022, and it ships only if the 2023+ holdout is not worse. Current result: on for stocks (validation score 0.44 → 0.51; holdout same +12.3%/yr with 108 instead of 127 trades), off for crypto (no validation gain). Rerun with `python train_long_history.py --from-report state/long_history_report.json --write-snapshot`.
+
+## Talk to Loki
+
+Both the workspace "Talk to Loki" panel and the `/ai-chat` room share `loki/api/loki_brain.py`: name any ticker or coin and it runs the live AI engine and explains every check in plain English; it also answers market checks, the AI's track record, how the AI works, and ~30 trading terms. No external language model is used; questions about your own portfolio/research go to the context-aware copilot.
 
 ## Older per-symbol book
 

@@ -209,7 +209,8 @@ def _ensure_schema() -> None:
 
 
 _TURN_TEXT_MAX = _MESSAGE_MAX  # user bubbles stay single-message sized
-_AI_TURN_TEXT_MAX = _MESSAGE_MAX * 4  # AI replies are multi-line; keep them whole
+_REPLY_MAX = _MESSAGE_MAX * 8  # two live AI reads plus headlines fit whole
+_AI_TURN_TEXT_MAX = _REPLY_MAX  # AI replies are multi-line; keep them whole
 
 
 def record_turn(role: str, name: str, text: str, session: str = "") -> None:
@@ -610,7 +611,7 @@ class TeachBody(BaseModel):
 
 
 class Reply(BaseModel):
-    text: str = Field(min_length=1, max_length=_MESSAGE_MAX * 4)
+    text: str = Field(min_length=1, max_length=_REPLY_MAX)
     learned: List[Dict[str, Any]] = Field(default_factory=list)
     quote: Optional[Dict[str, Any]] = None
     facts_used: int = 0
@@ -1029,6 +1030,19 @@ def chat_message(payload: MessageBody, request: Request, response: Response) -> 
         _set_chat_cookie(response, request, name, is_admin)
         return Reply(text=reply_text, admin=is_admin, name=name)
 
+    from loki.api import loki_brain
+
+    # The room keeps its own greeting (memory shelf stats) and headline
+    # memory; Loki's brain adds the live AI read, market checks, the track
+    # record and plain-English explanations.
+    brain = loki_brain.answer(text, name, skip=("greeting",))
+    if brain and brain["intent"] != "symbol":
+        reply_text = brain["text"]
+        record_turn("user", name, text, session)
+        record_turn("ai", "Loki", reply_text, session)
+        _set_chat_cookie(response, request, name, is_admin)
+        return Reply(text=reply_text, admin=is_admin, name=name)
+
     symbol = detect_symbol(text)
     sweep = _maybe_sweep(symbol)
     quote = sweep.get("quote")
@@ -1051,6 +1065,31 @@ def chat_message(payload: MessageBody, request: Request, response: Response) -> 
         turns_used=len(turns_used),
         symbol=symbol,
     )
+    if brain and brain["intent"] == "symbol":
+        # Lead with what the AI engine actually sees; underneath, only the
+        # headlines the room just learned or remembers for this name.
+        from urllib.parse import urlsplit
+
+        wanted = set()
+        for sym in brain.get("symbols") or []:
+            base = sym.split("-")[0].lower()
+            wanted.add(base)
+            wanted.update(k for k, v in loki_brain.NAMES.items() if v == sym and len(k) > 3)
+
+        def _line(item: Dict[str, Any]) -> str:
+            text_ = str(item.get("text") or item.get("title") or "")
+            if not any(re.search(rf"(?<![a-z]){re.escape(w)}(?![a-z])", text_.lower()) for w in wanted):
+                return ""  # only headlines about the asked-about asset
+            host = urlsplit(str(item.get("source") or item.get("link") or "")).hostname or ""
+            return f"{text_} — {host.removeprefix('www.')}" if host else text_
+
+        heard = [_line(item) for item in (sweep.get("learned") or []) if item.get("fresh")]
+        heard += [_line(f) for f in relevant]
+        heard = [h for i, h in enumerate(heard) if h and h not in heard[:i]][:3]
+        reply_text = brain["text"]
+        if heard:
+            reply_text += "\n\nRecent headlines in my memory:\n" + "\n".join(f"• {h}" for h in heard)
+    reply_text = reply_text[: _REPLY_MAX - 1].rstrip() if len(reply_text) >= _REPLY_MAX else reply_text
     record_turn("user", name, text, session)
     record_turn("ai", "Loki", reply_text, session)
     # Refresh the sliding 14-day window on every message.

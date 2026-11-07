@@ -97,14 +97,16 @@
           <p class="eyebrow">CONVERSATION</p>
           <div id="stream" aria-live="polite"></div>
           <form class="composer" id="msgForm" novalidate>
-            <input id="msgInput" maxlength="500" autocomplete="off" placeholder="Ask about the tape, or name a ticker (SPY, BTC/USD)…" />
+            <input id="msgInput" maxlength="500" autocomplete="off" placeholder="Name a ticker or coin, ask about the market, or any trading term…" />
             <button class="primary" type="submit" id="sendBtn">Send</button>
           </form>
           <div class="chips" id="chips" aria-label="Quick asks">
+            <button type="button" class="quiet" data-ask="how's the market today?">market check</button>
+            <button type="button" class="quiet" data-ask="what does the AI think of SPY?">AI on SPY</button>
+            <button type="button" class="quiet" data-ask="what about bitcoin?">AI on bitcoin</button>
+            <button type="button" class="quiet" data-ask="how did the AI do historically?">track record</button>
+            <button type="button" class="quiet" data-ask="what can you do?">help</button>
             <button type="button" class="quiet" data-ask="audit">audit</button>
-            <button type="button" class="quiet" data-ask="what happened to SPY?">SPY check</button>
-            <button type="button" class="quiet" data-ask="what is moving BTC/USD?">BTC pulse</button>
-            <button type="button" class="quiet" data-ask="what do you remember?">what you remember</button>
           </div>
           <p class="muted" style="font-size:11.5px;margin-top:8px">Your conversation is saved in this browser, so it is still here when you come back.</p>
           <p class="muted" style="font-size:11.5px;margin-top:4px" id="learnNote">Internet sweeps refresh at most every 5 minutes — quiet until then.</p>

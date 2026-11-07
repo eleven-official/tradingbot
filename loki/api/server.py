@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -437,7 +438,7 @@ _FX_HEADERS = {
 
 def _fetch_usd_aud_sync() -> float:
     try:
-        url = "https://api.frankfurter.app/latest?from=USD&to=AUD"
+        url = "https://api.frankfurter.dev/v1/latest?from=USD&to=AUD"
         request = urllib.request.Request(url, headers=_FX_HEADERS)  # noqa: S310 - fixed https URL
         with urllib.request.urlopen(request, timeout=10) as res:
             data = json.loads(res.read().decode())
@@ -659,7 +660,29 @@ def copilot(payload: CopilotRequest, request: Request, response: Response):
             "suggestions": ["show memory"],
             "conversation": {"topics": ["memory"], "symbol": None},
         }
+    # Questions about the visitor's own workspace (portfolio, research,
+    # council) stay with the context-aware copilot; general questions —
+    # tickers, the market, terms, the AI itself — go to Loki's brain, which
+    # runs the live AI engine and real quotes.
+    if not _PERSONAL.search(payload.message):
+        from loki.api import loki_brain
+
+        brain = loki_brain.answer(payload.message)
+        if brain:
+            symbols = brain.get("symbols") or []
+            return {
+                "text": brain["text"],
+                "intent": f"brain:{brain['intent']}",
+                "evidence": [],
+                "suggestions": ["How's the market?", "How did the AI do?", "What is a stop loss?"],
+                "conversation": {"topics": [brain["intent"]], "symbol": symbols[0] if symbols else None},
+            }
     return LokiCopilot().respond(payload.message, payload.context).as_dict()
+
+
+_PERSONAL = re.compile(
+    r"\b(my|mine|we|our|us|portfolio|account|council|dataset|journal|imported|lose|lost|doing|next)\b", re.I
+)
 
 
 class SizingRequest(BaseModel):

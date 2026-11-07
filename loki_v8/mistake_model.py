@@ -68,7 +68,7 @@ def feature_frame(frame: pd.DataFrame, bars_per_year: int = 252) -> pd.DataFrame
 
 
 def _sigmoid(z: np.ndarray) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-np.clip(z, -30, 30)))
+    return np.asarray(1.0 / (1.0 + np.exp(-np.clip(z, -30, 30))))
 
 
 def fit(X: np.ndarray, y: np.ndarray, l2: float = 1.0, steps: int = 3000, lr: float = 0.1) -> Dict[str, Any]:
