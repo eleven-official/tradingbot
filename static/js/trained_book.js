@@ -204,9 +204,9 @@
         const lo = Math.min(...a, ...b), hi = Math.max(...a, ...b), span = hi - lo || 1;
         const path = (pts) => pts.map((v, i) => `${i ? 'L' : 'M'}${(i / (pts.length - 1) * 600).toFixed(1)},${(150 - (v - lo) / span * 140).toFixed(1)}`).join(' ');
         svg = `<svg viewBox="0 0 600 160" preserveAspectRatio="none" style="width:100%;height:150px;margin-top:8px" aria-label="Portfolio AI versus buy and hold since 2023">` +
-          `<path d="${path(b)}" fill="none" stroke="#7f93a8" stroke-width="1.5" stroke-dasharray="4 4"/>` +
-          `<path d="${path(a)}" fill="none" stroke="#a8f0c6" stroke-width="2.5"/></svg>` +
-          `<p class="caption"><span style="color:#a8f0c6">━ Portfolio AI</span> &nbsp; <span style="color:#7f93a8">┅ equal-weight buy &amp; hold</span> · growth of $1 since Jan 2023 (weekly)</p>`;
+          `<path d="${path(b)}" fill="none" stroke="#7f93a8" stroke-width="1.5" opacity=".7"/>` +
+          `<path class="draw-line" pathLength="1" d="${path(a)}" fill="none" stroke="#a8f0c6" stroke-width="2.5" style="filter:drop-shadow(0 0 6px rgba(168,240,198,.5))"/></svg>` +
+          `<p class="caption"><span style="color:#a8f0c6">━ Portfolio AI</span> &nbsp; <span style="color:#7f93a8">━ equal-weight buy &amp; hold</span> · growth of $1 since Jan 2023 (weekly)</p>`;
       }
       const h = pf.holdout, bh = pf.holdout_buy_hold || {};
       pfHtml = `<article style="${cardStyle}width:100%;margin-top:12px;border-color:rgba(168,240,198,.4)">` +

@@ -147,6 +147,23 @@
       cell('Profitable months', `${Number(h.profitable_months_pct).toFixed(0)}%`, `risk target ${plan.target_vol_pct}% / yr`);
   }
 
+  const PALETTE = ['#a8f0c6', '#8bdad4', '#6fd3bf', '#c9ffe2', '#7fb8e6', '#b8a8f0', '#f0c98b', '#e6a8d8', '#9fe0a8', '#88c9f0'];
+  function donut() {
+    const held = plan.positions.filter((p) => p.weight > 0);
+    const C = 2 * Math.PI * 52;
+    let offset = 0;
+    const segs = held.map((p, i) => {
+      const len = p.weight * C;
+      const seg = `<circle class="seg" r="52" cx="66" cy="66" stroke="${PALETTE[i % PALETTE.length]}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" style="animation-delay:${(i * 0.06).toFixed(2)}s"/>`;
+      offset += len;
+      return seg;
+    }).join('');
+    const legend = held.slice(0, 6).map((p, i) => `<span><i style="background:${PALETTE[i % PALETTE.length]}"></i>${esc(p.symbol)} ${esc((p.weight * 100).toFixed(1))}%</span>`).join('') +
+      (held.length > 6 ? `<span>+${held.length - 6} more</span>` : '') + `<span><i style="background:#2c3c48"></i>cash ${esc((plan.cash * 100).toFixed(1))}%</span>`;
+    return `<div class="pf-donut-wrap"><div class="pf-donut-center"><svg class="pf-donut" viewBox="0 0 132 132" aria-hidden="true"><circle r="52" cx="66" cy="66" stroke="#1d2b35"/>${segs}</svg>` +
+      `<div class="pf-donut-label"><span class="pf-donut-num">${esc(Math.round(plan.gross * 100))}%</span><small>INVESTED</small></div></div><div class="pf-legend">${legend}</div></div>`;
+  }
+
   function renderAlloc() {
     if (!plan) return;
     const max = Math.max(0.05, ...plan.positions.map((p) => p.weight));
@@ -158,7 +175,7 @@
         `<span class="pf-w">${held ? w.toFixed(1) + '%' : 'cash'}</span>` +
         `<span class="pf-meta">${held ? `since ${esc(p.entry_date)} · ${pct(p.unrealized_pct)}` : 'no uptrend'}</span></div>`;
     }).join('');
-    $('pf-alloc').innerHTML = rows + `<div class="pf-row total"><span class="pf-sym">CASH</span><span class="pf-bar"><i style="width:${(plan.cash / Math.max(max, plan.cash)) * 100}%;background:#5b6b78"></i></span><span class="pf-w">${(plan.cash * 100).toFixed(1)}%</span><span class="pf-meta">${plan.active_markets} markets watched${plan.missing_markets && plan.missing_markets.length ? ` · ${plan.missing_markets.length} feed(s) missing` : ''}</span></div>`;
+    $('pf-alloc').innerHTML = donut() + rows + `<div class="pf-row total"><span class="pf-sym">CASH</span><span class="pf-bar"><i style="width:${(plan.cash / Math.max(max, plan.cash)) * 100}%;background:#5b6b78"></i></span><span class="pf-w">${(plan.cash * 100).toFixed(1)}%</span><span class="pf-meta">${plan.active_markets} markets watched${plan.missing_markets && plan.missing_markets.length ? ` · ${plan.missing_markets.length} feed(s) missing` : ''}</span></div>`;
   }
 
   function renderBook() {

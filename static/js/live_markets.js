@@ -58,7 +58,7 @@
     if (pts.length < 2) return '<svg class="lm-spark" viewBox="0 0 80 24" aria-hidden="true"></svg>';
     const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
     const d = pts.map((v, i) => `${i ? 'L' : 'M'}${(i / (pts.length - 1) * 80).toFixed(1)},${(22 - (v - lo) / span * 20).toFixed(1)}`).join(' ');
-    return `<svg class="lm-spark ${up ? 'up' : 'down'}" viewBox="0 0 80 24" aria-hidden="true"><path d="${d}"/></svg>`;
+    return `<svg class="lm-spark ${up ? 'up' : 'down'}" viewBox="0 0 80 24" aria-hidden="true"><path pathLength="1" d="${d}"/></svg>`;
   }
 
   function allItems() {
@@ -103,6 +103,8 @@
       return;
     }
     const now = Date.now();
+    grid.classList.toggle('lm-animate', !grid.dataset.painted);
+    grid.dataset.painted = '1';
     grid.innerHTML = items.map((item) => {
       const starred = watchlist.includes(item.symbol);
       const label = item.label || item.symbol;
@@ -114,7 +116,8 @@
       const flash = flashes.get(item.symbol);
       const flashCls = flash && now - flash.at < 1600 ? ` flash-${flash.dir}` : '';
       const sel = prefs.selected && prefs.selected.symbol === item.symbol ? ' selected' : '';
-      return `<button type="button" class="lm-tile loki-glow${flashCls}${sel}" data-symbol="${esc(item.symbol)}" data-label="${esc(label)}">` +
+      const heat = Math.min(0.2, Math.abs(Number(item.change_pct) || 0) / 30).toFixed(3);
+      return `<button type="button" class="lm-tile loki-glow${flashCls}${sel}" style="--heat:${heat};--heat-rgb:${up ? '168,240,198' : '255,179,167'}" data-symbol="${esc(item.symbol)}" data-label="${esc(label)}">` +
         `<div class="lm-tile-top"><span class="lm-name">${esc(label)}</span>${star}</div>` +
         `<span class="lm-sym">${esc(item.symbol)}</span>` +
         `<div class="lm-tile-mid"><span class="lm-price">${esc(fmtPrice(item.price, item.symbol))}</span>${spark(item.spark, up)}</div>` +

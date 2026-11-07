@@ -272,3 +272,113 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
+
+/* INTERFACE MOTION — view transitions, 3D tilt, cursor aura, counting numbers,
+ * self-drawing lines. Presentation only; reduced-motion turns it all off. */
+(() => {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const body = document.body;
+  const workspace = body.classList.contains('loki-workspace');
+
+  /* view transitions: the newly shown view rises in */
+  document.addEventListener('loki:view', (e) => {
+    const view = document.getElementById(e.detail && e.detail.view);
+    if (!view) return;
+    view.classList.remove('view-enter'); void view.offsetWidth; view.classList.add('view-enter');
+    setTimeout(() => view.classList.remove('view-enter'), 1100);
+  });
+
+  /* 3D tilt on cards (delegated, so re-rendered tiles keep it) */
+  const TILT = '.workspace-launchers > a, .metric, .pf-stat, .lm-tile, .workflow-card, .peek-card, .pf-metric';
+  let tilted = null;
+  document.addEventListener('pointermove', (e) => {
+    const card = e.target.closest && e.target.closest(TILT);
+    if (tilted && tilted !== card) { tilted.classList.remove('tilting'); tilted.style.setProperty('--rx', '0deg'); tilted.style.setProperty('--ry', '0deg'); tilted = null; }
+    if (!card) return;
+    card.classList.add('loki-tilt', 'tilting'); tilted = card;
+    const r = card.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5, py = (e.clientY - r.top) / r.height - 0.5;
+    card.style.setProperty('--ry', `${(px * 7).toFixed(2)}deg`);
+    card.style.setProperty('--rx', `${(-py * 7).toFixed(2)}deg`);
+  }, { passive: true });
+
+  /* cursor aura over the workspace */
+  if (workspace && window.matchMedia('(pointer: fine)').matches) {
+    const aura = document.createElement('div');
+    aura.className = 'loki-aura'; aura.setAttribute('aria-hidden', 'true');
+    body.appendChild(aura);
+    let ax = -999, ay = -999, tx = -999, ty = -999;
+    document.addEventListener('pointermove', (e) => { tx = e.clientX; ty = e.clientY; }, { passive: true });
+    const follow = () => { ax += (tx - ax) * 0.12; ay += (ty - ay) * 0.12; aura.style.transform = `translate3d(${ax}px,${ay}px,0)`; requestAnimationFrame(follow); };
+    requestAnimationFrame(follow);
+  }
+
+  /* numbers count to their new value */
+  const COUNT = '.pf-stat strong, .pf-metric strong, .metric strong, #universal-book strong, .radar-readout b, .pf-donut-num';
+  const NUM = /^(\D*?)([+-]?)([\d,]*\.?\d+)(.*)$/s;
+  const animating = new WeakSet();
+  // Re-rendered panels replace their elements; remember values by position
+  // so a redraw with the same number does not count up from zero again.
+  const prevByKey = new Map();
+  const keyOf = (el) => {
+    const host = el.closest('[id]');
+    const peers = host ? [...host.querySelectorAll(el.tagName + (el.className ? '.' + [...el.classList].join('.') : ''))] : [];
+    return `${host ? host.id : ''}|${el.tagName}|${el.className}|${peers.indexOf(el)}`;
+  };
+  function morph(el) {
+    // Only plain-text numbers: rewriting textContent would erase child markup.
+    if (animating.has(el) || el.children.length) return;
+    const text = el.textContent.trim();
+    const key = keyOf(el);
+    const m = text.match(NUM);
+    if (!m || text.length > 32) { el.dataset.countPrev = text; prevByKey.set(key, text); return; }
+    const target = parseFloat(m[3].replace(/,/g, '')) * (m[2] === '-' ? -1 : 1);
+    const prevText = el.dataset.countPrev || prevByKey.get(key);
+    prevByKey.set(key, text);
+    const pm = prevText && prevText.match(NUM);
+    const from = pm && pm[1] === m[1] && pm[4] === m[4] ? parseFloat(pm[3].replace(/,/g, '')) * (pm[2] === '-' ? -1 : 1) : 0;
+    el.dataset.countPrev = text;
+    if (!Number.isFinite(target) || from === target) return;
+    const decimals = (m[3].split('.')[1] || '').length;
+    const grouped = m[3].includes(',');
+    const signed = m[2] === '+' || (m[2] === '-' && from >= 0);
+    const fmt = (v) => {
+      const abs = Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: grouped });
+      return `${m[1]}${v < 0 ? '-' : signed ? '+' : ''}${abs}${m[4]}`;
+    };
+    const t0 = performance.now(), dur = 900;
+    animating.add(el);
+    const tick = (t) => {
+      const p = Math.min(1, (t - t0) / dur), ease = 1 - Math.pow(1 - p, 3);
+      el.textContent = p < 1 ? fmt(from + (target - from) * ease) : text;
+      if (p < 1) requestAnimationFrame(tick); else animating.delete(el);
+    };
+    requestAnimationFrame(tick);
+  }
+  const seen = new IntersectionObserver((entries) => {
+    for (const entry of entries) if (entry.isIntersecting) { morph(entry.target); seen.unobserve(entry.target); }
+  }, { threshold: 0.4 });
+  function scan(root) {
+    if (!(root instanceof Element)) return;
+    const els = root.matches(COUNT) ? [root] : [...root.querySelectorAll(COUNT)];
+    for (const el of els) {
+      if (!el.dataset.countBound) {
+        el.dataset.countBound = '1';
+        if (prevByKey.has(keyOf(el))) morph(el); else seen.observe(el);
+      } else morph(el);
+    }
+    root.querySelectorAll('.draw-line:not(.drawn)').forEach((p) => drawObs.observe(p));
+  }
+  const drawObs = new IntersectionObserver((entries) => {
+    for (const entry of entries) if (entry.isIntersecting) { entry.target.classList.add('drawn'); drawObs.unobserve(entry.target); }
+  }, { threshold: 0.2 });
+  new MutationObserver((mutations) => {
+    const roots = new Set();
+    for (const mu of mutations) {
+      const node = mu.target.nodeType === 3 ? mu.target.parentElement : mu.target;
+      if (node && !animating.has(node)) roots.add(node);
+    }
+    roots.forEach(scan);
+  }).observe(body, { childList: true, subtree: true, characterData: true });
+  scan(body);
+})();

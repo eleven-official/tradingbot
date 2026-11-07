@@ -85,6 +85,14 @@ def run_sleeve(df: pd.DataFrame, params: Dict[str, Any], symbol: str) -> Dict[st
     else:
         state = {"in_position": False}
     state["last_close"] = round(float(close.iloc[-1]), 6)
+    last_score = frame["score"].iloc[-1] if "score" in frame.columns else float("nan")
+    state["score"] = round(float(last_score), 1) if np.isfinite(last_score) else None
+    try:
+        from .regime import regime_series
+
+        state["regime"] = str(regime_series(frame).iloc[-1])
+    except Exception:  # noqa: BLE001 - presentation extra only
+        state["regime"] = None
     state["as_of"] = str(norm[-1].date())
     return {"symbol": symbol, "returns": returns, "exposure": exposure, "state": state}
 
