@@ -97,7 +97,8 @@ def run_sleeve(df: pd.DataFrame, params: Dict[str, Any], symbol: str) -> Dict[st
     return {"symbol": symbol, "returns": returns, "exposure": exposure, "state": state}
 
 
-def combine(sleeves: Dict[str, Dict[str, Any]], target_vol_pct: float, warmup: int = 300) -> Dict[str, Any]:
+def combine(sleeves: Dict[str, Dict[str, Any]], target_vol_pct: float, warmup: int = 300,
+            vol_window: Optional[int] = None) -> Dict[str, Any]:
     """Equal-capital sleeves, vol-targeted, gross exposure capped at 100%."""
     R = pd.DataFrame({s: v["returns"] for s, v in sleeves.items()}).sort_index()
     E = pd.DataFrame({s: v["exposure"] for s, v in sleeves.items()}).reindex(R.index).ffill().fillna(0.0)
@@ -110,7 +111,8 @@ def combine(sleeves: Dict[str, Dict[str, Any]], target_vol_pct: float, warmup: i
     n = active.sum(axis=1).clip(lower=1)
     ew = (R * active).sum(axis=1) / n
     gross_ew = (E * active).sum(axis=1) / n
-    vol = ew.rolling(VOL_WINDOW, min_periods=20).std().shift(1) * math.sqrt(ANNUAL)
+    window = int(vol_window or VOL_WINDOW)
+    vol = ew.rolling(window, min_periods=20).std().shift(1) * math.sqrt(ANNUAL)
     target = (target_vol_pct / 100.0 / vol).fillna(1.0)
     weekly = target.resample("W-FRI").last().reindex(ew.index, method="ffill").fillna(1.0)
     # Same-day cap: a sleeve's holdings for day t are decided at that day's
@@ -178,15 +180,16 @@ def allocation(sleeves: Dict[str, Dict[str, Any]], book: Dict[str, Any], prices:
 
 
 def select_target_vol(sleeves: Dict[str, Dict[str, Any]], windows: Dict[str, Tuple[str, str]],
-                      candidates: Tuple[float, ...] = (10.0, 15.0, 20.0, 25.0)) -> Tuple[float, List[Dict[str, Any]]]:
-    """Pick the vol target with the best WORSE of development/validation Sharpe."""
+                      candidates: Tuple[float, ...] = (10.0, 15.0, 20.0, 25.0),
+                      vol_windows: Tuple[int, ...] = (VOL_WINDOW,)) -> Tuple[float, List[Dict[str, Any]]]:
+    """Pick risk target (and vol look-back) by the WORSE of development/validation Sharpe."""
     trials = []
-    for tv in candidates:
-        book = combine(sleeves, tv)
-        dev = window_stats(book["returns"], *windows["development"])
-        val = window_stats(book["returns"], *windows["validation"])
-        trials.append({"target_vol_pct": tv, "development": dev, "validation": val,
-                       "rank": round(min(dev.get("sharpe", -9), val.get("sharpe", -9)), 3)})
+    for vw in vol_windows:
+        for tv in candidates:
+            book = combine(sleeves, tv, vol_window=vw)
+            dev = window_stats(book["returns"], *windows["development"])
+            val = window_stats(book["returns"], *windows["validation"])
+            trials.append({"target_vol_pct": tv, "vol_window": vw, "development": dev, "validation": val,
+                           "rank": round(min(dev.get("sharpe", -9), val.get("sharpe", -9)), 3)})
     best = max(trials, key=lambda t: (t["rank"], -t["target_vol_pct"]))
-    return best["target_vol_pct"], trials
-
+    return best["target_vol_pct"], [dict(t, chosen=t is best) for t in trials]

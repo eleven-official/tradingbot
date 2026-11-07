@@ -446,7 +446,7 @@ def _portfolio_plan() -> Dict[str, Any]:
     missing = [s for s in symbols if s not in sleeves]
     if len(sleeves) < max(5, len(symbols) // 2):
         raise HTTPException(503, "Not enough market data reached the Portfolio AI right now; try again shortly.")
-    book = portfolio_ai.combine(sleeves, float(block["target_vol_pct"]))
+    book = portfolio_ai.combine(sleeves, float(block["target_vol_pct"]), vol_window=block.get("vol_window"))
     try:
         quotes = provider.get_quotes(list(sleeves))
     except Exception:  # noqa: BLE001 - last closes are an honest fallback

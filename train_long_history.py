@@ -360,10 +360,14 @@ def portfolio_stage(report: Dict[str, Any], data_dir: Optional[Path]) -> Dict[st
             df = load_history(sym, data_dir)
             frames[sym] = df
             sleeves[sym] = portfolio_ai.run_sleeve(df, params, sym)
-    target, trials = portfolio_ai.select_target_vol(sleeves, PORTFOLIO_WINDOWS)
-    book = portfolio_ai.combine(sleeves, target)
+    target, trials = portfolio_ai.select_target_vol(sleeves, PORTFOLIO_WINDOWS, vol_windows=(63, 126, 189, 252))
+    vol_window = next(t["vol_window"] for t in trials if t.get("chosen"))
+    book = portfolio_ai.combine(sleeves, target, vol_window=vol_window)
     bh = portfolio_ai.buy_hold_returns(frames, book["returns"].index, book["active"])
-    out = {"target_vol_pct": target, "symbols": list(sleeves), "trials": trials, "windows": PORTFOLIO_WINDOWS,
+    out = {"target_vol_pct": target, "vol_window": vol_window, "symbols": list(sleeves), "trials": trials,
+           "rejected_experiments": [
+               "8 extra asset-class ETFs (EFA, EEM, IEF, SLV, DBC, VNQ, XLU, XLV): development Sharpe 0.90 vs 1.10 — rejected",
+               "capital tilted to markets whose strategy worked over the trailing year: best 1.08 vs 1.10 — rejected"], "windows": PORTFOLIO_WINDOWS,
            "cost_bps_per_side": portfolio_ai.COST_BPS, "average_gross_exposure": round(float(book["gross"].mean()), 3)}
     for name, (a, b) in PORTFOLIO_WINDOWS.items():
         out[name] = portfolio_ai.window_stats(book["returns"], a, b)
@@ -374,7 +378,7 @@ def portfolio_stage(report: Dict[str, Any], data_dir: Optional[Path]) -> Dict[st
     out["holdout_curve"] = [[str(d.date()), round(float(v), 4)] for d, v in eq.resample("W-FRI").last().items()]
     bheq = (1 + bh[bh.index >= PORTFOLIO_WINDOWS["holdout"][0]]).cumprod()
     out["holdout_curve_buy_hold"] = [[str(d.date()), round(float(v), 4)] for d, v in bheq.resample("W-FRI").last().items()]
-    print(f"== portfolio: target vol {target}% | holdout {hold} | buy&hold {out['holdout_buy_hold']}")
+    print(f"== portfolio: target vol {target}% window {vol_window} | holdout {hold} | buy&hold {out['holdout_buy_hold']}")
     return out
 
 
