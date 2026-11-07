@@ -89,6 +89,14 @@ python train_long_history.py --write-snapshot        # ~30 min on 4 cores
 
 `static/js/loki_scene.js` + `static/css/loki_scene.css` add a once-per-visit intro, animated market canvases, a live price tape and motion to the gate page and overview, plus an interface motion system: view transitions, 3D card tilt, a cursor aura, ambient aurora, numbers that count to new values, self-drawing charts and an animated allocation ring. `static/js/loki_radar.js` draws the **AI Market Radar** in the home banner — the Portfolio AI's 21 markets placed by live trend score, held positions glowing and pinging under a rotating sweep (data from `/api/fusion/ai/portfolio`). All presentation only; honours reduced-motion and pauses in hidden tabs.
 
+## AI self-check, daily briefing, price alerts
+
+- **Honest uncertainty:** the Portfolio AI's held-back result comes with a 90% block-bootstrap range (`holdout_ci`, currently about +5% to +23% a year).
+- **Self-health check:** every live plan compares the strategy's last 12 months with all rolling 12-month windows from 2005-2022 (`expected_range`) and reports `normal`, `below_range` or `above_range`.
+- **Daily AI briefing** on the overview: health meter, this week's entries/exits, and the uncertainty range; Talk to Loki answers "how is the AI doing?" and "what changed this week?".
+- **Price alerts** on Live markets: above/below alerts stored in this browser, checked on every board refresh, with an in-page toast and an optional browser notification.
+- The operator named in the policies defaults to Joshua Mathew (`LOKI_OPERATOR_NAME` / `LOKI_OPERATOR_EMAIL` override it).
+
 ## Learning from mistakes
 
 `loki_v8/mistake_model.py` replays the AI's own trades, records 15 market features at every entry's signal bar and whether the trade made money after costs, and fits a small regularised logistic model. Live and in backtests the same gate then skips setups whose estimated win chance is below a threshold. It is trained only on trades that had already closed before the window it is judged on, the threshold is chosen on 2019-2022, and it ships only if the 2023+ holdout is not worse. Current result: on for stocks (validation score 0.44 → 0.51; holdout same +12.3%/yr with 108 instead of 127 trades), off for crypto (no validation gain). Rerun with `python train_long_history.py --from-report state/long_history_report.json --write-snapshot`.

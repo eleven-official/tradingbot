@@ -20,6 +20,8 @@
   const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage full or blocked */ } };
 
   const prefs = { tab: 'all', tf: '1d', selected: null, ...load(PREFS_KEY, {}) };
+  const ALERTS_KEY = 'loki_price_alerts_v1';
+  let alerts = (load(ALERTS_KEY, []) || []).filter((a) => a && a.symbol && Number.isFinite(Number(a.price)) && (a.op === 'above' || a.op === 'below')).slice(0, 30);
   let watchlist = (load(WATCH_KEY, []) || []).filter((s) => typeof s === 'string').slice(0, 20);
   let board = null;
   let watchItems = [];
@@ -161,6 +163,7 @@
       if (watchRes && watchRes.ok) watchItems = (await watchRes.json()).items || [];
       else if (!watchlist.length) watchItems = [];
       trackFlashes(allItems());
+      checkAlerts(allItems());
       lastOkAt = Date.now();
       const degraded = Number(board.degraded) || 0;
       $('lm-message').textContent = degraded ? `${degraded} instrument(s) unavailable from their public feed right now — shown as such, never guessed.` : '';
@@ -176,6 +179,41 @@
   function schedule() {
     clearTimeout(timer);
     timer = setTimeout(async () => { await refresh(false); schedule(); }, refreshMs);
+  }
+
+  // ---- price alerts (this browser only) ----------------------------------
+  function toast(text) {
+    const el = document.createElement('div');
+    el.className = 'lm-toast'; el.setAttribute('role', 'alert'); el.textContent = text;
+    document.body.appendChild(el);
+    setTimeout(() => el.classList.add('out'), 6000);
+    setTimeout(() => el.remove(), 6800);
+  }
+  function renderAlerts() {
+    const chip = (a, i) => `<span class="lm-alert-chip">🔔 ${esc(a.label || a.symbol)} ${a.op === 'above' ? '≥' : '≤'} ${esc(fmtPrice(Number(a.price), a.symbol))}<button type="button" data-alert-del="${i}" aria-label="Remove alert">×</button></span>`;
+    $('lm-alerts-all').innerHTML = alerts.length ? `<span class="lm-movers-label">Your alerts</span>${alerts.map(chip).join('')}` : '';
+    const mine = prefs.selected ? alerts.map((a, i) => [a, i]).filter(([a]) => a.symbol === prefs.selected.symbol) : [];
+    $('lm-alerts').innerHTML = mine.map(([a, i]) => chip(a, i)).join('');
+  }
+  function checkAlerts(items) {
+    if (!alerts.length) return;
+    const bySymbol = new Map(items.filter((i) => i.ok).map((i) => [i.symbol, i]));
+    const fired = [];
+    alerts = alerts.filter((a) => {
+      const item = bySymbol.get(a.symbol);
+      if (!item || !Number.isFinite(item.price)) return true;
+      const hit = a.op === 'above' ? item.price >= a.price : item.price <= a.price;
+      if (hit) fired.push({ ...a, now: item.price });
+      return !hit;
+    });
+    if (!fired.length) return;
+    store(ALERTS_KEY, alerts);
+    for (const a of fired) {
+      const text = `${a.label || a.symbol} is ${a.op} ${fmtPrice(Number(a.price), a.symbol)} — now ${fmtPrice(a.now, a.symbol)}`;
+      toast('🔔 ' + text);
+      try { if (window.Notification && Notification.permission === 'granted') new Notification('Loki price alert', { body: text }); } catch { /* unsupported */ }
+    }
+    renderAlerts();
   }
 
   // ---- watchlist ---------------------------------------------------------
@@ -262,6 +300,7 @@
     $('lm-detail-eyebrow').textContent = `SELECTED · ${symbol}`;
     $('lm-ai-out').innerHTML = '<p class="caption">Runs the trained strategy\'s entry checklist on the last completed daily bar. Review only — nothing is bought.</p>';
     renderGrid();
+    renderAlerts();
     loadChart();
   }
 
@@ -319,6 +358,27 @@
     const star = event.target.closest('[data-star]');
     if (star && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); toggleWatch(star.dataset.star); }
   });
+  $('lm-alert-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!prefs.selected) return;
+    const price = Number($('lm-alert-price').value);
+    if (!(price > 0)) { $('lm-message').textContent = 'Enter a positive alert price.'; return; }
+    if (alerts.length >= 30) { $('lm-message').textContent = 'Up to 30 alerts at a time.'; return; }
+    alerts.push({ symbol: prefs.selected.symbol, label: prefs.selected.label, op: $('lm-alert-op').value, price, created: Date.now() });
+    store(ALERTS_KEY, alerts);
+    $('lm-alert-price').value = '';
+    renderAlerts();
+    $('lm-message').textContent = 'Alert set. It checks on every board refresh while Loki is open in this browser.';
+    try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch { /* unsupported */ }
+    if (!watchlist.includes(prefs.selected.symbol) && !(board && board.categories.some((c) => c.items.some((i) => i.symbol === prefs.selected.symbol)))) toggleWatch(prefs.selected.symbol);
+  });
+  root.addEventListener('click', (event) => {
+    const del = event.target.closest('[data-alert-del]');
+    if (!del) return;
+    alerts.splice(Number(del.dataset.alertDel), 1);
+    store(ALERTS_KEY, alerts);
+    renderAlerts();
+  });
   $('lm-pause').addEventListener('click', () => {
     paused = !paused;
     $('lm-pause').textContent = paused ? 'Resume' : 'Pause';
@@ -355,5 +415,6 @@
   window.addEventListener('resize', () => { if (isActive() && chartCandles.length) drawChart(); });
   setInterval(() => { if (isActive()) { renderLive(); if (flashes.size) renderGrid(); flashes.forEach((f, k) => { if (Date.now() - f.at > 1600) flashes.delete(k); }); } }, 1000);
   renderTabs();
+  renderAlerts();
   onViewChange();
 })();

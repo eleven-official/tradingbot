@@ -49,6 +49,19 @@ TERMS_VERSION = 6
 TERMS_UPDATED = "2026-11-07"
 MINIMUM_AGE = 18
 
+# The operator (data controller) named in the policies and on /transparency.
+# Environment variables override these defaults per deployment.
+DEFAULT_OPERATOR_NAME = "Joshua Mathew"
+DEFAULT_OPERATOR_EMAIL = "joshuajestin2010@gmail.com"
+
+
+def operator_name() -> str:
+    return (os.environ.get("LOKI_OPERATOR_NAME") or "").strip() or DEFAULT_OPERATOR_NAME
+
+
+def operator_email() -> str:
+    return (os.environ.get("LOKI_OPERATOR_EMAIL") or "").strip() or DEFAULT_OPERATOR_EMAIL
+
 _COOKIE_SALT = b"loki-site-access-v1"
 _PROCESS_SECRET = secrets.token_bytes(32)
 

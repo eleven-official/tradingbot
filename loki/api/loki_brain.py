@@ -302,6 +302,17 @@ def portfolio_answer() -> str:
         lines.append(f"In a simulation on held-back 2023→now data (hypothetical, not real trading) it made {_pct(h.get('cagr_pct'))} a year with a Sharpe of {h.get('sharpe')} and a worst drop of "
                      f"{_pct(h.get('max_dd_pct'))}; holding all 21 equally made {_pct(b.get('cagr_pct'))} a year but fell {_pct(b.get('max_dd_pct'))} at worst.")
     plan = _portfolio()
+    if plan and plan.get("health", {}).get("status") not in (None, "unknown"):
+        h = plan["health"]
+        lines.append(f"Self-check: over the last 12 months it had a Sharpe of {h.get('last_year_sharpe')} — better than "
+                     f"{round(h.get('percentile_vs_history') or 0)}% of its 2005-2022 years, so it is {h.get('detail')}.")
+    if plan and plan.get("changes"):
+        moves = ", ".join(f"{c['action']} {c['symbol']} ({c['date']})" for c in plan["changes"][:5])
+        lines.append(f"Recent moves: {moves}.")
+    ci = uni.get("holdout_ci") or {}
+    if ci.get("cagr_pct"):
+        lines.append(f"Honest uncertainty: that simulated yearly return could plausibly have been anywhere from "
+                     f"{_pct(ci['cagr_pct'][0])} to {_pct(ci['cagr_pct'][1])} by luck alone.")
     if plan and plan.get("positions"):
         held = [p for p in plan["positions"] if p.get("weight", 0) > 0]
         if held:
@@ -314,7 +325,7 @@ def portfolio_answer() -> str:
     return "\n".join(lines)
 
 
-_PORTFOLIO_Q = re.compile(r"\b(portfolio ai|portfolio|diversif\w*|all (the )?markets|what (is|are) (the ai|you|it) (holding|buying|in)|holdings|allocation)\b", re.I)
+_PORTFOLIO_Q = re.compile(r"\b(portfolio ai|portfolio|diversif\w*|all (the )?markets|what (is|are) (the ai|you|it) (holding|buying|in)|holdings|allocation|what changed|this week|how is the ai doing|ai doing|self.?check|health)\b", re.I)
 
 
 HELP_TEXT = ("Here's what I can do:\n"

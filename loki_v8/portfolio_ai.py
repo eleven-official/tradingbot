@@ -193,3 +193,102 @@ def select_target_vol(sleeves: Dict[str, Dict[str, Any]], windows: Dict[str, Tup
                            "rank": round(min(dev.get("sharpe", -9), val.get("sharpe", -9)), 3)})
     best = max(trials, key=lambda t: (t["rank"], -t["target_vol_pct"]))
     return best["target_vol_pct"], [dict(t, chosen=t is best) for t in trials]
+
+
+# --- Self-knowledge: uncertainty and health ------------------------------------
+def bootstrap_ci(returns: pd.Series, n: int = 2000, block: int = 21, seed: int = 7,
+                 level: float = 0.90) -> Dict[str, Any]:
+    """Block-bootstrap interval for yearly return and Sharpe of a return series.
+
+    Resamples 21-day blocks (keeps volatility clustering) to show how much the
+    headline number could have differed by luck alone.
+    """
+    x = returns.dropna().to_numpy()
+    if len(x) < block * 4:
+        return {}
+    rng = np.random.default_rng(seed)
+    starts_max = len(x) - block
+    k = int(np.ceil(len(x) / block))
+    cagrs, sharpes = [], []
+    for _ in range(n):
+        idx = (rng.integers(0, starts_max + 1, size=k)[:, None] + np.arange(block)).ravel()[: len(x)]
+        sample = x[idx]
+        growth = float(np.prod(1 + sample))
+        years = len(sample) / ANNUAL
+        cagrs.append((growth ** (1 / years) - 1) * 100 if growth > 0 else -100.0)
+        sd = sample.std()
+        sharpes.append(sample.mean() / sd * math.sqrt(ANNUAL) if sd > 0 else 0.0)
+    lo, hi = (1 - level) / 2 * 100, (1 + level) / 2 * 100
+    return {
+        "level": level,
+        "cagr_pct": [round(float(np.percentile(cagrs, lo)), 2), round(float(np.percentile(cagrs, hi)), 2)],
+        "sharpe": [round(float(np.percentile(sharpes, lo)), 3), round(float(np.percentile(sharpes, hi)), 3)],
+        "probability_profitable": round(float(np.mean(np.array(cagrs) > 0)), 3),
+    }
+
+
+def _window_metrics(r: pd.Series) -> Tuple[float, float]:
+    sd = r.std()
+    sharpe = float(r.mean() / sd * math.sqrt(ANNUAL)) if sd > 0 else 0.0
+    eq = (1 + r).cumprod()
+    return sharpe, float((eq / eq.cummax() - 1).min() * 100)
+
+
+def expected_range(returns: pd.Series, start: str, end: str, window: int = 252, step: int = 5) -> Dict[str, Any]:
+    """Distribution of rolling 1-year Sharpe and worst drop inside a reference period."""
+    x = returns[(returns.index >= start) & (returns.index <= end)]
+    sharpes, drops = [], []
+    for i in range(window, len(x) + 1, step):
+        s, d = _window_metrics(x.iloc[i - window:i])
+        sharpes.append(s); drops.append(d)
+    if len(sharpes) < 20:
+        return {}
+    pct = lambda arr, q: round(float(np.percentile(arr, q)), 3)  # noqa: E731
+    return {"window_days": window, "reference": [start, end], "samples": len(sharpes),
+            "sharpe_p10": pct(sharpes, 10), "sharpe_p50": pct(sharpes, 50), "sharpe_p90": pct(sharpes, 90),
+            "drop_p10": pct(drops, 10), "drop_p50": pct(drops, 50),
+            "sharpe_sorted": [round(v, 3) for v in sorted(sharpes)]}
+
+
+def health(returns: pd.Series, reference: Dict[str, Any], window: int = 252) -> Dict[str, Any]:
+    """Is the last year normal for this strategy, judged against its own history?"""
+    if not reference or len(returns) < window:
+        return {"status": "unknown", "detail": "not enough history to judge"}
+    sharpe, drop = _window_metrics(returns.iloc[-window:])
+    ranks = reference.get("sharpe_sorted") or []
+    percentile = float(np.searchsorted(ranks, sharpe) / len(ranks) * 100) if ranks else None
+    if percentile is None:
+        status = "unknown"
+    elif percentile < 10 or drop < reference["drop_p10"]:
+        status = "below_range"
+    elif percentile > 90:
+        status = "above_range"
+    else:
+        status = "normal"
+    words = {
+        "normal": "behaving within its normal historical range",
+        "below_range": "weaker than 90% of its historical years — treat with extra caution",
+        "above_range": "stronger than 90% of its historical years — unusually good, unlikely to last",
+        "unknown": "not enough history to judge",
+    }
+    return {"status": status, "last_year_sharpe": round(sharpe, 3), "last_year_worst_drop_pct": round(drop, 2),
+            "percentile_vs_history": None if percentile is None else round(percentile, 1),
+            "expected_sharpe_range": [reference.get("sharpe_p10"), reference.get("sharpe_p90")],
+            "detail": words[status]}
+
+
+def recent_changes(sleeves: Dict[str, Dict[str, Any]], bars: int = 6) -> List[Dict[str, Any]]:
+    """Entries and exits each market's verified rules made over its last few completed bars."""
+    out: List[Dict[str, Any]] = []
+    for symbol, sleeve in sleeves.items():
+        e = sleeve["exposure"]
+        if len(e) < 2:
+            continue
+        tail = e.iloc[-(bars + 1):]
+        for (d0, v0), (d1, v1) in zip(tail.items(), list(tail.items())[1:]):
+            if v0 <= 1e-9 < v1:
+                out.append({"symbol": symbol, "action": "entered", "date": str(d1.date())})
+            elif v1 <= 1e-9 < v0:
+                out.append({"symbol": symbol, "action": "exited", "date": str(d1.date())})
+    out.sort(key=lambda c: c["date"], reverse=True)
+    return out

@@ -252,8 +252,8 @@ def _policy_context() -> Dict[str, Any]:
         "terms_version": site_access.TERMS_VERSION,
         "terms_updated": site_access.TERMS_UPDATED,
         "minimum_age": site_access.MINIMUM_AGE,
-        "operator_name": (os.environ.get("LOKI_OPERATOR_NAME") or "").strip(),
-        "operator_email": (os.environ.get("LOKI_OPERATOR_EMAIL") or "").strip(),
+        "operator_name": site_access.operator_name(),
+        "operator_email": site_access.operator_email(),
     }
 
 
@@ -274,8 +274,10 @@ async def transparency_page(request: Request):
     """Who runs Loki, how to reach them, and the plain-language privacy/data summary."""
     import os
 
-    name = (os.environ.get("LOKI_OPERATOR_NAME") or "").strip()
-    email = (os.environ.get("LOKI_OPERATOR_EMAIL") or "").strip()
+    import html
+
+    name = site_access.operator_name()
+    email = html.escape(site_access.operator_email(), quote=True)
     since = (os.environ.get("LOKI_OPERATOR_SINCE") or "").strip()
     from loki.api.loki_wording import PRIVACY_SUMMARY, RETENTION_SUMMARY, revenue_status
 
@@ -730,7 +732,10 @@ def copilot(payload: CopilotRequest, request: Request, response: Response):
     # council) stay with the context-aware copilot; general questions —
     # tickers, the market, terms, the AI itself — go to Loki's brain, which
     # runs the live AI engine and real quotes.
-    if not _PERSONAL.search(payload.message) or re.search(r"\bportfolio ai\b", payload.message, re.I):
+    about_the_ai = re.search(r"\b(portfolio ai|the ai|loki)\b", payload.message, re.I) and not re.search(
+        r"\b(my|mine|our|we)\b", payload.message, re.I
+    )
+    if not _PERSONAL.search(payload.message) or about_the_ai:
         from loki.api import loki_brain
 
         brain = loki_brain.answer(payload.message)

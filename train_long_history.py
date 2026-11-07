@@ -372,6 +372,10 @@ def portfolio_stage(report: Dict[str, Any], data_dir: Optional[Path]) -> Dict[st
     for name, (a, b) in PORTFOLIO_WINDOWS.items():
         out[name] = portfolio_ai.window_stats(book["returns"], a, b)
         out[name + "_buy_hold"] = portfolio_ai.window_stats(bh, a, b)
+    out["holdout_ci"] = portfolio_ai.bootstrap_ci(
+        book["returns"][book["returns"].index >= PORTFOLIO_WINDOWS["holdout"][0]])
+    out["expected_range"] = portfolio_ai.expected_range(
+        book["returns"], PORTFOLIO_WINDOWS["development"][0], PORTFOLIO_WINDOWS["validation"][1])
     hold = out["holdout"]
     out["verified"] = bool(hold and hold["cagr_pct"] > 0 and hold["sharpe"] > 0.5)
     eq = (1 + book["returns"][book["returns"].index >= PORTFOLIO_WINDOWS["holdout"][0]]).cumprod()

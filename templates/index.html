@@ -8,7 +8,7 @@
   <link rel="icon" href="/favicon.ico?v={{ version }}"><link rel="apple-touch-icon" href="/favicon.png?v={{ version }}"><link rel="stylesheet" href="/static/css/style.css?v={{ version }}"><link rel="stylesheet" href="/static/css/market.css?v={{ version }}"><script src="/static/js/workspace.js?v={{ version }}" defer></script><script src="/static/js/currency.js?v={{ version }}" defer></script><script src="/static/js/simulated_market.js?v={{ version }}" defer></script><script src="/static/js/practice.js?v={{ version }}" defer></script><script src="/static/js/proof_engine.js?v={{ version }}" defer></script><script src="/static/js/real_account.js?v={{ version }}" defer></script><script src="/static/js/alpaca_keys.js?v={{ version }}" defer></script><script src="/static/js/desk.js?v={{ version }}" defer></script><script src="/static/js/broker_workspace.js?v={{ version }}" defer></script><script src="/static/js/trained_book.js?v={{ version }}" defer></script><script src="/static/js/game_data.js?v={{ version }}" defer></script><script src="/static/js/game.js?v={{ version }}" defer></script><script src="/static/js/dive_board.js?v={{ version }}" defer></script><script src="/static/js/ai_trading.js?v={{ version }}" defer></script><script src="/static/js/portfolio_ai.js?v={{ version }}" defer></script><script src="/static/js/visit_note.js?v={{ version }}" defer></script><script src="/static/js/next_steps.js?v={{ version }}" defer></script><script src="/static/js/watchtower.js?v={{ version }}" defer></script><script src="/static/js/news_view.js?v={{ version }}" defer></script><script src="/static/js/live_markets.js?v={{ version }}" defer></script><script src="/static/js/backup.js?v={{ version }}" defer></script><script src="/static/js/loki_auth.js?v={{ version }}" defer></script><script src="/static/js/palette.js?v={{ version }}" defer></script><script src="/static/js/aurora.js?v={{ version }}" defer></script>
   <link rel="stylesheet" href="/static/css/trading.css?v={{ version }}">
   <link rel="stylesheet" href="/static/css/workspace-polish.css?v={{ version }}">
-  <link rel="stylesheet" href="/static/css/studio.css?v={{ version }}"><link rel="stylesheet" href="/static/css/live_markets.css?v={{ version }}"><link rel="stylesheet" href="/static/css/loki_scene.css?v={{ version }}"><script src="/static/js/loki_scene.js?v={{ version }}" defer></script><script src="/static/js/loki_radar.js?v={{ version }}" defer></script>
+  <link rel="stylesheet" href="/static/css/studio.css?v={{ version }}"><link rel="stylesheet" href="/static/css/live_markets.css?v={{ version }}"><link rel="stylesheet" href="/static/css/loki_scene.css?v={{ version }}"><script src="/static/js/loki_scene.js?v={{ version }}" defer></script><script src="/static/js/loki_radar.js?v={{ version }}" defer></script><script src="/static/js/ai_briefing.js?v={{ version }}" defer></script>
 </head>
 <body class="loki-workspace" data-loki-intro>
   <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0">
@@ -75,6 +75,15 @@
         <a href="#strategy-lab"><span class="launcher-icon" aria-hidden="true"><svg class="ui-icon"><use href="#icon-flask"/></svg></span><div><strong>Research lab</strong><span>Put your thesis to the test.</span></div><span class="launcher-arrow" aria-hidden="true">↗</span></a>
         <a href="#portfolio"><span class="launcher-icon" aria-hidden="true"><svg class="ui-icon"><use href="#icon-wallet"/></svg></span><div><strong>Paper portfolio</strong><span>Practice with perspective.</span></div><span class="launcher-arrow" aria-hidden="true">↗</span></a>
       </nav>
+      <section class="panel ai-briefing" id="ai-briefing" aria-label="Daily AI briefing">
+        <div class="section-title"><div><p class="eyebrow">DAILY AI BRIEFING · PORTFOLIO AI</p><h2>What the AI did, and how it is doing.</h2></div><span class="tag" id="brief-health">Checking…</span></div>
+        <div class="brief-grid">
+          <div class="brief-col"><p class="eyebrow">SELF-CHECK</p><p id="brief-health-text" class="brief-big">Reading 21 markets…</p><div class="brief-meter" aria-hidden="true"><i id="brief-meter-fill"></i><b id="brief-meter-dot"></b></div><p class="caption" id="brief-health-detail"></p></div>
+          <div class="brief-col"><p class="eyebrow">THIS WEEK'S MOVES</p><ul id="brief-changes" class="brief-changes"><li class="muted">Loading…</li></ul></div>
+          <div class="brief-col"><p class="eyebrow">HONEST UNCERTAINTY</p><p id="brief-ci" class="brief-big">—</p><p class="caption" id="brief-ci-detail"></p></div>
+        </div>
+        <p class="caption">Simulated paper strategy on public data — not advice. <a class="text-link" href="#ai-trading">Run the Portfolio AI with paper money →</a></p>
+      </section>
       <section class="panel market-floor" id="market-floor" aria-label="Market floor">
         <div class="section-title"><div><p class="eyebrow">THE BIGGER PICTURE</p><h2>Around the markets</h2></div><div class="button-row"><button id="floor-refresh" type="button" class="button secondary">Refresh quotes <span aria-hidden="true">↻</span></button><a class="button primary" href="#live-markets">Open live board →</a></div></div>
         <div id="floor-categories" class="floor-grid" aria-live="polite"></div>
@@ -139,12 +148,15 @@
           <form class="lm-add" id="lm-add-form" autocomplete="off"><input id="lm-add-input" maxlength="15" placeholder="Add symbol · e.g. NFLX or LINK/USDT" aria-label="Add a symbol to your watchlist"><button class="button secondary" type="submit">Add ★</button></form>
         </div>
         <p id="lm-message" class="form-message" role="status"></p>
+        <div class="lm-alerts lm-alerts-top" id="lm-alerts-all" aria-live="polite"></div>
         <div class="lm-grid" id="lm-grid" aria-live="polite"><p class="muted">Loading the board…</p></div>
         <p class="caption" id="lm-note">Crypto via Binance Spot (live). Stocks, indices, commodities and FX via Yahoo Finance (near-live, can lag by minutes). Your watchlist is saved in this browser. Market context only — never advice.</p>
       </section>
       <section class="panel lm-detail" id="lm-detail" hidden>
         <div class="section-title"><div><p class="eyebrow" id="lm-detail-eyebrow">SELECTED</p><h2 id="lm-detail-title">—</h2></div><div class="button-row" id="lm-tf" role="group" aria-label="Chart timeframe"><button type="button" class="button secondary" data-tf="5m">5m</button><button type="button" class="button secondary" data-tf="1h">1h</button><button type="button" class="button secondary active" data-tf="1d">1D</button></div></div>
         <div class="lm-chart-wrap"><canvas id="lm-chart" height="300" aria-label="Price chart"></canvas><p class="muted lm-chart-empty" id="lm-chart-empty" hidden></p></div>
+        <form class="lm-alert-form" id="lm-alert-form" autocomplete="off"><span class="eyebrow">PRICE ALERT</span><label>Alert me when the price is<select id="lm-alert-op"><option value="above">above</option><option value="below">below</option></select></label><input id="lm-alert-price" type="number" step="any" min="0" placeholder="price" aria-label="Alert price"><button class="button secondary" type="submit">Set alert 🔔</button></form>
+        <div class="lm-alerts" id="lm-alerts" aria-live="polite"></div>
         <div class="lm-ai">
           <div class="section-title"><div><p class="eyebrow">AI READ · SAME ENGINE AS AI TRADING</p><h3>What would the AI do right now?</h3></div><div class="button-row"><button type="button" class="button primary" id="lm-ask-ai">Ask the AI →</button><a class="button secondary" id="lm-trade-link" href="#ai-trading">Open AI trading</a></div></div>
           <div id="lm-ai-out"><p class="caption">Runs the trained strategy's entry checklist on the last completed daily bar. Review only — nothing is bought.</p></div>

@@ -120,3 +120,21 @@ def test_workspace_routes_portfolio_ai_questions_to_the_brain():
     assert reply["intent"] == "brain:portfolio"
     mine = client.post("/api/copilot", json={"message": "how is my portfolio doing?"}).json()
     assert not mine["intent"].startswith("brain:")
+
+
+@pytest.mark.brain_data
+def test_portfolio_answer_reports_health_moves_and_uncertainty(monkeypatch):
+    monkeypatch.setattr(loki_brain, "_portfolio", lambda: {
+        "as_of": "2026-11-06", "cash": 0.5, "positions": [{"symbol": "SPY", "weight": 0.1}],
+        "health": {"status": "normal", "last_year_sharpe": 0.41, "percentile_vs_history": 29.2,
+                   "detail": "behaving within its normal historical range"},
+        "changes": [{"symbol": "AMZN", "action": "entered", "date": "2026-11-06"}]})
+    reply = loki_brain.answer("how is the AI doing this week?")
+    assert reply["intent"] == "portfolio"
+    text = reply["text"]
+    assert "better than 29%" in text and "entered AMZN (2026-11-06)" in text and "by luck alone" in text
+
+
+def test_questions_about_the_ai_reach_the_brain_even_with_personal_words():
+    assert client.post("/api/copilot", json={"message": "how is the AI doing this week?"}).json()["intent"] == "brain:portfolio"
+    assert not client.post("/api/copilot", json={"message": "how am I doing?"}).json()["intent"].startswith("brain:")

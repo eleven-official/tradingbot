@@ -111,3 +111,15 @@
 .pf-log li.good { color: #b8f0d8; } .pf-log time { color: var(--muted, #a2b5c4); margin-right: 6px; font-size: 11px; }
 @media (max-width: 900px) { .pf-record { grid-template-columns: repeat(2, minmax(0, 1fr)); } .pf-grid { grid-template-columns: 1fr; } .pf-row { grid-template-columns: 64px minmax(0, 1fr) 50px; } .pf-meta { display: none; } }
 #ai-trading > #portfolio-ai { grid-column: 1 / -1; }
+
+/* ---- price alerts ---- */
+.lm-alert-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 6px; }
+.lm-alert-form label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted, #a2b5c4); }
+.lm-alert-form input { width: 140px; }
+.lm-alerts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 4px; }
+.lm-alerts-top { margin: 0 0 10px; }
+.lm-alert-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(240,201,139,.4); color: #f0c98b; border-radius: 999px; padding: 4px 6px 4px 10px; font: 12px ui-monospace, monospace; }
+.lm-alert-chip button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 4px; }
+.lm-toast { position: fixed; right: 20px; bottom: 20px; z-index: 9000; max-width: 360px; padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(240,201,139,.5); background: #14212a; color: #f3e6cf; box-shadow: 0 18px 40px rgba(0,0,0,.5); font-size: 14px; animation: toast-in .4s cubic-bezier(.2,.8,.2,1); transition: opacity .6s, transform .6s; }
+.lm-toast.out { opacity: 0; transform: translateY(10px); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(14px) scale(.98); } }

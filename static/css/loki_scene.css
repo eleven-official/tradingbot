@@ -163,3 +163,20 @@ body.loki-workspace::before { content: ''; position: fixed; inset: -20vmax; z-in
   .loki-workspace .radar-instrument { flex: 1 1 auto; width: 100%; }
   .loki-workspace #overview > .hero { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---- daily AI briefing ---- */
+.loki-workspace #overview > #ai-briefing { order: 3; }
+.ai-briefing { border-color: rgba(168,240,198,.28); background: linear-gradient(150deg, rgba(168,240,198,.05), transparent 45%), var(--panel, #0f1a22); }
+.brief-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 10px 0 12px; }
+.brief-col { border: 1px solid var(--line, #263947); border-radius: 12px; padding: 14px 16px; background: var(--surface-inset, #0a131c); min-width: 0; }
+.brief-big { font: 600 19px/1.3 Inter, system-ui, sans-serif; color: #eafff4; margin: 6px 0 10px; }
+.brief-meter { position: relative; height: 8px; border-radius: 6px; background: linear-gradient(90deg, rgba(255,179,167,.35), rgba(240,201,139,.3) 20%, rgba(168,240,198,.35) 50%, rgba(139,218,212,.35)); margin: 4px 0 10px; }
+.brief-meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 6px; background: rgba(201,255,226,.25); transition: width 1.2s cubic-bezier(.2,.8,.2,1); }
+.brief-meter b { position: absolute; top: 50%; left: 0; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #c9ffe2; box-shadow: 0 0 12px rgba(168,240,198,.8); transition: left 1.2s cubic-bezier(.2,.8,.2,1); }
+.brief-changes { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; font-size: 13px; }
+.brief-changes time { color: #a2b5c4; font: 11px ui-monospace, monospace; margin-left: 4px; }
+.brief-act { font: 600 11px ui-monospace, monospace; padding: 2px 7px; border-radius: 6px; }
+.brief-act.in { color: #a8f0c6; background: rgba(168,240,198,.1); } .brief-act.out { color: #ffb3a7; background: rgba(255,179,167,.1); }
+.brief-hold { border-top: 1px dashed var(--line, #263947); padding-top: 6px; margin-top: 2px; }
+.tag.brief-good { color: #a8f0c6; border-color: rgba(168,240,198,.4); } .tag.brief-warn { color: #f0c98b; border-color: rgba(240,201,139,.45); } .tag.brief-info { color: #8bdad4; }
+@media (max-width: 900px) { .brief-grid { grid-template-columns: minmax(0, 1fr); } }

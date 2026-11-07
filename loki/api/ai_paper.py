@@ -454,6 +454,8 @@ def _portfolio_plan() -> Dict[str, Any]:
     prices = {s: float(p) for s, p in (quotes or {}).items() if p and math.isfinite(float(p)) and float(p) > 0}
     alloc = portfolio_ai.allocation(sleeves, book, prices)
     recent = portfolio_ai.window_stats(book["returns"], str(book["returns"].index[-260].date()), "2100-01-01")
+    health = portfolio_ai.health(book["returns"], block.get("expected_range") or {})
+    changes = portfolio_ai.recent_changes(sleeves)
     return {
         "target_vol_pct": block["target_vol_pct"],
         "as_of": max((v["state"] or {}).get("as_of", "") for v in sleeves.values()),
@@ -461,6 +463,9 @@ def _portfolio_plan() -> Dict[str, Any]:
         **alloc,
         "missing_markets": missing,
         "replay_last_year": recent,
+        "health": health,
+        "changes": changes,
+        "holdout_ci": block.get("holdout_ci"),
         "holdout": block.get("holdout"),
         "holdout_buy_hold": block.get("holdout_buy_hold"),
         "note": (

@@ -53,7 +53,7 @@ def test_transparency_page_is_public_and_names_the_operator():
     assert reply.status_code == 200
     body = reply.text
     assert "Who is behind" in body
-    assert "The operator of this Loki deployment" in body  # honest fallback
+    assert "Joshua Mathew" in body and "joshuajestin2010@gmail.com" in body  # named operator default
     assert "proposed" in body  # revenue status echoed
     assert "Retention" in body
 

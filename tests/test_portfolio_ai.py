@@ -82,3 +82,30 @@ def test_shipped_portfolio_block_is_verified_and_unleveraged():
     assert block["verified"] and block["target_vol_pct"] in (10.0, 15.0, 20.0, 25.0)
     assert block["holdout"]["sharpe"] > 0.5
     assert 0 < block["average_gross_exposure"] <= 1.0
+
+
+def test_bootstrap_interval_brackets_the_point_estimate():
+    rng = np.random.default_rng(1)
+    r = pd.Series(rng.normal(0.0005, 0.006, 900), index=pd.bdate_range("2023-01-02", periods=900))
+    ci = portfolio_ai.bootstrap_ci(r, n=400)
+    point = portfolio_ai.window_stats(r, "2000-01-01", "2100-01-01")
+    assert ci["cagr_pct"][0] < point["cagr_pct"] < ci["cagr_pct"][1]
+    assert 0 <= ci["probability_profitable"] <= 1
+
+
+def test_health_flags_a_bad_year_against_its_own_history():
+    rng = np.random.default_rng(2)
+    good = pd.Series(rng.normal(0.0008, 0.006, 2600), index=pd.bdate_range("2010-01-01", periods=2600))
+    ref = portfolio_ai.expected_range(good, "2010-01-01", "2030-01-01")
+    assert ref["samples"] > 100 and ref["sharpe_p10"] < ref["sharpe_p90"]
+    bad = pd.concat([good, pd.Series(rng.normal(-0.002, 0.008, 260), index=pd.bdate_range(good.index[-1] + pd.Timedelta(days=1), periods=260))])
+    assert portfolio_ai.health(bad, ref)["status"] == "below_range"
+    assert portfolio_ai.health(good, ref)["status"] in ("normal", "above_range")
+
+
+def test_recent_changes_lists_entries_and_exits(sleeves):
+    for s in sleeves.values():
+        s["exposure"].iloc[-3:] = [0.0, 0.5, 0.0]
+    changes = portfolio_ai.recent_changes(sleeves, bars=3)
+    actions = {(c["action"]) for c in changes}
+    assert actions == {"entered", "exited"}
